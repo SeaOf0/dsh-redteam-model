@@ -1,0 +1,304 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "android-reverse-task-input",
+  "type": "object",
+  "required": ["target", "objective", "requirements", "boundaries"],
+  "properties": {
+    "target": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "value": {
+              "type": "string"
+            },
+            "path": {
+              "type": "string"
+            },
+            "file": {
+              "type": "string"
+            },
+            "type": {
+              "type": "string"
+            },
+            "packageName": {
+              "type": "string"
+            },
+            "parts": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "targetType": {
+      "type": "string",
+      "enum": ["apk", "apks", "aab", "xapk", "dex", "jar", "aar", "so"]
+    },
+    "targetParts": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "objective": {
+      "type": "string"
+    },
+    "deliverableTier": {
+      "type": "string",
+      "enum": ["T1", "T2", "T3", "T4", "T5"],
+      "description": "Requested delivery tier. If omitted, task-init infers a conservative tier from objective and deliverables."
+    },
+    "deliverables": {
+      "type": "array",
+      "description": "Optional structured delivery units for composite tasks. String entries remain accepted as requested artifact names.",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["id", "tier"],
+            "properties": {
+              "id": { "type": "string" },
+              "tier": { "type": "string", "enum": ["T1", "T2", "T3", "T4", "T5"] },
+              "criteriaIds": { "type": "array", "items": { "type": "string" } },
+              "required": { "type": "boolean" }
+            },
+            "additionalProperties": true
+          }
+        ]
+      }
+    },
+    "requirements": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "level": {
+              "type": "string"
+            },
+            "deliverables": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "localReproductionRequested": {
+              "type": "boolean"
+            },
+            "apiCallExampleRequired": {
+              "type": "boolean"
+            },
+            "patchingAllowed": {
+              "type": "boolean"
+            },
+            "dynamicAllowed": {
+              "type": "boolean"
+            },
+            "timeBudget": {
+              "type": "string"
+            },
+            "retryPolicy": {
+              "type": "string"
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "boundaries": {
+      "oneOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "summary": {
+              "type": "string"
+            },
+            "notes": {
+              "type": "string"
+            },
+            "activeTriggerAllowed": {
+              "type": "boolean"
+            },
+            "forbiddenActions": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "packageName": {
+      "type": "string"
+    },
+    "abi": {
+      "type": "string"
+    },
+    "androidVersion": {
+      "type": "string"
+    },
+    "deviceMode": {
+      "type": "string",
+      "enum": ["none", "emulator", "physical"]
+    },
+    "attachMode": {
+      "type": "string",
+      "enum": ["spawn", "attach-name", "attach-pid", "none"]
+    },
+    "protectionHints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "frameworkHints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "networkHints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "processHints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "entryHints": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "declaredTools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "User-declared MCP or device tools, e.g. mt-mcp."
+    },
+    "mcpTools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "preferredTools": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "toolchain": {
+      "type": "object",
+      "properties": {
+        "declaredMcpTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "preferredTools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "successCriteria": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "completionCriteria": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          { "type": "string" },
+          {
+            "type": "object",
+            "required": ["label"],
+            "properties": {
+              "id": { "type": "string" },
+              "label": { "type": "string" },
+              "status": { "type": "string", "enum": ["pending", "met", "blocked", "rejected"] },
+              "evidenceRefs": { "type": "array", "items": { "type": "string" } }
+            },
+            "additionalProperties": true
+          }
+        ]
+      },
+      "description": "Canonical verifiable completion criteria. successCriteria is accepted as a legacy alias."
+    },
+    "disallowedFallbacks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "userRejectedApproaches": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "topics": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "description": "Topic keys to activate (e.g. jni-bridge, crypto-protocol). Auto-inferred if omitted."
+    },
+    "protectionTier": {
+      "type": ["string", "null"],
+      "enum": [null, "A0", "A1", "A2", "A2+", "A3", "A4", "A5", "A6", "A7"],
+      "description": "Evidence-backed protection tier. Keep null until triage establishes a tier."
+    },
+    "timeBudget": {
+      "type": "string"
+    },
+    "retryPolicy": {
+      "type": "string"
+    },
+    "patchingAllowed": {
+      "type": "boolean"
+    },
+    "dynamicAllowed": {
+      "type": "boolean"
+    },
+    "localReproductionRequested": {
+      "type": "boolean"
+    },
+    "apiCallExampleRequired": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": true
+}

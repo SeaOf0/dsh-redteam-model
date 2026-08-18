@@ -1,0 +1,275 @@
+rules:
+  # ============================================
+  # P0 - 反序列化漏洞 (Deserialization)
+  # ============================================
+  
+  - id: java-unsafe-deserialization-objectinputstream
+    patterns:
+      - pattern: new ObjectInputStream($INPUT)
+    message: "检测到 ObjectInputStream 反序列化，可能存在 RCE 漏洞。建议使用白名单过滤或替换为安全序列化方案。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+      owasp: "A8:2017 Software and Data Integrity Failures"
+      references:
+        - https://owasp.org/www-community/vulnerabilities/Deserialization_of_untrusted_data
+
+  - id: java-unsafe-deserialization-xmldecoder
+    patterns:
+      - pattern: new XMLDecoder($INPUT)
+    message: "检测到 XMLDecoder 使用，存在 XML 反序列化漏洞，可直接导致 RCE。建议使用安全的 XML 解析器。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-xstream-deserialization
+    patterns:
+      - pattern: new XStream()
+    message: "检测到 XStream 反序列化，存在 RCE 风险。XStream 存在多个 CVE，建议配置白名单或使用安全初始化。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+      references:
+        - https://x-stream.github.io/security.html
+
+  - id: java-xstream-allow-types
+    patterns:
+      - pattern: $XS.allowTypes(...)
+    message: "检测到 XStream allowTypes 配置。请确保白名单不包含危险类。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-fastjson-autotype-enabled
+    patterns:
+      - pattern: ParserConfig.getGlobalInstance().setAutoTypeSupport(true)
+    message: "检测到 Fastjson autoType 开启，存在反序列化 RCE 风险。强烈建议启用 safeMode 或升级到 1.2.83+。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+      references:
+        - https://github.com/alibaba/fastjson/wiki/security_update_20170315
+
+  - id: java-fastjson-parse
+    patterns:
+      - pattern-either:
+        - pattern: JSON.parseObject($INPUT)
+        - pattern: JSON.parse($INPUT)
+        - pattern: JSON.parseArray($INPUT)
+    message: "检测到 Fastjson 解析方法。请确认版本是否安全（推荐 1.2.83+）且 autoType 已禁用。历史漏洞版本：1.2.24/1.2.25-47/1.2.68 等。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+      references:
+        - https://github.com/alibaba/fastjson/wiki/security_update_20170315
+
+  - id: java-fastjson-autotype-config
+    patterns:
+      - pattern-either:
+        - pattern: ParserConfig.getGlobalInstance().setAutoTypeSupport(true)
+        - pattern: ParserConfig.getGlobalInstance().addAccept(...)
+    message: "检测到 Fastjson AutoType 配置。开启 AutoType 存在反序列化 RCE 风险。建议使用 safeMode：ParserConfig.getGlobalInstance().setSafeMode(true)"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-jackson-defaultTyping
+    patterns:
+      - pattern-either:
+        - pattern: $OM.enableDefaultTyping()
+        - pattern: $OM.activateDefaultTyping(...)
+    message: "检测到 Jackson 多态类型处理开启，可能导致反序列化漏洞。建议使用白名单 PolymorphicTypeValidator。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-hessian-deserialization
+    patterns:
+      - pattern-either:
+        - pattern: new HessianInput($INPUT)
+        - pattern: new Hessian2Input($INPUT)
+    message: "检测到 Hessian 反序列化，存在 RCE 风险。参考：hessian-only-jdk 利用链可无需第三方依赖。建议升级版本并配置白名单 ObjectDeserializer。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+      references:
+        - https://su18.org/post/hessian/
+
+  - id: java-snakeyaml-unsafe
+    patterns:
+      - pattern-either:
+        - pattern: new Yaml()
+        - pattern: new Yaml($CONSTRUCTOR)
+    message: "检测到 SnakeYAML 使用，存在反序列化漏洞风险。历史漏洞版本：<1.31。建议使用 SafeConstructor：new Yaml(new SafeConstructor())"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+      references:
+        - https://github.com/Y4tacker/JavaSec/blob/main/2.%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E4%B8%93%E5%8C%BA/SnakeYAML%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E5%8F%8A%E5%8F%AF%E5%88%A9%E7%94%A8Gadget%E5%88%86%E6%9E%90/
+
+  # ============================================
+  # P0 - SSTI 模板注入 (Server-Side Template Injection)
+  # ============================================
+  
+  - id: java-velocity-ssti
+    patterns:
+      - pattern: Velocity.evaluate($CONTEXT, $WRITER, $LOGNAME, $INPUT)
+      - pattern-not: Velocity.evaluate($CONTEXT, $WRITER, $LOGNAME, "...")
+    message: "检测到用户可控的 Velocity 模板内容，存在 SSTI 风险，可导致 RCE。请配置 SecureUberspector。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+      references:
+        - https://portswigger.net/web-security/server-side-template-injection
+
+  - id: java-freemarker-ssti
+    patterns:
+      - pattern: new Template($NAME, $CONTENT, $CFG)
+      - pattern-not: new Template($NAME, "...", $CFG)
+    message: "检测到用户可控的 FreeMarker 模板内容，存在 SSTI 风险。请禁用 new() 内置指令。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+
+  - id: java-thymeleaf-ssti
+    patterns:
+      - pattern: $ENGINE.process($TEMPLATE, $CONTEXT)
+      - pattern-not: $ENGINE.process("...", $CONTEXT)
+    message: "检测到 Thymeleaf 模板处理。请验证模板名称是否来自用户输入，可能存在 SSTI 风险。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+
+  # ============================================
+  # P0 - 表达式注入 (Expression Injection)
+  # ============================================
+  
+  - id: java-spel-injection
+    patterns:
+      - pattern: $PARSER.parseExpression($EXPR)
+      - pattern-not: $PARSER.parseExpression("...")
+    message: "检测到用户可控的 SpEL 表达式，存在表达式注入风险，可直接导致 RCE。建议使用 SimpleEvaluationContext。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-917"
+      references:
+        - https://docs.spring.io/spring-framework/docs/current/reference/html/core.html#expressions
+
+  - id: java-ognl-injection
+    patterns:
+      - pattern-either:
+        - pattern: Ognl.getValue($EXPR, $ROOT)
+        - pattern: Ognl.setValue($EXPR, $ROOT, $VALUE)
+        - pattern: Ognl.parseExpression($EXPR)
+    message: "检测到 OGNL 表达式使用，存在表达式注入风险。Struts2 历史漏洞多与此相关。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-917"
+
+  - id: java-mvel-injection
+    patterns:
+      - pattern-either:
+        - pattern: MVEL.eval($EXPR)
+        - pattern: MVEL.executeExpression($EXPR)
+    message: "检测到 MVEL 表达式执行，存在 RCE 风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-917"
+
+  # ============================================
+  # P0 - JNDI 注入
+  # ============================================
+  
+  - id: java-jndi-injection
+    patterns:
+      - pattern: $CTX.lookup($NAME)
+      - pattern-not: $CTX.lookup("...")
+    message: "检测到用户可控的 JNDI lookup，存在 JNDI 注入风险，可导致 RCE。JDK 8u191 后仍可能利用本地 Gadget。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-917"
+      references:
+        - https://www.veracode.com/blog/research/exploiting-jndi-injections-java
+
+  # ============================================
+  # P0 - 命令注入 (Command Injection)
+  # ============================================
+  
+  - id: java-command-injection-runtime-exec
+    patterns:
+      - pattern: Runtime.getRuntime().exec($CMD)
+      - pattern-not: Runtime.getRuntime().exec("...")
+    message: "检测到 Runtime.exec() 使用用户可控参数，存在命令注入风险。建议使用 ProcessBuilder + 参数数组。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-78"
+      owasp: "A1:2017 Injection"
+
+  - id: java-command-injection-processbuilder
+    patterns:
+      - pattern: new ProcessBuilder($CMD)
+      - pattern-not: |
+          new ProcessBuilder("...")
+    message: "检测到 ProcessBuilder 使用。请确保命令参数不可被用户控制，避免命令注入。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-78"
+
+  - id: java-command-injection-processbuilder-list
+    patterns:
+      - pattern: new ProcessBuilder($LIST)
+    message: "检测到 ProcessBuilder 使用 List 参数。请验证 List 中的命令是否来自用户输入。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-78"
+
+  - id: java-script-engine-injection
+    patterns:
+      - pattern: $ENGINE.eval($SCRIPT)
+      - pattern-not: $ENGINE.eval("...")
+    message: "检测到脚本引擎执行用户可控代码，存在代码注入风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"

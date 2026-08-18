@@ -1,0 +1,20 @@
+# One installable bundle row registering the two product-CLI subagent providers.
+# Host plane (all presets see the providers); the per-preset tool rows in
+# plugins/dsh-redteam-model/modes/*/agent.cordis.yml name provider: claude-code / codex and
+# register their tools the moment these providers appear (provider-added).
+#
+# The CLIs own their model backend entirely (~/.claude/settings.json env with
+# ANTHROPIC_BASE_URL/AUTH_TOKEN, ~/.codex/config.toml providers) — nothing
+# credential-shaped lives in this row. Sandbox/timeout/extra args are the only
+# knobs, and their defaults are the safe ones.
+- insert:
+    - id: dsh-product-subagents
+      name: '@dsh-external/dsh-product-subagents'
+      config:
+        claudeCode:
+          bin: claude
+          timeoutMs: 600000
+        codex:
+          bin: codex
+          sandbox: workspace-write
+          timeoutMs: 600000

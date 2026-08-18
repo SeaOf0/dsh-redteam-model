@@ -1,0 +1,131 @@
+rules:
+  # ============================================
+  # P1 - SQL 注入 (SQL Injection)
+  # ============================================
+  
+  - id: java-sqli-statement-execute
+    patterns:
+      - pattern-either:
+        - pattern: $STMT.executeQuery($SQL)
+        - pattern: $STMT.executeUpdate($SQL)
+        - pattern: $STMT.execute($SQL)
+      - pattern-not: $STMT.executeQuery("...")
+      - pattern-not: $STMT.executeUpdate("...")
+      - pattern-not: $STMT.execute("...")
+    message: "检测到 Statement 执行动态 SQL，存在 SQL 注入风险。强烈建议使用 PreparedStatement。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+      owasp: "A1:2017 Injection"
+
+  - id: java-sqli-createstatement
+    patterns:
+      - pattern: $CONN.createStatement()
+    message: "检测到 createStatement() 使用，可能存在 SQL 注入风险。建议使用 PreparedStatement。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: java-sqli-string-concat
+    patterns:
+      - pattern-regex: (executeQuery|executeUpdate|execute)\s*\(\s*[^"]*\+[^"]*\)
+    message: "检测到 SQL 语句字符串拼接，存在 SQL 注入风险。建议使用参数绑定。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: java-sqli-jdbc-concat
+    patterns:
+      - pattern-regex: (select|insert|update|delete|SELECT|INSERT|UPDATE|DELETE).*\+\s*(username|password|id|name|user|param)
+    message: "检测到 SQL 语句与用户输入拼接，存在 SQL 注入风险。万能密码绕过：'=0# 或 ' or '1'='1"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: java-mybatis-dollar-sign
+    patterns:
+      - pattern-regex: \$\{[^}]+\}
+    paths:
+      include:
+        - "*.xml"
+    message: "检测到 MyBatis ${} 占位符，直接拼接 SQL，存在注入风险。建议使用 #{} 参数绑定。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+      references:
+        - https://mybatis.org/mybatis-3/sqlmap-xml.html
+
+  - id: java-jpa-native-query-concat
+    patterns:
+      - pattern: $EM.createNativeQuery($SQL + ...)
+    message: "检测到 JPA 原生 SQL 拼接，存在 SQL 注入风险。建议使用参数绑定。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: java-jpa-native-query-string
+    patterns:
+      - pattern: $EM.createNativeQuery($VAR)
+      - pattern-not: $EM.createNativeQuery("...")
+    message: "检测到 JPA 原生 SQL 使用变量。请验证是否使用参数绑定而非字符串拼接。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: java-hql-injection
+    patterns:
+      - pattern: $EM.createQuery($HQL)
+      - pattern-not: $EM.createQuery("...")
+    message: "检测到 HQL 查询使用变量。请确保使用参数绑定（:param）而非字符串拼接。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: java-jdbc-template-concat
+    patterns:
+      - pattern-either:
+        - pattern: $JDBCTEMPLATE.queryForObject($SQL + ...)
+        - pattern: $JDBCTEMPLATE.query($SQL + ...)
+        - pattern: $JDBCTEMPLATE.update($SQL + ...)
+    message: "检测到 JdbcTemplate SQL 拼接，存在注入风险。建议使用 ? 占位符。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: java-sqli-order-by
+    patterns:
+      - pattern-regex: (order\s+by|ORDER\s+BY)\s+[^"']*\+[^"']*
+    message: "检测到 ORDER BY 动态排序字段，可能存在 SQL 注入。建议使用白名单验证排序字段。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: java-sqli-in-clause
+    patterns:
+      - pattern-regex: (IN|in)\s*\([^)]*\+[^)]*\)
+    message: "检测到 IN 子句动态拼接，存在 SQL 注入风险。建议使用 MyBatis foreach 或参数数组。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"

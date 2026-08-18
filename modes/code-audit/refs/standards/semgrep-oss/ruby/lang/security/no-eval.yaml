@@ -1,0 +1,55 @@
+rules:
+- id: ruby-eval
+  message: >-
+    Use of eval with user-controllable input detected. This can lead 
+    to attackers running arbitrary code. Ensure external data does not 
+    reach here, otherwise this is a security vulnerability. Consider 
+    other ways to do this without eval.
+  severity: WARNING
+  metadata:
+    likelihood: HIGH
+    impact: MEDIUM
+    confidence: MEDIUM
+    category: security
+    cwe2022-top25: true
+    cwe2021-top25: true
+    cwe:
+    - "CWE-94: Improper Control of Generation of Code ('Code Injection')"
+    owasp:
+    - A03:2021 - Injection
+    references:
+    - https://owasp.org/Top10/A03_2021-Injection
+    source-rule-url: https://github.com/presidentbeef/brakeman/blob/main/lib/brakeman/checks/check_evaluation.rb
+    subcategory:
+    - vuln
+    technology:
+    - ruby
+    - rails
+  languages: 
+    - ruby
+  mode: taint
+  pattern-sources:
+  - pattern-either:
+    - pattern: params
+    - pattern: cookies
+    - patterns:
+      - pattern: |
+          RubyVM::InstructionSequence.compile(...)
+      - pattern-not: |
+          RubyVM::InstructionSequence.compile("...")
+  pattern-sinks:
+  - patterns:
+    - pattern-either:
+      - pattern: $X.eval
+      - pattern: $X.class_eval
+      - pattern: $X.instance_eval
+      - pattern: $X.module_eval
+      - pattern: $X.eval(...)
+      - pattern: $X.class_eval(...)
+      - pattern: $X.instance_eval(...)
+      - pattern: $X.module_eval(...)
+      - pattern: eval(...)
+      - pattern: class_eval(...)
+      - pattern: module_eval(...)
+      - pattern: instance_eval(...)
+    - pattern-not: $M("...",...)

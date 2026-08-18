@@ -1,0 +1,95 @@
+rules:
+  # ============================================
+  # P2 - 加密安全
+  # ============================================
+  
+  - id: java-weak-hash-md5
+    patterns:
+      - pattern: MessageDigest.getInstance("MD5")
+    message: "检测到 MD5 哈希算法，不建议用于密码存储等安全场景。建议使用 BCrypt、PBKDF2 或 Argon2。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-328"
+      references:
+        - https://owasp.org/www-community/vulnerabilities/Use_of_a_Broken_or_Risky_Cryptographic_Algorithm
+
+  - id: java-weak-hash-sha1
+    patterns:
+      - pattern-either:
+        - pattern: MessageDigest.getInstance("SHA-1")
+        - pattern: MessageDigest.getInstance("SHA1")
+    message: "检测到 SHA-1 哈希算法，不建议用于安全场景。建议使用 SHA-256 或更高版本。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-328"
+
+  - id: java-weak-crypto-des
+    patterns:
+      - pattern-either:
+        - pattern: Cipher.getInstance("DES")
+        - pattern: Cipher.getInstance("DES/...")
+    message: "检测到 DES 加密算法，密钥过短已被认为不安全。建议使用 AES-256。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-327"
+
+  - id: java-weak-crypto-3des
+    patterns:
+      - pattern-either:
+        - pattern: Cipher.getInstance("DESede")
+        - pattern: Cipher.getInstance("TripleDES")
+        - pattern: Cipher.getInstance("DESede/...")
+    message: "检测到 3DES 加密算法，已被认为不安全。建议使用 AES-256。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-327"
+
+  - id: java-weak-crypto-aes-ecb
+    patterns:
+      - pattern-regex: Cipher\.getInstance\("AES/ECB/[^"]+"\)
+    message: "检测到 AES ECB 模式，相同明文会生成相同密文，不安全。建议使用 CBC 或 GCM 模式。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-327"
+
+  - id: java-insecure-random
+    patterns:
+      - pattern: new Random()
+    message: "检测到 java.util.Random 使用。安全场景（密码、Token、Session ID 生成）应使用 SecureRandom。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-338"
+
+  - id: java-hardcoded-secret
+    patterns:
+      - pattern-regex: (password|passwd|pwd|secret|apikey|api_key|token|private_key)\s*=\s*"[^"{}]+"
+    message: "检测到可能的硬编码密钥/密码。建议使用环境变量或密钥管理服务（如 Vault、AWS Secrets Manager）。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-ssl-disabled
+    patterns:
+      - pattern-either:
+        - pattern: $TRUSTMANAGER.checkClientTrusted(...)
+        - pattern: $TRUSTMANAGER.checkServerTrusted(...)
+    message: "检测到可能禁用 SSL 证书验证的代码。这会导致中间人攻击风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-295"

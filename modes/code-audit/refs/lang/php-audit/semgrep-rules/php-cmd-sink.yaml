@@ -1,0 +1,26 @@
+rules:
+  # PHP 命令执行 sink 全集
+  # 修订记录：DVWA 运行时验收（PROGRESS code-audit 验收）发现旧 cmd-sink 规则
+  # 漏 shell_exec（exec 页面实有 2 处未命中，人工链补）——本规则补齐 shell_exec、
+  # passthru、pcntl_exec 与 eval，sink 面对齐 php-sink-reference.md 的命令执行节。
+  # 用法：semgrep --config php-cmd-sink.yaml <目标目录>
+  # 命中 ≠ 漏洞：按 playbook 走 A2 双链确认（入口→调用链→sink）后定级。
+  - id: php-cmd-exec-sink
+    languages: [php]
+    severity: WARNING
+    message: >-
+      命令执行 sink（system/exec/shell_exec/passthru/popen/proc_open/pcntl_exec/eval）。
+      反查外部输入入口与传播路径（A1 面映射 → A2 双链），确认可达后按注入类定级。
+    metadata:
+      sink-class: command-injection
+      reference: lang/php-audit/php-sink-reference.md
+      revision: "2" # 含 shell_exec/passthru/pcntl_exec/eval
+    pattern-either:
+      - pattern: system(...)
+      - pattern: exec(...)
+      - pattern: shell_exec(...)
+      - pattern: passthru(...)
+      - pattern: popen(...)
+      - pattern: proc_open(...)
+      - pattern: pcntl_exec(...)
+      - pattern: eval(...)

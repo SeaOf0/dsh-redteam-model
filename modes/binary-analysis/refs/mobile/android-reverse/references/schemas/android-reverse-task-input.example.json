@@ -1,0 +1,63 @@
+{
+  "target": {
+    "value": "samples/demo.apks",
+    "type": "apks",
+    "packageName": "com.example.demo",
+    "parts": [
+      "base-master.apk",
+      "split_config.arm64_v8a.apk"
+    ]
+  },
+  "targetType": "apks",
+  "objective": "定位登录签名链路，确认是否进入 JNI 或 Native 网络栈，并绕过证书锁定做抓包验证",
+  "requirements": {
+    "summary": "需要 task-local 闭环、一次本地复现和 API 调用样例",
+    "deliverables": [
+      "report.md",
+      "run/fixtures.json",
+      "run/verification.spec.json",
+      "run/verification-result.json"
+    ],
+    "localReproductionRequested": true,
+    "apiCallExampleRequired": true,
+    "dynamicAllowed": true
+  },
+  "boundaries": {
+    "summary": "允许 Frida 动态分析，不做静态 patch，不外发真实流量",
+    "activeTriggerAllowed": true,
+    "forbiddenActions": [
+      "外发生产账号流量",
+      "上传真实 token"
+    ]
+  },
+  "packageName": "com.example.demo",
+  "abi": "arm64-v8a",
+  "androidVersion": "Android 13",
+  "deviceMode": "emulator",
+  "attachMode": "spawn",
+  "protectionHints": [
+    "CertificatePinner",
+    "RootBeer",
+    "JNI"
+  ],
+  "frameworkHints": [
+    "Flutter"
+  ],
+  "networkHints": [
+    "Cronet"
+  ],
+  "processHints": [
+    "spawn",
+    "isolated process"
+  ],
+  "entryHints": [
+    "LoginActivity",
+    "signRequest"
+  ],
+  "completionCriteria": [
+    "给出 Java 到 Native 的关键调用链",
+    "给出 pinning 命中层和旁路方案",
+    "在 task artifact 中保存 hook 样本"
+  ]
+}
+

@@ -1,0 +1,628 @@
+rules:
+  # ============================================
+  # 微服务安全规则 (P1 - High)
+  # ============================================
+  
+  # --------------------------------------------
+  # Spring Cloud Feign 安全
+  # --------------------------------------------
+  
+  - id: java-feign-no-auth
+    patterns:
+      - pattern-regex: '@FeignClient\s*\([^)]*(url|name)\s*='
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Feign Client 配置。服务间调用应配置认证机制（如 Token、签名），避免内部接口未授权访问。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  - id: java-feign-url-hardcoded
+    patterns:
+      - pattern-regex: '@FeignClient\s*\([^)]*url\s*=\s*"[^"$]+"'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Feign Client URL 硬编码。建议使用配置中心或服务发现，便于环境切换和安全管控。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-feign-insecure-ssl
+    patterns:
+      - pattern-regex: 'Feign\.Builder\.sslSocketFactory|Client\.Default\(.*trustAll'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Feign SSL 验证禁用。禁用 SSL 验证可能导致中间人攻击。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-295"
+
+  # --------------------------------------------
+  # Spring Cloud Gateway 安全
+  # --------------------------------------------
+  
+  - id: java-gateway-route-no-auth
+    patterns:
+      - pattern-regex: 'spring\.cloud\.gateway\.routes.*predicates.*Path'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Gateway 路由配置。建议配置全局过滤器进行认证授权，避免后端服务直接暴露。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  - id: java-gateway-filter-bypass
+    patterns:
+      - pattern-regex: 'RemoveRequestHeader.*Authorization|RemoveRequestHeader.*Cookie|DedupeResponseHeader.*Set-Cookie'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.java"
+    message: "检测到 Gateway 移除认证头过滤器。可能导致后端服务无法获取认证信息，需确认是否安全。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+
+  - id: java-gateway-cors-wildcard
+    patterns:
+      - pattern-regex: 'allowedOrigins\s*[=:]\s*"\*"|allowedOriginPatterns\s*[=:]\s*"\*"'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.java"
+    message: "检测到 Gateway CORS 允许所有来源。建议指定具体域名，防止跨站请求伪造。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-942"
+
+  # --------------------------------------------
+  # Spring Cloud Netflix (Eureka, Ribbon, Hystrix)
+  # --------------------------------------------
+  
+  - id: java-eureka-client-no-auth
+    patterns:
+      - pattern-regex: 'eureka\.client\.service-url\.defaultZone\s*[=:]\s*"http://[^@]+@"'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Eureka Server URL 包含明文认证信息。建议使用环境变量：VAR_EUREKA_USER:VAR_EUREKA_PASSWORD@host"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-ribbon-server-list
+    patterns:
+      - pattern-regex: 'ribbon\.listOfServers\s*[=:]\s*"[^"]+"'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Ribbon 服务列表硬编码。建议使用服务发现，避免 IP 泄露和配置硬编码。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # --------------------------------------------
+  # Dubbo 安全
+  # --------------------------------------------
+  
+  - id: java-dubbo-protocol-unsafe
+    patterns:
+      - pattern-regex: 'dubbo\.protocol\.(port|host)\s*[=:]\s*[0-9]+|dubbo\.protocol\.serialization\s*[=:]\s*(hessian|java)'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+        - "*.xml"
+    message: "检测到 Dubbo 协议配置。Hessian/Java 序列化存在反序列化风险，建议使用泛化调用或安全序列化。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-dubbo-token-missing
+    patterns:
+      - pattern-regex: 'dubbo\.provider\.token\s*[=:]\s*false|dubbo\.consumer\.check\s*[=:]\s*false'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Dubbo Token 验证关闭。建议开启 Token 验证防止未授权调用。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # --------------------------------------------
+  # gRPC 安全
+  # --------------------------------------------
+  
+  - id: java-grpc-insecure-channel
+    patterns:
+      - pattern-regex: 'ManagedChannelBuilder\.forAddress|usePlaintext\(\)|InsecureChannelCredentials'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 gRPC 明文通道。生产环境应使用 TLS 加密：useTransportSecurity()。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-319"
+
+  - id: java-grpc-no-auth-interceptor
+    patterns:
+      - pattern-regex: 'ServerInterceptors\.intercept|ServerBuilder\.intercept'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 gRPC 拦截器配置。建议添加认证拦截器验证每个请求。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # --------------------------------------------
+  # Service Mesh (Istio) 安全
+  # --------------------------------------------
+  
+  - id: java-istio-mtls-disabled
+    patterns:
+      - pattern-regex: 'mtls:\s*mode:\s*(DISABLED|PERMISSIVE)|peerAuthentication.*mode:\s*DISABLED'
+    paths:
+      include:
+        - "*.yaml"
+        - "*.yml"
+    message: "检测到 Istio mTLS 禁用或宽松模式。建议使用 STRICT 模式确保服务间通信加密。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-319"
+
+  - id: java-istio-authorization-policy-missing
+    patterns:
+      - pattern-regex: 'apiVersion:\s*security\.istio\.io/v1beta1\s* kind:\s*AuthorizationPolicy'
+    paths:
+      include:
+        - "*.yaml"
+        - "*.yml"
+    message: "检测到 Istio AuthorizationPolicy。请确保策略覆盖所有敏感服务。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-284"
+
+  # ============================================
+  # 数据库安全规则 (P1 - High)
+  # ============================================
+  
+  # --------------------------------------------
+  # NoSQL 注入
+  # --------------------------------------------
+  
+  - id: java-mongodb-injection
+    patterns:
+      - pattern-regex: 'BasicDBObject\s*\(\s*[^)]*\+\s*|BasicDBObject\.append\s*\(\s*[^)]*\+\s*|DBObject\.put\s*\(\s*[^)]*\+\s*'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 MongoDB 查询拼接。可能存在 NoSQL 注入风险，建议使用参数化查询。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-943"
+
+  - id: java-mongodb-where-clause
+    patterns:
+      - pattern-regex: '\$where\s*:|JavaScript\s*query|eval\s*\('
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 MongoDB $where 或 JavaScript 查询。可能存在代码注入风险，建议使用查询操作符。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+
+  - id: java-elasticsearch-injection
+    patterns:
+      - pattern-regex: 'QueryStringQueryBuilder|SearchSourceBuilder\.query\s*\(\s*[^)]*\+\s*|script\s*:\s*"[^"]*"'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Elasticsearch 查询拼接或脚本。可能存在注入风险，建议使用参数化查询。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-943"
+
+  - id: java-redis-command-injection
+    patterns:
+      - pattern-regex: 'redisTemplate\.execute\s*\(\s*[^"]|jedis\.eval\s*\(|RedisScript.*userInput'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Redis 动态命令执行。可能存在命令注入风险，建议使用预定义脚本。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+
+  # --------------------------------------------
+  # 数据库连接安全
+  # --------------------------------------------
+  
+  - id: java-datasource-credentials-hardcoded
+    patterns:
+      - pattern-regex: 'setUsername\s*\(\s*"[^"$]+"\s*\)|setPassword\s*\(\s*"[^"$]+"\s*\)|user\s*=\s*[^$\{].*password\s*=\s*[^$\{]'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到数据库凭证硬编码。建议使用环境变量或密钥管理服务。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-mysql-ssl-disabled
+    patterns:
+      - pattern-regex: 'jdbc:mysql://[^?]*\?.*useSSL\s*=\s*false|verifyServerCertificate\s*=\s*false'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+        - "*.java"
+    message: "检测到 MySQL SSL 禁用。数据库连接应启用 SSL 加密。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-319"
+
+  - id: java-postgres-ssl-disabled
+    patterns:
+      - pattern-regex: 'jdbc:postgresql://[^?]*\?.*ssl\s*=\s*false|sslfactory\s*=\s*org\.postgresql\.ssl\.NonValidatingFactory'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+        - "*.java"
+    message: "检测到 PostgreSQL SSL 禁用或证书验证关闭。数据库连接应启用 SSL 加密。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-319"
+
+  # ============================================
+  # 反序列化利用链增强 (P0 - Critical)
+  # ============================================
+  
+  - id: java-deserialization-gadget-commons-beanutils
+    patterns:
+      - pattern-regex: 'BeanComparator|commons-beanutils.*BeanComparator'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "pom.xml"
+    message: "检测到 Commons BeanUtils BeanComparator。这是已知反序列化利用链，建议检查依赖版本和使用场景。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+      references:
+        - https://github.com/javaweb-sec/javaweb-sec/blob/master/2-java%E5%8F%8D%E5%BA%8F%E5%88%97%E5%8C%96%E6%BC%8F%E6%B4%9E/2.2.5%E5%88%A9%E7%94%A8%E9%93%BE%E5%88%86%E6%9E%90.md
+
+  - id: java-deserialization-gadget-rome
+    patterns:
+      - pattern-regex: 'ToStringBean|ObjectBean.*Rome|rome.*ToStringBean'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "pom.xml"
+    message: "检测到 ROME 库 ToStringBean。这是已知反序列化利用链，建议检查依赖版本。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-deserialization-gadget-c3p0
+    patterns:
+      - pattern-regex: 'JndiRefForwardingDataSource|WrapperConnectionPoolDataSource|c3p0'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "pom.xml"
+    message: "检测到 C3P0 数据源。C3P0 存在 JNDI 注入利用链，建议检查配置和依赖版本。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-deserialization-gadget-aspectjweaver
+    patterns:
+      - pattern-regex: 'aspectjweaver|org\.aspectj\.weaver'
+    paths:
+      include:
+        - "pom.xml"
+        - "*.gradle"
+    message: "检测到 AspectJWeaver 依赖。存在文件写入利用链，建议检查依赖版本。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # OWASP Top 10 2021 补充规则
+  # ============================================
+  
+  # A01:2021 - Broken Access Control
+  - id: java-access-control-path-bypass
+    patterns:
+      - pattern-regex: 'antMatchers\s*\(\s*"/[^"]*"\s*\)\s*\.\s*permitAll|mvcMatchers\s*\(\s*"/[^"]*"\s*\)\s*\.\s*permitAll'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到路径 permitAll 配置。请确认该路径是否确实需要公开访问，敏感路径应配置认证。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-284"
+
+  # A02:2021 - Cryptographic Failures
+  - id: java-crypto-hardcoded-iv
+    patterns:
+      - pattern-regex: 'IvParameterSpec\s*\(\s*"[^"]+"\s*\)|new\s+byte\[\]\s*\{[^}]*\}\s*;\s*IvParameterSpec'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到硬编码 IV。IV 应使用随机值，硬编码 IV 会导致相同明文产生相同密文。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-329"
+
+  - id: java-crypto-ecb-mode
+    patterns:
+      - pattern-regex: 'AES/ECB/|AES.*ECB|Cipher\.getInstance\s*\(\s*"AES"\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 AES ECB 模式。ECB 模式不安全，相同明文块产生相同密文块，建议使用 CBC 或 GCM 模式。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-327"
+
+  # A03:2021 - Injection (SQL 变种)
+  - id: java-sql-order-by-injection
+    patterns:
+      - pattern-regex: 'ORDER BY\s*"\s*\+|ORDER BY.*\$\{|order\s*by.*request\.getParameter'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.xml"
+    message: "检测到 ORDER BY 动态拼接。排序字段应使用白名单验证，避免 SQL 注入。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: java-sql-like-injection
+    patterns:
+      - pattern-regex: "LIKE\\s*\"%\"\\s*\\+|like.*\\$\\{"
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.xml"
+    message: "检测到 LIKE 子句动态拼接。通配符拼接可能导致 SQL 注入，建议使用参数绑定。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  # A04:2021 - Insecure Design
+  - id: java-design-missing-rate-limit
+    patterns:
+      - pattern-regex: '@RequestMapping|@GetMapping|@PostMapping|@RestController'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 REST 接口。敏感接口应配置限流，防止暴力攻击和 DoS。可使用 @RateLimiter、Sentinel、Bucket4j 等。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-770"
+
+  # A05:2021 - Security Misconfiguration
+  - id: java-config-error-verbose
+    patterns:
+      - pattern-regex: 'server\.error\.include-message\s*[=:]\s*always|server\.error\.include-stacktrace\s*[=:]\s*always|always-include-stacktrace\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到详细错误信息配置。生产环境不应返回完整堆栈信息，可能泄露敏感实现细节。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-209"
+
+  # A06:2021 - Vulnerable and Outdated Components
+  - id: java-dependency-snapshot-vulnerable
+    patterns:
+      - pattern-regex: '<version>\s*1\.0\.0\s*</version>|<version>\s*1\.0-SNAPSHOT\s*</version>|<version>\s*RELEASE\s*</version>'
+    paths:
+      include:
+        - "pom.xml"
+    message: "检测到不安全的版本声明。避免使用 SNAPSHOT、RELEASE 或固定旧版本，应使用明确的稳定版本。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-1104"
+
+  # A07:2021 - Identification and Authentication Failures
+  - id: java-auth-session-fixation
+    patterns:
+      - pattern-regex: 'session\.setAttribute\s*\(\s*"user"|request\.getSession\(\)\.setAttribute'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到登录后 Session 未重新生成。登录成功后应调用 session.invalidate() 或 session.changeSessionId()，防止会话固定攻击。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-384"
+
+  - id: java-auth-weak-password-policy
+    patterns:
+      - pattern-regex: 'password\.length\(\)\s*<[56]|password\.length\(\)\s*<=\s*[45]|password.*matches\s*\(\s*"[^"]{0,10}"'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到弱密码策略。密码最小长度应不少于 8 位，建议包含大小写字母、数字、特殊字符。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-521"
+
+  # A08:2021 - Software and Data Integrity Failures
+  - id: java-integrity-autoType-enabled
+    patterns:
+      - pattern-regex: 'autoType\s*[=:]\s*true|setAutoTypeSupport\s*\(\s*true'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+    message: "检测到 AutoType 开启。AutoType 可能导致反序列化 RCE，建议使用白名单或关闭。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # A09:2021 - Security Logging and Monitoring Failures
+  - id: java-logging-sensitive-data
+    patterns:
+      - pattern-regex: 'log\.(debug|info|warn|error)\s*\([^)]*(password|secret|token|key|credential|card)[^)]*\)|logger\.(debug|info|warn|error)\s*\([^)]*(password|secret|token)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到敏感信息可能被记录日志。密码、Token 等敏感信息不应写入日志。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-532"
+
+  - id: java-logging-missing-audit
+    patterns:
+      - pattern-regex: '@PreAuthorize.*hasRole|@Secured.*ADMIN|delete.*mapping|update.*mapping'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到敏感操作接口。建议添加审计日志，记录操作人、时间、操作内容。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-778"
+
+  # A10:2021 - Server-Side Request Forgery (SSRF)
+  - id: java-ssrf-url-validation-missing
+    patterns:
+      - pattern-regex: 'new\s+URL\s*\(\s*request\.|URL\s*\(\s*[^"]\+\s*|HttpURLConnection\s*\(\s*new\s+URL\s*\(\s*[^"]'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到用户可控的 URL 构建。应对 URL 进行白名单验证，限制协议和目标地址。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"

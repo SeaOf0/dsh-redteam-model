@@ -1,0 +1,25 @@
+name: check
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.32.1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: 安装依赖
+        run: pnpm install --config.minimum-release-age=0 --config.auto-install-peers=false --no-frozen-lockfile
+      - name: 安装 peer 依赖
+        run: pnpm add -D @deepseek-ai/cordis@^4.0.1 @deepseek-ai/dsh-mcp-client@^0.1.0-rc.6 @deepseek-ai/dsh-settings@^0.1.0-rc.6 --config.minimum-release-age=0
+      - name: 类型检查 + 测试 + 构建
+        run: pnpm check

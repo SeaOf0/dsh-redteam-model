@@ -1,0 +1,31 @@
+{
+  "target": "samples/com.demo.hybrid.apk",
+  "targetType": "apk",
+  "objective": "恢复 WebView JS-Native 桥、确认本地缓存与 Provider 数据流，并通过最小 smali patch 去掉调试检测",
+  "requirements": "需要证据化说明 WebView 接口、缓存位置和 patch 影响面",
+  "boundaries": {
+    "summary": "允许静态 patch 与重签，不触碰线上接口",
+    "activeTriggerAllowed": true,
+    "forbiddenActions": [
+      "连接生产支付网关"
+    ]
+  },
+  "packageName": "com.demo.hybrid",
+  "abi": "arm64-v8a",
+  "androidVersion": "Android 11",
+  "deviceMode": "emulator",
+  "attachMode": "attach-name",
+  "protectionHints": [
+    "emulator",
+    "debugger"
+  ],
+  "entryHints": [
+    "WebViewActivity",
+    "ContentProvider",
+    "isDebuggerConnected"
+  ],
+  "completionCriteria": [
+    "明确 JS bridge 到本地存储的关键链路",
+    "记录调试检测触发点与最小 patch 位置"
+  ]
+}

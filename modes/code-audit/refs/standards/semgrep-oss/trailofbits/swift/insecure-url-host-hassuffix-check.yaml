@@ -1,0 +1,65 @@
+rules:
+  - id: insecure-url-host-hassuffix-check
+    message: >
+      Potentially insecure URL host suffix check. Using hasSuffix("domain.com") without 
+      a leading dot can match unintended domains like "fakedomain.com"
+    languages: [swift]
+    severity: WARNING
+    metadata:
+      category: security
+      cwe: CWE-697
+      technology: [swift, ios]
+      subcategory: [audit]
+      confidence: HIGH
+      likelihood: HIGH
+      impact: MEDIUM
+      references:
+        - https://developer.apple.com/documentation/foundation/url/host(percentencoded:)
+        - https://developer.apple.com/documentation/foundation/nsstring/hassuffix(_:)
+        - https://pentesterlab.com/blog/rust-cors-vulnerabilities
+    pattern-either:
+      # Pattern 1: Any .host property followed by hasSuffix
+      - patterns:
+          - pattern: $X.hasSuffix($SUFFIX)
+          - metavariable-regex:
+              metavariable: $SUFFIX
+              regex: '^"(?!\.)[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+"$'
+          - metavariable-regex:
+              metavariable: $X
+              regex: '.*\.host'
+
+      # Pattern 2: Inside URL extension
+      - patterns:
+          - pattern-either:
+              - pattern: host?.hasSuffix($SUFFIX)
+              - pattern: host.hasSuffix($SUFFIX)
+              - pattern: self.host?.hasSuffix($SUFFIX)
+              - pattern: self.host.hasSuffix($SUFFIX)
+              - pattern: host?.hasSuffix($SUFFIX) ?? $D
+          - metavariable-regex:
+              metavariable: $SUFFIX
+              regex: '^"(?!\.)[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+"$'
+          - pattern-inside: |
+              extension URL { ... }
+
+      # Pattern 3: Variables bound from URL.host
+      - patterns:
+          - pattern: $VAR.hasSuffix($SUFFIX)
+          - metavariable-regex:
+              metavariable: $SUFFIX
+              regex: '^"(?!\.)[a-zA-Z0-9\-]+(\.[a-zA-Z0-9\-]+)+"$'
+          - pattern-either:
+              - pattern-inside: |
+                  if let $VAR = $_.host { ... }
+              - pattern-inside: |
+                  guard let $VAR = $_.host else { ... }
+                  ...
+              - pattern-inside: |
+                  guard ..., let $VAR = $_.host, ... else { ... }
+                  ...
+              - pattern-inside: |
+                  let $VAR = $_.host
+                  ...
+              - pattern-inside: |
+                  var $VAR = $_.host
+                  ...

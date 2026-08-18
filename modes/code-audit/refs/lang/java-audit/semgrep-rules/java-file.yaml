@@ -1,0 +1,156 @@
+rules:
+  # ============================================
+  # P1 - 文件操作漏洞
+  # ============================================
+  
+  - id: java-path-traversal-fileinputstream
+    patterns:
+      - pattern: new FileInputStream($PATH)
+      - pattern-not: new FileInputStream("...")
+    message: "检测到使用变量作为文件读取路径，存在路径遍历风险。攻击者可使用 ../../../ 绕过目录限制。请验证路径是否来自用户输入。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+      owasp: "A01:2021 Broken Access Control"
+
+  - id: java-path-traversal-filereader
+    patterns:
+      - pattern: new FileReader($PATH)
+      - pattern-not: new FileReader("...")
+    message: "检测到使用变量作为文件读取路径，存在路径遍历风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-path-traversal-fileoutputstream
+    patterns:
+      - pattern: new FileOutputStream($PATH)
+      - pattern-not: new FileOutputStream("...")
+    message: "检测到使用变量作为文件写入路径，存在任意文件写入风险。攻击者可能写入 WebShell。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-path-traversal-filewriter
+    patterns:
+      - pattern: new FileWriter($PATH)
+      - pattern-not: new FileWriter("...")
+    message: "检测到使用变量作为文件写入路径，存在任意文件写入风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-file-upload-filename
+    patterns:
+      - pattern: $FILE.getOriginalFilename()
+    message: "检测到获取上传文件原始文件名。请验证文件名是否包含路径遍历字符（../）或危险扩展名。QP编码绕过：=?UTF-8?Q?=E6=B5=8B=E8=AF=95=2Ejsp?="
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-file-upload-transferTo
+    patterns:
+      - pattern: $FILE.transferTo($DEST)
+    message: "检测到 MultipartFile.transferTo 调用。请确保目标路径不可被用户控制，避免路径遍历。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-434"
+
+  - id: java-arbitrary-file-read-nio
+    patterns:
+      - pattern: Files.readAllBytes($PATH)
+      - pattern-not: Files.readAllBytes(Paths.get("..."))
+    message: "检测到使用变量读取文件，存在任意文件读取风险。NIO底层会调用 sun.nio.ch.FileDispatcher。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-arbitrary-file-read-lines
+    patterns:
+      - pattern: Files.readAllLines($PATH)
+      - pattern-not: Files.readAllLines(Paths.get("..."))
+    message: "检测到使用变量读取文件，存在任意文件读取风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-arbitrary-file-write-nio
+    patterns:
+      - pattern: Files.write($PATH, $BYTES)
+      - pattern-not: Files.write(Paths.get("..."), $BYTES)
+    message: "检测到使用变量写入文件，存在任意文件写入风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-arbitrary-file-delete
+    patterns:
+      - pattern: Files.delete($PATH)
+      - pattern-not: Files.delete(Paths.get("..."))
+    message: "检测到使用变量删除文件，存在任意文件删除风险。反射绕过：java.io.DefaultFileSystem.getFileSystem().delete()"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-file-rename
+    patterns:
+      - pattern: $FILE.renameTo($DEST)
+    message: "检测到文件重命名操作。攻击者可能将上传的图片重命名为 JSP WebShell。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-file-copy-insecure
+    patterns:
+      - pattern: Files.copy($SRC, $DEST)
+      - pattern-not: Files.copy(Paths.get("..."), Paths.get("..."))
+    message: "检测到文件复制操作。攻击者可能复制上传的图片到可执行目录并改名为 JSP。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-file-list-directory
+    patterns:
+      - pattern: $FILE.list()
+      - pattern: $FILE.listFiles()
+    message: "检测到目录遍历操作。请验证目录路径是否来自用户输入，攻击者可遍历敏感目录。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-538"
+
+  - id: java-randomaccessfile
+    patterns:
+      - pattern: new RandomAccessFile($PATH, $MODE)
+      - pattern-not: new RandomAccessFile("...", "...")
+    message: "检测到 RandomAccessFile 使用变量路径，存在任意文件读写风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"

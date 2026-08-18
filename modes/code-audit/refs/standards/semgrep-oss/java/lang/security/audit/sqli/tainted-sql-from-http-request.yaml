@@ -1,0 +1,77 @@
+rules:
+- id: tainted-sql-from-http-request
+  message: >-
+    Detected input from a HTTPServletRequest going into a SQL sink or statement. This
+    could lead to SQL
+    injection if variables in the SQL statement are not properly sanitized.
+    Use parameterized SQL queries or properly sanitize user input instead.
+  severity: WARNING
+  metadata:
+    likelihood: HIGH
+    impact: MEDIUM
+    confidence: HIGH
+    category: security
+    cwe:
+    - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+    cwe2021-top25: true
+    cwe2022-top25: true
+    owasp:
+    - A01:2017 - Injection
+    - A03:2021 - Injection
+    references:
+    - https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
+    - https://owasp.org/www-community/attacks/SQL_Injection
+    subcategory:
+    - vuln
+    technology:
+    - sql
+    - java
+    - servlets
+    - spring
+  languages: [java]
+  mode: taint
+  options:
+    taint_assume_safe_numbers: true
+    taint_assume_safe_booleans: true
+  pattern-sources:
+  - patterns:
+    - pattern-either:
+      - pattern: |
+          (HttpServletRequest $REQ).$REQFUNC(...)
+      - pattern: |
+          (ServletRequest $REQ).$REQFUNC(...) 
+    - metavariable-regex:
+        metavariable: $REQFUNC
+        regex: (getInputStream|getParameter|getParameterMap|getParameterValues|getReader|getCookies|getHeader|getHeaderNames|getHeaders|getPart|getParts|getQueryString)
+  pattern-sinks:
+  - patterns:
+    - pattern-either:
+      - pattern: |
+          (java.sql.CallableStatement $STMT) = ...; 
+      - pattern: |
+          (java.sql.Statement $STMT) = ...;
+          ...
+          $OUTPUT = $STMT.$FUNC(...);
+      - pattern: |
+          (java.sql.PreparedStatement $STMT) = ...;
+      - pattern: |
+          $VAR = $CONN.prepareStatement(...)
+      - pattern: |
+          $PATH.queryForObject(...);
+      - pattern: |
+          (java.util.Map<String, Object> $STMT) = $PATH.queryForMap(...);
+      - pattern: |
+          (org.springframework.jdbc.support.rowset.SqlRowSet $STMT) = ...;
+      - pattern: |
+          (org.springframework.jdbc.core.JdbcTemplate $TEMPL).batchUpdate(...)
+      - patterns:
+        - pattern-inside: |
+            (String $SQL) = "$SQLSTR" + ...;
+            ...
+        - pattern: $PATH.$SQLCMD(..., $SQL, ...);
+        - metavariable-regex:
+            metavariable: $SQLSTR
+            regex: (?i)(^SELECT.* | ^INSERT.* | ^UPDATE.*)
+        - metavariable-regex:
+            metavariable: $SQLCMD
+            regex: (execute|query|executeUpdate|batchUpdate)

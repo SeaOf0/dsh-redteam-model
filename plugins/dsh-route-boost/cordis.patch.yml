@@ -1,0 +1,11 @@
+# One installable bundle row: the per-turn route booster for the five security
+# presets. Host plane — the context contribution registers in the global
+# systemPrompt layer and resolves the live preset per agent at assembly time,
+# so every mode (and only the modes it knows) gets envelopes. Non-security
+# presets resolve no route table and render nothing.
+- insert:
+    - id: dsh-route-boost
+      name: '@dsh-external/dsh-route-boost'
+      config:
+        maxChars: 1600
+        includeRefs: true

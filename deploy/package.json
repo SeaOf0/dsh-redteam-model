@@ -1,0 +1,12 @@
+{
+	"name": "dsh-five-modes-deploy",
+	"version": "1.0.4",
+	"private": true,
+	"description": "Cross-platform one-click deploy for the five DSH security-mode presets + project plugins (node-only, no bash/python needed). Run via: npx ./deploy  |  node deploy.mjs [--check|--start|--bundle]",
+	"type": "module",
+	"bin": {
+		"dsh-five-modes-deploy": "./deploy.mjs"
+	},
+	"license": "MIT",
+	"author": "SeaOf0"
+}

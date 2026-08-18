@@ -1,0 +1,9 @@
+# One installable bundle row: the refusal-repair proximity injector for the
+# five security presets. Host plane — the context contribution registers in
+# the global systemPrompt layer and gates on the session's composed preset at
+# assembly time, so only the five security modes ever see the reminder.
+- insert:
+    - id: dsh-refusal-guard
+      name: '@dsh-external/dsh-refusal-guard'
+      config:
+        maxChars: 700

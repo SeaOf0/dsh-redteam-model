@@ -1,0 +1,366 @@
+rules:
+  # ============================================
+  # 前端配置安全规则
+  # ============================================
+  
+  # ============================================
+  # P0 - CORS 配置错误
+  # ============================================
+  
+  - id: frontend-cors-wildcard
+    patterns:
+      - pattern-regex: 'Access-Control-Allow-Origin\s*:\s*["\'']?\*["\'']?'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.json"
+        - "*.yaml"
+        - "*.yml"
+        - "nginx.conf"
+        - "*.conf"
+    message: "检测到 CORS 配置允许所有来源 (*)。可能导致跨站攻击。建议限制允许的来源域名。"
+    severity: ERROR
+    languages: [javascript, typescript, yaml, json]
+    metadata:
+      category: security
+      cwe: "CWE-942"
+      owasp: "A01:2021 - Broken Access Control"
+  
+  - id: frontend-cors-credentials-wildcard
+    patterns:
+      - pattern-regex: 'Access-Control-Allow-Origin\s*:\s*["\'']?\*["\'']?.*Access-Control-Allow-Credentials\s*:\s*true'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.json"
+        - "*.yaml"
+        - "*.yml"
+    message: "检测到 CORS 配置同时允许所有来源和携带凭证。高危配置！可能导致跨站请求伪造攻击。建议限制允许的来源域名。"
+    severity: ERROR
+    languages: [javascript, typescript, yaml, json]
+    metadata:
+      category: security
+      cwe: "CWE-942"
+  
+  # ============================================
+  # P1 - CSP 配置缺失或弱化
+  # ============================================
+  
+  - id: frontend-csp-missing
+    patterns:
+      - pattern-regex: '<meta[^>]*http-equiv\s*=\s*["\'']?Content-Security-Policy'
+    paths:
+      include:
+        - "*.html"
+    message: "检测到 CSP 配置。建议检查 CSP 规则是否足够严格，避免使用 'unsafe-inline' 或 'unsafe-eval'。"
+    severity: INFO
+    languages: [html]
+    metadata:
+      category: security
+      cwe: "CWE-1021"
+  
+  - id: frontend-csp-unsafe-inline
+    patterns:
+      - pattern-regex: 'Content-Security-Policy[^>]*unsafe-inline'
+    paths:
+      include:
+        - "*.html"
+        - "*.js"
+        - "*.json"
+        - "*.yaml"
+    message: "检测到 CSP 配置包含 unsafe-inline。可能导致 XSS 攻击绕过 CSP。建议移除 unsafe-inline，使用 nonce 或 hash 替代。"
+    severity: WARNING
+    languages: [html, javascript, yaml, json]
+    metadata:
+      category: security
+      cwe: "CWE-1021"
+  
+  - id: frontend-csp-unsafe-eval
+    patterns:
+      - pattern-regex: 'Content-Security-Policy[^>]*unsafe-eval'
+    paths:
+      include:
+        - "*.html"
+        - "*.js"
+        - "*.json"
+        - "*.yaml"
+    message: "检测到 CSP 配置包含 unsafe-eval。可能导致代码注入攻击绕过 CSP。建议移除 unsafe-eval。"
+    severity: WARNING
+    languages: [html, javascript, yaml, json]
+    metadata:
+      category: security
+      cwe: "CWE-1021"
+  
+  # ============================================
+  # P1 - 敏感信息硬编码
+  # ============================================
+  
+  - id: frontend-config-hardcoded-api-key
+    patterns:
+      - pattern-regex: '(?:api[_-]?key|apikey|API[_-]?KEY)\s*[=:]\s*["\''][a-zA-Z0-9_-]{16,}["\'']'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+        - "*.vue"
+        - "*.json"
+        - "*.env"
+        - ".env.*"
+    message: "检测到硬编码的 API Key。可能导致 API Key 泄露。建议使用环境变量或配置文件管理 API Key。"
+    severity: ERROR
+    languages: [javascript, typescript, json]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+  
+  - id: frontend-config-hardcoded-secret
+    patterns:
+      - pattern-regex: '(?:secret|SECRET|private[_-]?key|PRIVATE[_-]?KEY)\s*[=:]\s*["\''][a-zA-Z0-9_-]{16,}["\'']'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+        - "*.vue"
+        - "*.json"
+        - "*.env"
+    message: "检测到硬编码的 Secret 或 Private Key。可能导致敏感凭证泄露。建议使用环境变量管理敏感信息。"
+    severity: ERROR
+    languages: [javascript, typescript, json]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+  
+  - id: frontend-config-hardcoded-password
+    patterns:
+      - pattern-regex: '(?:password|PASSWORD|passwd|PASSWD)\s*[=:]\s*["\''][^"\'']{6,}["\'']'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+        - "*.vue"
+        - "*.json"
+        - "*.env"
+    message: "检测到硬编码的密码。可能导致密码泄露。建议使用环境变量或安全的密码管理方案。"
+    severity: ERROR
+    languages: [javascript, typescript, json]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+  
+  # ============================================
+  # P1 - 不安全的第三方依赖
+  # ============================================
+  
+  - id: frontend-dep-vulnerable-package
+    patterns:
+      - pattern-regex: '"lodash"\s*:\s*"[0-4]\.|"axios"\s*:\s*"0\.[0-1][0-9]\.|"react"\s*:\s*"0\.[0-1][0-9]\.'
+    paths:
+      include:
+        - "package.json"
+    message: "检测到已知存在漏洞的第三方依赖版本。建议升级到安全版本。"
+    severity: WARNING
+    languages: [json]
+    metadata:
+      category: security
+      cwe: "CWE-937"
+  
+  - id: frontend-dep-unsafe-dependency
+    patterns:
+      - pattern-regex: '"(?:eval|vm2|serialize-to-js|js-yaml@[0-3]\.)"'
+    paths:
+      include:
+        - "package.json"
+    message: "检测到不安全的依赖包。可能导致代码注入或反序列化漏洞。建议移除或替换为安全的替代方案。"
+    severity: ERROR
+    languages: [json]
+    metadata:
+      category: security
+      cwe: "CWE-937"
+  
+  # ============================================
+  # P2 - 不安全的开发配置
+  # ============================================
+  
+  - id: frontend-config-debug-enabled
+    patterns:
+      - pattern-regex: 'debug\s*:\s*true|DEBUG\s*=\s*true|NODE_ENV\s*=\s*["\'']?development["\'']?'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.json"
+        - "*.env"
+        - ".env.*"
+    message: "检测到调试模式开启。可能导致敏感信息泄露或错误详情暴露。建议在生产环境关闭调试模式。"
+    severity: WARNING
+    languages: [javascript, typescript, json]
+    metadata:
+      category: security
+      cwe: "CWE-209"
+  
+  - id: frontend-config-sourcemap-exposed
+    patterns:
+      - pattern-regex: 'sourcemap\s*:\s*true|sourceMap\s*:\s*true|\.map\s*=\s*true'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.json"
+        - "*.config.js"
+        - "*.config.ts"
+    message: "检测到 Source Map 配置开启。可能导致源码泄露。建议在生产环境关闭 Source Map。"
+    severity: WARNING
+    languages: [javascript, typescript, json]
+    metadata:
+      category: security
+      cwe: "CWE-538"
+  
+  # ============================================
+  # P2 - 不安全的 API 配置
+  # ============================================
+  
+  - id: frontend-api-no-auth
+    patterns:
+      - pattern-regex: 'fetch\s*\([^)]*(?:api|endpoint|backend)[^)]*\)\s*(?!.*headers.*Authorization)'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+        - "*.vue"
+    message: "检测到 API 请求未包含认证信息。可能导致未授权访问。建议添加 Authorization header 或使用安全的认证机制。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+  
+  - id: frontend-api-insecure-transport
+    patterns:
+      - pattern-regex: 'fetch\s*\(\s*["\'']http://|axios\s*\.\s*(?:get|post|put|delete)\s*\(\s*["\'']http://'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+        - "*.vue"
+    message: "检测到使用 HTTP 协议的 API 请求。可能导致数据在传输过程中被窃取。建议使用 HTTPS 协议。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-319"
+  
+  # ============================================
+  # P2 - 不安全的存储配置
+  # ============================================
+  
+  - id: frontend-storage-sensitive-localStorage
+    patterns:
+      - pattern-regex: 'localStorage\.setItem\s*\([^)]*(?:token|password|secret|key|credential|auth)'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+        - "*.vue"
+    message: "检测到 localStorage 存储敏感信息。localStorage 可能被 XSS 攻击读取。建议使用 sessionStorage 或加密存储敏感信息。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-922"
+  
+  - id: frontend-storage-sensitive-sessionStorage
+    patterns:
+      - pattern-regex: 'sessionStorage\.setItem\s*\([^)]*(?:password|secret|private[_-]?key)'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+        - "*.vue"
+    message: "检测到 sessionStorage 存储敏感信息。虽然比 localStorage 安全，但仍可能被 XSS 攻击读取。建议加密存储敏感信息。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-922"
+  
+  # ============================================
+  # P2 - 不安全的 Webpack/Vite 配置
+  # ============================================
+  
+  - id: frontend-webpack-devtool-source-map
+    patterns:
+      - pattern-regex: 'devtool\s*:\s*["\'']?(?:source-map|inline-source-map|eval-source-map)["\'']?'
+    paths:
+      include:
+        - "webpack.config.js"
+        - "webpack.config.ts"
+        - "vite.config.js"
+        - "vite.config.ts"
+    message: "检测到 Webpack/Vite 配置生成 Source Map。可能导致源码泄露。建议在生产环境使用 'hidden-source-map' 或关闭 Source Map。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-538"
+  
+  - id: frontend-webpack-expose-all
+    patterns:
+      - pattern-regex: 'expose\s*:\s*\{[^}]*\.\.\.|expose\s*:\s*true'
+    paths:
+      include:
+        - "webpack.config.js"
+        - "webpack.config.ts"
+    message: "检测到 Webpack 配置暴露所有模块。可能导致内部模块泄露。建议限制暴露的模块范围。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-200"
+  
+  # ============================================
+  # P2 - 不安全的 Nginx 配置
+  # ============================================
+  
+  - id: frontend-nginx-server-tokens
+    patterns:
+      - pattern-regex: 'server_tokens\s*on'
+    paths:
+      include:
+        - "nginx.conf"
+        - "*.conf"
+    message: "检测到 Nginx 配置显示服务器版本信息。可能导致服务器信息泄露。建议设置 server_tokens off。"
+    severity: INFO
+    languages: [generic]
+    metadata:
+      category: security
+      cwe: "CWE-200"
+  
+  - id: frontend-nginx-ssl-weak
+    patterns:
+      - pattern-regex: 'ssl_protocols\s*(?!TLSv1\.2|TLSv1\.3)'
+    paths:
+      include:
+        - "nginx.conf"
+        - "*.conf"
+    message: "检测到 Nginx 配置使用弱 SSL 协议。可能导致中间人攻击。建议只使用 TLSv1.2 或 TLSv1.3。"
+    severity: WARNING
+    languages: [generic]
+    metadata:
+      category: security
+      cwe: "CWE-327"

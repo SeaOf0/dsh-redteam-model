@@ -1,0 +1,32 @@
+rules:
+- id: insecure-module-used
+  message: >-
+    The package `net/http/cgi` is on the import blocklist. 
+    The package is vulnerable to httpoxy attacks (CVE-2015-5386).
+    It is recommended to use `net/http` or a web framework to build a web application instead.
+  metadata:
+    owasp:
+    - A03:2017 - Sensitive Data Exposure
+    - A02:2021 - Cryptographic Failures
+    cwe:
+    - 'CWE-327: Use of a Broken or Risky Cryptographic Algorithm'
+    source-rule-url: https://github.com/securego/gosec
+    references:
+    - https://godoc.org/golang.org/x/crypto/sha3
+    category: security
+    technology:
+    - go
+    confidence: MEDIUM
+    subcategory:
+    - audit
+    likelihood: MEDIUM
+    impact: MEDIUM
+  languages: [go]
+  severity: WARNING
+  pattern-either:
+  - patterns:
+    - pattern-inside: |
+        import "net/http/cgi"
+        ...
+    - pattern: |
+        cgi.$FUNC(...)

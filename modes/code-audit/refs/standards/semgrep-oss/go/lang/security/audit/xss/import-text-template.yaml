@@ -1,0 +1,42 @@
+rules:
+- id: import-text-template
+  message: >-
+    When working with web applications that involve rendering user-generated 
+    content, it's important to properly escape any HTML content to prevent 
+    Cross-Site Scripting (XSS) attacks. In Go, the `text/template` package does 
+    not automatically escape HTML content, which can leave your application 
+    vulnerable to these types of attacks. To mitigate this risk, it's 
+    recommended to use the `html/template` package instead, which provides 
+    built-in functionality for HTML escaping. By using `html/template` to render 
+    your HTML content, you can help to ensure that your web application is more 
+    secure and less susceptible to XSS vulnerabilities.
+  metadata:
+    owasp:
+    - A07:2017 - Cross-Site Scripting (XSS)
+    - A03:2021 - Injection
+    cwe:
+    - "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+    references:
+    - https://www.veracode.com/blog/secure-development/use-golang-these-mistakes-could-compromise-your-apps-security
+    category: security
+    technology:
+    - go
+    confidence: LOW
+    cwe2022-top25: true
+    cwe2021-top25: true
+    subcategory:
+    - audit
+    likelihood: LOW
+    impact: LOW
+  severity: WARNING
+  patterns:
+    - pattern: |
+        import "$IMPORT"
+    - metavariable-regex:
+        metavariable: $IMPORT
+        regex: ^(text/template)$
+    - focus-metavariable: $IMPORT
+  fix: |
+    html/template
+  languages:
+  - go

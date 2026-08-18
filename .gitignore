@@ -1,0 +1,5 @@
+node_modules/
+*.tar.gz
+.DS_Store
+.zcode/
+*.log

@@ -1,0 +1,42 @@
+{
+	"name": "@dsh-external/dsh-redteam-results",
+	"version": "1.0.1",
+	"description": "Session-scoped redteam findings registry for the six security presets: model-side register/update/delete tools, a loopback RPC surface, and a per-session conversation tab (redteam 成果) with per-mode pages — pentest page ships first with severity stats, type distribution, lifecycle status, pagination, verify-to-session and MD exports.",
+	"keywords": [
+		"deepseek",
+		"deepseek-harness",
+		"dsh-plugin",
+		"dsh-bundle",
+		"findings-tracker",
+		"session-scoped"
+	],
+	"type": "module",
+	"main": "./lib/index.js",
+	"exports": {
+		".": "./lib/index.js",
+		"./client": "./lib/client.js",
+		"./package.json": "./package.json"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/dsh-tools": "*"
+	},
+	"license": "MIT",
+	"author": "SeaOf0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+	},
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		},
+		"client": {
+			"platform": "web",
+			"inject": [
+				"@deepseek-ai/dsh-client-connection",
+				"@deepseek-ai/dsh-client-runtime",
+				"@deepseek-ai/dsh-client-ui-settings"
+			]
+		}
+	}
+}

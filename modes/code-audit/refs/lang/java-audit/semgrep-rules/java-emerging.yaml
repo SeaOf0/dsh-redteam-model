@@ -1,0 +1,522 @@
+rules:
+  # ============================================
+  # LLM/AI 安全规则 (P0 - Critical)
+  # ============================================
+  
+  - id: java-llm-apikey-hardcoded
+    patterns:
+      - pattern-regex: 'openai\.api[_-]?key|anthropic\.api[_-]?key|apiKey\s*=\s*"sk-[^"]+"|api_key\s*=\s*"sk-[^"]+"'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 LLM API Key 硬编码。API Key 泄露可能导致未授权调用、费用损失。建议使用环境变量：OPENAI_API_KEY=VAR_OPENAI_API_KEY"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+      references:
+        - https://owasp.org/www-project-top-ten/2017/A2_2017-Broken_Authentication
+
+  - id: java-llm-prompt-injection
+    patterns:
+      - pattern-regex: 'prompt\s*[+:]=.*request\.|systemPrompt.*userInput|prompt\s*\+.*\+|buildPrompt.*\(.*request'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到用户输入直接拼接至 Prompt，存在 Prompt 注入风险。攻击者可构造恶意输入绕过安全限制、泄露系统信息。建议使用参数化 Prompt 或输入验证。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-94"
+      references:
+        - https://owasp.org/www-project-top-10-for-large-language-model-applications/
+
+  - id: java-llm-langchain-agent-unrestricted
+    patterns:
+      - pattern-regex: 'AgentExecutor|initializeAgent|ZeroShotAgent|ReActAgent'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 LangChain Agent 配置。Agent 可能执行任意操作，建议限制工具权限、添加审批机制。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"
+
+  - id: java-llm-output-unsafe
+    patterns:
+      - pattern-regex: 'response\.content\(\)|getChoices\(\)|\.getText\(\)|llm\.generate|chat\.call'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 LLM 输出直接使用。LLM 输出可能包含恶意内容，建议验证和过滤后再使用。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-20"
+
+  # ============================================
+  # GraphQL 安全规则 (P1 - High)
+  # ============================================
+  
+  - id: java-graphql-introspection-enabled
+    patterns:
+      - pattern-regex: 'graphql\.servlet\.introspection-enabled\s*[=:]\s*true|introspectionEnabled\s*=\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+        - "*.java"
+        - "*.kt"
+    message: "检测到 GraphQL Introspection 开启。生产环境应禁用，可能泄露完整的 Schema 信息、字段名、类型定义。建议设置 introspection-enabled=false。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: java-graphql-depth-limit-missing
+    patterns:
+      - pattern-regex: 'GraphQL\s*\(|GraphQLSchema|@GraphQLApi|RuntimeWiring'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 GraphQL 配置但无深度限制。攻击者可构造深度嵌套查询导致 DoS。建议配置 maxQueryDepth（如 7 层）。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-400"
+
+  - id: java-graphql-batch-limit-missing
+    patterns:
+      - pattern-regex: 'DataLoader|BatchLoader|MappedBatchLoader'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 GraphQL DataLoader 使用。建议配置 batch size limit 防止批量查询 DoS。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-400"
+
+  - id: java-graphql-field-suggestion-enabled
+    patterns:
+      - pattern-regex: 'field-suggestion|suggestions\s*=\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 GraphQL 字段建议开启。错误提示可能泄露字段名信息。建议关闭。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-200"
+
+  # ============================================
+  # Kotlin 特有安全规则 (P1 - High)
+  # ============================================
+  
+  - id: kotlin-null-safety-bypass
+    patterns:
+      - pattern-regex: '!!\s*$|!!\s*[),; ]'
+    paths:
+      include:
+        - "*.kt"
+    message: "检测到 Kotlin !! 操作符。强制非空断言可能导致 NullPointerException 崩溃，建议使用 ?. 或 ?: 处理空值。"
+    severity: WARNING
+    languages: [kotlin]
+    metadata:
+      category: security
+      cwe: "CWE-476"
+
+  - id: kotlin-coroutine-unsafe-globalscope
+    patterns:
+      - pattern-regex: 'GlobalScope\.launch|GlobalScope\.async'
+    paths:
+      include:
+        - "*.kt"
+    message: "检测到 GlobalScope 使用。GlobalScope 创建的协程生命周期不受控制，可能导致资源泄露。建议使用 structured concurrency（viewModelScope, lifecycleScope）。"
+    severity: WARNING
+    languages: [kotlin]
+    metadata:
+      category: security
+      cwe: "CWE-404"
+
+  - id: kotlin-coroutine-runblocking
+    patterns:
+      - pattern-regex: 'runBlocking\s*\{'
+    paths:
+      include:
+        - "*.kt"
+    message: "检测到 runBlocking 使用。在协程环境中使用 runBlocking 可能导致线程阻塞，影响性能和可用性。"
+    severity: INFO
+    languages: [kotlin]
+    metadata:
+      category: security
+      cwe: "CWE-400"
+
+  - id: kotlin-insecure-random
+    patterns:
+      - pattern-regex: 'java\.util\.Random|Math\.random\(\)|Random\(\)'
+    paths:
+      include:
+        - "*.kt"
+    message: "检测到非安全随机数。Kotlin 默认 Random 不是密码学安全的，安全场景请使用 java.security.SecureRandom。"
+    severity: WARNING
+    languages: [kotlin]
+    metadata:
+      category: security
+      cwe: "CWE-338"
+
+  - id: kotlin-unsafe-cast
+    patterns:
+      - pattern-regex: 'as\s+[A-Z][a-zA-Z0-9_]*\s*$|as\?\s+[A-Z]'
+    paths:
+      include:
+        - "*.kt"
+    message: "检测到 Kotlin 强制类型转换。as 操作符转换失败会抛出 ClassCastException，建议使用 as? 安全转换。"
+    severity: INFO
+    languages: [kotlin]
+    metadata:
+      category: security
+      cwe: "CWE-588"
+
+  # ============================================
+  # Java 21+ 新特性安全规则 (P2 - Medium)
+  # ============================================
+  
+  - id: java21-virtual-thread-pinned
+    patterns:
+      - pattern-regex: 'Thread\.startVirtualThread|Executors\.newVirtualThreadPerTaskExecutor|virtualThreadPerTaskExecutor'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Virtual Thread 使用。Virtual Thread 在 synchronized 块中会被 pinned 到载体线程，影响性能。建议使用 ReentrantLock 替代 synchronized。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-400"
+      references:
+        - https://openjdk.org/jeps/444
+
+  - id: java21-foreign-function-unsafe
+    patterns:
+      - pattern-regex: 'Linker\.nativeLinker|SymbolLookup\.libraryLookup|MemorySegment|SegmentAllocator'
+    paths:
+      include:
+        - "*.java"
+    message: "检测到 Foreign Function & Memory API 使用。直接操作本地内存存在安全风险，建议仔细验证内存边界和生命周期。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-787"
+
+  - id: java21-pattern-matching-exhaustive
+    patterns:
+      - pattern-regex: 'switch.*\{|when\s*\('
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 switch 表达式使用。请确保 switch 表达式覆盖所有可能的 case，避免运行时 MatchException。"
+    severity: INFO
+    languages: [java, kotlin]
+    metadata:
+      category: security
+      cwe: "CWE-478"
+
+  # ============================================
+  # Jakarta EE (Spring Boot 3.x) 安全规则 (P1)
+  # ============================================
+  
+  - id: jakarta-servlet-filter-config
+    patterns:
+      - pattern-regex: 'jakarta\.servlet\.Filter|jakarta\.servlet\.http\.HttpServlet'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Jakarta Servlet 使用。确保 Filter 配置正确，避免认证绕过。注意 Spring Boot 3.x 使用 jakarta.* 命名空间。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-287"
+
+  - id: jakarta-persistence-sqli
+    patterns:
+      - pattern-regex: 'jakarta\.persistence\.Query|jakarta\.persistence\.EntityManager.*createNativeQuery'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Jakarta Persistence 使用。检查 createNativeQuery 是否存在 SQL 拼接，避免 SQL 注入。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-89"
+
+  - id: jakarta-validation-missing
+    patterns:
+      - pattern-regex: 'jakarta\.validation\.|@Valid|@NotNull|@NotBlank'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Jakarta Validation 使用。建议对所有外部输入参数添加验证注解。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-20"
+
+  # ============================================
+  # Spring Boot 3.x 特有安全规则 (P1)
+  # ============================================
+  
+  - id: springboot3-native-image-reflection
+    patterns:
+      - pattern-regex: '@RegisterReflection|RuntimeReflection|reflective-config'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.json"
+    message: "检测到 Native Image 反射配置。Native Image 有不同的安全特性，需检查反射配置是否暴露敏感类。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: springboot3-aot-processed
+    patterns:
+      - pattern-regex: 'spring\.aot\.enabled\s*[=:]\s*true|AOT.*processing'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "检测到 AOT 编译配置。AOT 编译后某些动态特性可能失效，需检查安全配置是否正确应用。"
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  # ============================================
+  # 并发安全规则 (P2 - Medium)
+  # ============================================
+  
+  - id: java-concurrent-threadpool-unbounded
+    patterns:
+      - pattern-regex: 'Executors\.newCachedThreadPool|newFixedThreadPool\s*\(\s*0\s*\)|Executors\.newScheduledThreadPool\s*\(\s*0\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到无界线程池。CachedThreadPool 可能创建无限线程导致 OOM，建议使用有界线程池和拒绝策略。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-400"
+
+  - id: java-concurrent-race-condition
+    patterns:
+      - pattern-regex: 'check.* .*update|get.* .*set|if.* .*=.*[+-]?=|double-checked.*locking'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到可能的竞态条件模式（check-then-act）。多线程环境下可能导致数据不一致，建议使用原子操作或锁。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-367"
+
+  - id: java-concurrent-threadlocal-leak
+    patterns:
+      - pattern-regex: 'ThreadLocal[^)]*\)|new ThreadLocal'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 ThreadLocal 使用。ThreadLocal 在线程池环境下可能导致内存泄露，确保 remove() 被正确调用。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-404"
+
+  # ============================================
+  # 幂等性与业务安全规则 (P2 - Medium)
+  # ============================================
+  
+  - id: java-idempotency-missing-payment
+    patterns:
+      - pattern-regex: '@PostMapping.*pay|def.*pay\s*\(|fun.*pay\s*\('
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到支付接口。支付接口应实现幂等性，使用唯一订单号或幂等键防止重复支付。"
+    severity: WARNING
+    languages: [java, kotlin]
+    metadata:
+      category: security
+      cwe: "CWE-668"
+
+  - id: java-idempotency-missing-order
+    patterns:
+      - pattern-regex: '@PostMapping.*order|createOrder|submitOrder'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到下单接口。订单创建应实现幂等性，防止重复下单。建议使用幂等键或去重表。"
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-668"
+
+  # ============================================
+  # Fastjson 2.x 版本判断 (P0 - Critical)
+  # ============================================
+  
+  - id: java-fastjson2-unsafe-config
+    patterns:
+      - pattern-regex: 'JSONReader\.Feature\.SupportAutoType|JSONWriter\.Feature\.WriteClassName'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 Fastjson 2.x AutoType 配置。存在反序列化 RCE 风险，建议使用 safeMode 或白名单。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  - id: java-fastjson2-version-check
+    patterns:
+      - pattern-regex: 'fastjson2?[^>]*<version>\s*2\.0\.[0-9]+\.'
+    paths:
+      include:
+        - "pom.xml"
+        - "*.gradle"
+    message: "检测到 Fastjson 2.x 版本。Fastjson 2.0.x 部分版本存在漏洞，建议升级到最新稳定版本。"
+    severity: WARNING
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+
+  # ============================================
+  # JWT 安全增强规则 (P1 - High)
+  # ============================================
+  
+  - id: java-jwt-weak-secret-enhanced
+    patterns:
+      - pattern-regex: 'jwt\.secret\s*[=:]\s*"[a-zA-Z0-9]{1,31}"|JWT_SECRET\s*=\s*"[^"]{1,31}"|secret.*=.*"(secret|password|123456|admin|key|test|jwt|token|qwerty|letmein|welcome)"'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+        - "*.java"
+        - "*.kt"
+    message: "检测到弱 JWT Secret（少于32字符或常见弱密钥）。JWT Secret 泄露可导致任意用户身份伪造。建议使用 256 位以上的强随机密钥。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-jwt-no-expiration
+    patterns:
+      - pattern-regex: 'Jwts\.builder\(\)[^;]*signWith[^;]*compact\(\)|JwtBuilder.*compact'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 JWT 创建但未发现过期时间设置。无过期的 Token 可被永久使用，建议设置 setExpiration()。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-613"
+
+  - id: java-jwt-alg-none
+    patterns:
+      - pattern-regex: 'setHeaderParam\s*\(\s*"alg"\s*,\s*"none"|algorithm.*none|SignatureAlgorithm\.NONE'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "检测到 JWT alg=none 配置。禁用签名验证可导致任意用户身份伪造，严禁使用。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-327"
+
+  # ============================================
+  # CORS 安全增强规则 (P1 - High)
+  # ============================================
+  
+  - id: java-cors-credentials-wildcard
+    patterns:
+      - pattern-regex: 'allowedOrigins\s*[=:]\s*"\*".*allowCredentials\s*[=:]\s*true|allowCredentials\s*[=:]\s*true.*allowedOrigins\s*[=:]\s*"\*"'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+    message: "检测到 CORS 配置允许任意域 + Credentials。这是严重的安全风险，可能导致 Cookie 被窃取。建议指定具体的域名。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-942"
+
+  - id: java-cors-exposed-headers-sensitive
+    patterns:
+      - pattern-regex: 'exposedHeaders\s*[=:]\s*"\*|exposedHeaders.*[Aa]uthorization|[Ee]xposedHeaders.*[Tt]oken'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+    message: "检测到 CORS 暴露敏感响应头。Authorization、Token 等敏感头不应暴露给前端。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-200"

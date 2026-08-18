@@ -1,0 +1,96 @@
+rules:
+- id: express-path-join-resolve-traversal
+  message: >-
+    Possible writing outside of the destination,
+    make sure that the target path is nested in the intended destination
+  metadata:
+    owasp:
+    - A05:2017 - Broken Access Control
+    - A01:2021 - Broken Access Control
+    cwe:
+    - "CWE-22: Improper Limitation of a Pathname to a Restricted Directory ('Path Traversal')"
+    category: security
+    references:
+    - https://owasp.org/www-community/attacks/Path_Traversal
+    technology:
+    - express
+    - node.js
+    cwe2022-top25: true
+    cwe2021-top25: true
+    subcategory:
+    - vuln
+    likelihood: HIGH
+    impact: MEDIUM
+    confidence: MEDIUM
+  languages:
+  - javascript
+  - typescript
+  severity: WARNING
+  mode: taint
+  pattern-sources:
+  - patterns:
+    - pattern-either:
+      - pattern-inside: function ... ($REQ, $RES) {...}
+      - pattern-inside: function ... ($REQ, $RES, $NEXT) {...}
+      - patterns:
+        - pattern-either:
+          - pattern-inside: $APP.$METHOD(..., function $FUNC($REQ, $RES) {...})
+          - pattern-inside: $APP.$METHOD(..., function $FUNC($REQ, $RES, $NEXT) {...})
+        - metavariable-regex:
+            metavariable: $METHOD
+            regex: ^(get|post|put|head|delete|options)$
+    - pattern-either:
+      - pattern: $REQ.query
+      - pattern: $REQ.body
+      - pattern: $REQ.params
+      - pattern: $REQ.cookies
+      - pattern: $REQ.headers
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          ({ $REQ }: Request,$RES: Response, $NEXT: NextFunction) =>
+          {...}
+      - pattern-inside: |
+          ({ $REQ }: Request,$RES: Response) => {...}
+    - focus-metavariable: $REQ
+    - pattern-either:
+      - pattern: params
+      - pattern: query
+      - pattern: cookies
+      - pattern: headers
+      - pattern: body
+  pattern-sinks:
+  - patterns:
+    - focus-metavariable: $SINK
+    - pattern-either:
+      - pattern-inside: |
+          $PATH = require('path');
+          ...
+      - pattern-inside: |
+          import $PATH from 'path';
+          ...
+    - pattern-either:
+      - pattern: $PATH.join(...,$SINK,...)
+      - pattern: $PATH.resolve(...,$SINK,...)
+  - patterns:
+    - focus-metavariable: $SINK
+    - pattern-inside: |
+        import 'path';
+        ...
+    - pattern-either:
+      - pattern: path.join(...,$SINK,...)
+      - pattern: path.resolve(...,$SINK,...)
+  pattern-sanitizers:
+  - pattern: $Y.replace(...)
+  - pattern: $Y.indexOf(...)
+  - pattern: |
+      function ... (...) {
+          ...
+          <... $Y.indexOf(...) ...>
+          ...
+      }
+  - patterns:
+    - pattern: $FUNC(...)
+    - metavariable-regex:
+        metavariable: $FUNC
+        regex: sanitize

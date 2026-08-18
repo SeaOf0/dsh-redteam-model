@@ -1,0 +1,33 @@
+{
+	"name": "@dsh-external/dsh-refusal-guard",
+	"version": "1.0.0",
+	"description": "DSH host-plane refusal-repair proximity injection for the five security presets: watches assistant turn text on session/event, detects refusal/moralizing patterns (two-tier: strong phrases full-text + weak keywords head-150, ), and when a hit lands re-injects a one-shot authorized-context reminder as a dynamic systemPrompt context contribution. RuntimeContextProjection dedupes: the reminder lands only when it appears (text change) and disappears after the repaired turn (change back to empty) — steady state costs nothing. Non-security presets resolve no preset id and render nothing.",
+	"keywords": [
+		"deepseek",
+		"deepseek-harness",
+		"dsh-plugin",
+		"dsh-bundle",
+		"refusal-repair",
+		"runtime-context"
+	],
+	"type": "module",
+	"main": "./lib/index.js",
+	"exports": {
+		".": "./lib/index.js",
+		"./package.json": "./package.json"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/dsh-system-prompt": "*"
+	},
+	"license": "MIT",
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		}
+	},
+	"author": "SeaOf0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+	}
+}

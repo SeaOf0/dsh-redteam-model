@@ -1,0 +1,24 @@
+{
+  "target": "samples/demo-crackme.apk",
+  "targetType": "apk",
+  "objective": "在不依赖外部服务的情况下恢复校验逻辑并给出 flag 生成脚本",
+  "requirements": {
+    "summary": "需要 solver、验证样例与关键校验路径说明",
+    "deliverables": [
+      "run/solver-template.py",
+      "report.md"
+    ]
+  },
+  "boundaries": "允许静态分析、动态 hook 和本地脚本求解，不触碰在线服务",
+  "packageName": "com.demo.crackme",
+  "deviceMode": "none",
+  "attachMode": "none",
+  "entryHints": [
+    "MainActivity",
+    "checkFlag"
+  ],
+  "completionCriteria": [
+    "恢复 flag 校验条件",
+    "产出可重复执行的求解脚本"
+  ]
+}

@@ -1,0 +1,2 @@
+name: CTF 解题模式
+description: CTF 竞赛解题台：题面登记与线索梳理、模块路由（web/pwn/reverse/crypto/misc/forensics/mobile/cloud/AI/AD/供应链）、解题循环（假设→验证→flag）、flag 台账与复盘报告；flag 真实性=平台回显或本地 check 验证，不猜不撞不伪造；题目与题面默认沙盒内解题。

@@ -1,0 +1,34 @@
+{
+	"name": "@dsh-external/dsh-route-boost",
+	"version": "1.0.0",
+	"description": "DSH host-plane route booster for the five security presets: infers the current (mode, phase) from the latest user message (sticky phase memory) and re-injects a compact governance envelope — gate checklist (from dsh-stage-gate GATES), review/double-sign reminder, boundary line, evidence-level pre-judgment, refs pointers or a forced-search nudge on miss — as a dynamic systemPrompt context contribution. A new snapshot lands only when the envelope text CHANGES (RuntimeContextProjection dedupes), so steady phases cost nothing.",
+	"keywords": [
+		"deepseek",
+		"deepseek-harness",
+		"dsh-plugin",
+		"dsh-bundle",
+		"route-boost",
+		"runtime-context"
+	],
+	"type": "module",
+	"main": "./lib/index.js",
+	"exports": {
+		".": "./lib/index.js",
+		"./package.json": "./package.json"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/dsh-system-prompt": "*",
+		"@deepseek-ai/dsh-agent-presets": "*"
+	},
+	"license": "MIT",
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		}
+	},
+	"author": "SeaOf0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+	}
+}

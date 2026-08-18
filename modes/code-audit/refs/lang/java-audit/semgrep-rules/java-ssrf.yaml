@@ -1,0 +1,93 @@
+rules:
+  # ============================================
+  # P1 - SSRF (Server-Side Request Forgery)
+  # ============================================
+  
+  - id: java-ssrf-url-constructor
+    patterns:
+      - pattern: new URL($VAR)
+      - pattern-not: new URL("...")
+    message: "检测到使用变量构造 URL 对象，存在 SSRF 风险。请验证 URL 是否来自白名单。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"
+      owasp: "A10:2021 Server-Side Request Forgery"
+      references:
+        - https://owasp.org/www-community/attacks/Server_Side_Request_Forgery
+
+  - id: java-ssrf-httpurlconnection
+    patterns:
+      - pattern: (new URL($VAR)).openConnection()
+      - pattern-not: (new URL("...")).openConnection()
+    message: "检测到使用变量创建 HttpURLConnection，存在 SSRF 风险。请验证 URL 来源。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"
+
+  - id: java-ssrf-resttemplate-get
+    patterns:
+      - pattern: $REST.getForObject($URL, $CLASS)
+      - pattern-not: $REST.getForObject("...", $CLASS)
+    message: "检测到 RestTemplate.getForObject 使用变量 URL，存在 SSRF 风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"
+
+  - id: java-ssrf-resttemplate-post
+    patterns:
+      - pattern: $REST.postForObject($URL, ...)
+      - pattern-not: $REST.postForObject("...", ...)
+    message: "检测到 RestTemplate.postForObject 使用变量 URL，存在 SSRF 风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"
+
+  - id: java-ssrf-resttemplate-exchange
+    patterns:
+      - pattern: $REST.exchange($URL, ...)
+      - pattern-not: $REST.exchange("...", ...)
+    message: "检测到 RestTemplate.exchange 使用变量 URL，存在 SSRF 风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"
+
+  - id: java-ssrf-webclient
+    patterns:
+      - pattern: $CLIENT.get().uri($VAR)
+      - pattern-not: $CLIENT.get().uri("...")
+    message: "检测到 WebClient 使用变量 URI，存在 SSRF 风险。"
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"
+
+  - id: java-ssrf-httpclient
+    patterns:
+      - pattern: HttpClient.newHttpClient().send($REQ, ...)
+    message: "检测到 HttpClient.send 调用。请验证 HttpRequest 中的 URL 是否来自可信来源。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"
+
+  - id: java-ssrf-okhttp
+    patterns:
+      - pattern: $CLIENT.newCall($REQ).execute()
+    message: "检测到 OkHttp 调用。请验证 Request 中的 URL 是否来自可信来源。"
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-918"

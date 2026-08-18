@@ -1,0 +1,68 @@
+rules:
+- id: res-render-injection
+  message: >-
+    User controllable data `$REQ` enters `$RES.render(...)` this can lead to the loading
+    of other HTML/templating pages that they may not be authorized to render. An attacker
+    may attempt to use directory traversal techniques e.g. `../folder/index` to access other
+    HTML pages on the file system. Where possible, do not allow users to define what should be 
+    loaded in $RES.render or use an allow list for the existing application.
+  options:
+    interfile: true
+  metadata:
+    interfile: true
+    owasp:
+    - A01:2021 - Broken Access Control
+    cwe:
+    - 'CWE-706: Use of Incorrectly-Resolved Name or Reference'
+    category: security
+    technology:
+    - express
+    references:
+    - http://expressjs.com/en/4x/api.html#res.render
+    subcategory:
+    - vuln
+    likelihood: MEDIUM
+    impact: MEDIUM
+    confidence: MEDIUM
+  languages:
+  - javascript
+  - typescript
+  severity: WARNING
+  mode: taint
+  pattern-sources:
+  - patterns:
+    - pattern-either:
+      - pattern-inside: function ... ($REQ, $RES) {...}
+      - pattern-inside: function ... ($REQ, $RES, $NEXT) {...}
+      - patterns:
+        - pattern-either:
+          - pattern-inside: $APP.$METHOD(..., function $FUNC($REQ, $RES) {...})
+          - pattern-inside: $APP.$METHOD(..., function $FUNC($REQ, $RES, $NEXT) {...})
+        - metavariable-regex:
+            metavariable: $METHOD
+            regex: ^(get|post|put|head|delete|options)$
+    - pattern-either:
+      - pattern: $REQ.query
+      - pattern: $REQ.body
+      - pattern: $REQ.params
+      - pattern: $REQ.cookies
+      - pattern: $REQ.headers
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          ({ $REQ }: Request,$RES: Response, $NEXT: NextFunction) =>
+          {...}
+      - pattern-inside: |
+          ({ $REQ }: Request,$RES: Response) => {...}
+    - focus-metavariable: $REQ
+    - pattern-either:
+      - pattern: params
+      - pattern: query
+      - pattern: cookies
+      - pattern: headers
+      - pattern: body
+  pattern-sinks:
+  - patterns:
+    - pattern-either:
+      - pattern: $RES.render($SINK, ...)
+    - focus-metavariable: $SINK

@@ -1,0 +1,604 @@
+rules:
+  # ============================================
+  # API 安全规则 (P1 - High)
+  # ============================================
+  
+  - id: java-api-delete-no-auth
+    patterns:
+      - pattern-regex: '@DeleteMapping'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected DELETE endpoint. Add permission control."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-284"
+
+  - id: java-api-put-no-auth
+    patterns:
+      - pattern-regex: '@PutMapping'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected PUT endpoint. Add permission control."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-284"
+
+  - id: java-api-batch-operation-no-limit
+    patterns:
+      - pattern-regex: '@RequestBody\s+List<|@RequestParam\s+.*\[\]'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected batch operation. Add size limit."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-770"
+
+  - id: java-api-no-idempotency-key
+    patterns:
+      - pattern-regex: '@PostMapping.*pay|@PostMapping.*order|@PostMapping.*create.*payment'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected payment/order endpoint. Implement idempotency."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-668"
+
+  - id: java-api-response-sensitive-data
+    patterns:
+      - pattern-regex: 'return\s+(password|pwd|secret|token|apiKey|creditCard|idCard|bankCard)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected sensitive data in response."
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-200"
+
+  - id: java-api-pagination-no-limit
+    patterns:
+      - pattern-regex: '@RequestParam.*pageSize|@RequestParam.*limit|PageRequest\.of\s*\('
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected pagination. Add max page size limit."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-770"
+
+  - id: java-api-version-in-url
+    patterns:
+      - pattern-regex: '@RequestMapping\s*\(\s*"/v[0-9]+/'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected API version in URL. Old versions may have vulnerabilities."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-1104"
+
+  - id: java-api-docs-exposed
+    patterns:
+      - pattern-regex: '/swagger-ui\.html|/api-docs|/swagger-resources'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+    message: "Detected API docs endpoint. Disable in production."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-489"
+
+  - id: java-validation-missing-string
+    patterns:
+      - pattern-regex: '@RequestParam\s+String\s+\w+\s*\)|@PathVariable\s+String\s+\w+\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected string param without validation."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-20"
+
+  - id: java-validation-missing-number
+    patterns:
+      - pattern-regex: '@RequestParam\s+(int|long|Integer|Long)\s+\w+\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected number param without range validation."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-20"
+
+  - id: java-validation-email-missing
+    patterns:
+      - pattern-regex: 'String\s+email|String\s+mail'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected email field. Add @Email validation."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-20"
+
+  - id: java-validation-phone-missing
+    patterns:
+      - pattern-regex: 'String\s+(phone|mobile|tel|telephone)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected phone field. Add @Pattern validation."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-20"
+
+  - id: java-validation-idcard-missing
+    patterns:
+      - pattern-regex: 'String\s+(idCard|idcard|idNo|identityCard)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected ID card field. Add format validation."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-20"
+
+  - id: java-validation-optional-bypass
+    patterns:
+      - pattern-regex: 'required\s*=\s*false.*@RequestParam'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected optional param. Still validate format."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-20"
+
+  - id: java-validation-jsonignore
+    patterns:
+      - pattern-regex: '@JsonIgnore|@JsonProperty\(access\s*=\s*JsonProperty\.Access\.WRITE_ONLY'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected @JsonIgnore. Ensure sensitive fields excluded."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-200"
+
+  - id: java-password-plaintext
+    patterns:
+      - pattern-regex: 'password\s*=\s*"[^"]+"|setPassword\s*\(\s*"[^"]+"'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected plaintext password. Use BCrypt."
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-256"
+
+  - id: java-password-compare-plaintext
+    patterns:
+      - pattern-regex: 'password\.equals\(|getPassword\(\)\.equals'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected plaintext password compare. Use BCrypt.checkpw()."
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-256"
+
+  - id: java-password-in-url
+    patterns:
+      - pattern-regex: 'password\s*=\s*[^&\s]+[&\s]|jdbc:.*password\s*='
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "Detected password in URL. May be logged."
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-598"
+
+  - id: java-sensitive-print
+    patterns:
+      - pattern-regex: 'System\.out\.print.*password|System\.out\.print.*token|System\.out\.print.*key'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected sensitive data in print."
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-532"
+
+  - id: java-sensitive-tostring
+    patterns:
+      - pattern-regex: 'toString\(\).*password|toString\(\).*token|toString\(\).*secret'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected sensitive data in toString()."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-532"
+
+  - id: java-idcard-plaintext-storage
+    patterns:
+      - pattern-regex: 'setIdCard\s*\(\s*[^E]|idCard\s*=\s*request\.'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected ID card may be stored in plaintext."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-311"
+
+  - id: java-bankcard-plaintext
+    patterns:
+      - pattern-regex: 'bankCard\s*=\s*[^E]|setBankCard\s*\(\s*[^E]'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected bank card may be stored in plaintext."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-311"
+
+  - id: java-session-attribute-sensitive
+    patterns:
+      - pattern-regex: 'session\.setAttribute\s*\(\s*"(password|pwd|secret|token|key)"'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected sensitive data in session."
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-315"
+
+  - id: java-session-id-logging
+    patterns:
+      - pattern-regex: 'log\..*sessionId|logger\..*sessionId|System\.out.*sessionId'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected session ID in log."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-532"
+
+  - id: java-session-cookie-httponly-false
+    patterns:
+      - pattern-regex: 'setHttpOnly\s*\(\s*false|httpOnly\s*[=:]\s*false'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+    message: "Detected HttpOnly=false. XSS risk."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-1004"
+
+  - id: java-session-cookie-secure-false
+    patterns:
+      - pattern-regex: 'setSecure\s*\(\s*false|secure\s*[=:]\s*false'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+    message: "Detected Secure=false. MITM risk."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-614"
+
+  - id: java-token-url-param
+    patterns:
+      - pattern-regex: '@RequestParam.*token|@PathVariable.*token|\?token=|&token='
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected token in URL param. Use header."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-598"
+
+  - id: java-token-hardcoded
+    patterns:
+      - pattern-regex: 'token\s*=\s*"[a-zA-Z0-9]{10,}"|setToken\s*\(\s*"[a-zA-Z0-9]{10,}"'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected hardcoded token."
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+
+  - id: java-token-compare-unsafe
+    patterns:
+      - pattern-regex: 'token\.equals\s*\(|getToken\(\)\.equals|\.equals\s*\(\s*token\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected token compare. Use constant-time compare."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-208"
+
+  - id: java-exception-stacktrace-expose
+    patterns:
+      - pattern-regex: 'e\.printStackTrace\s*\(\s*\)|printStackTrace\s*\(\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected printStackTrace(). May leak sensitive info."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-209"
+
+  - id: java-exception-message-return
+    patterns:
+      - pattern-regex: 'return\s+e\.getMessage\s*\(\s*\)|return\s+"[^"]*"\s*\+\s*e\.getMessage'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected exception message returned to client."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-209"
+
+  - id: java-exception-catch-empty
+    patterns:
+      - pattern-regex: 'catch\s*\([^)]+\)\s*\{\s*\}'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected empty catch block."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-392"
+
+  - id: java-exception-catch-exception
+    patterns:
+      - pattern-regex: 'catch\s*\(\s*Exception\s+\w+\s*\)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected catch(Exception). Catch specific exceptions."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-396"
+
+  - id: java-exception-return-success
+    patterns:
+      - pattern-regex: 'catch\s*\([^)]+\)\s*\{[^}]*return\s+(Result\.success|ResponseEntity\.ok)'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected return success in catch block."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-392"
+
+  - id: java-header-xss-protection-disabled
+    patterns:
+      - pattern-regex: 'X-XSS-Protection\s*[=:]\s*0|XSS-Protection.*disable'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+        - "*.yml"
+        - "*.yaml"
+    message: "Detected XSS Protection disabled."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+
+  - id: java-header-content-type-options-missing
+    patterns:
+      - pattern-regex: 'setHeader\s*\(\s*"Content-Type"|response\.setContentType'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected Content-Type set. Add X-Content-Type-Options: nosniff."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-436"
+
+  - id: java-header-hsts-missing
+    patterns:
+      - pattern-regex: 'server\.ssl\.enabled\s*[=:]\s*true'
+    paths:
+      include:
+        - "*.yml"
+        - "*.yaml"
+        - "*.properties"
+    message: "Detected SSL enabled. Add HSTS header."
+    severity: INFO
+    languages: [yaml]
+    metadata:
+      category: security
+      cwe: "CWE-319"
+
+  - id: java-redirect-open
+    patterns:
+      - pattern-regex: 'sendRedirect\s*\(\s*request\.|sendRedirect\s*\(\s*[^"]*\+'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected open redirect. Validate URL whitelist."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-601"
+
+  - id: java-redirect-url-param
+    patterns:
+      - pattern-regex: '@RequestParam.*redirect|@RequestParam.*url|redirect_uri|redirectUrl'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected redirect URL param. Validate whitelist."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-601"
+
+  - id: java-file-download-path-traversal
+    patterns:
+      - pattern-regex: 'getFile\s*\(\s*@RequestParam|downloadFile\s*\(\s*@RequestParam.*[Ff]ile|new\s+File\s*\(\s*request\.'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected file download with user input. Path traversal risk."
+    severity: ERROR
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-22"
+
+  - id: java-file-download-no-auth
+    patterns:
+      - pattern-regex: '@GetMapping.*download|downloadFile|exportFile|getFile'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected file download endpoint. Add auth check."
+    severity: WARNING
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-284"
+
+  - id: java-file-response-type-missing
+    patterns:
+      - pattern-regex: 'response\.setContentType.*octet-stream|MediaType\.APPLICATION_OCTET_STREAM'
+    paths:
+      include:
+        - "*.java"
+        - "*.kt"
+    message: "Detected file download. Set correct Content-Type."
+    severity: INFO
+    languages: [java]
+    metadata:
+      category: security
+      cwe: "CWE-434"

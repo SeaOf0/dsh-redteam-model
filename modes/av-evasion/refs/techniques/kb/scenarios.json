@@ -1,0 +1,322 @@
+{
+  "version": "1.0",
+  "last_updated": "2026-03-05T20:04:41.974595",
+  "scenarios": [
+    {
+      "id": "scenario_001",
+      "name": "Loader 001",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "function_pointer"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_002",
+      "name": "Loader 002",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "CreateThread"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_003",
+      "name": "Loader 003",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "callback_enumwindows"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_004",
+      "name": "Loader 004",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "callback_enumchildwindows"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_005",
+      "name": "Loader 005",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "APC"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_006",
+      "name": "Loader 006",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "Fiber"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_007",
+      "name": "Loader 007",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "callback_timer"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_008",
+      "name": "Loader 008",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "function_pointer"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_009",
+      "name": "Loader 009",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "CreateThread"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_010",
+      "name": "Loader 010",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "callback_enumwindows"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_011",
+      "name": "Loader 011",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "callback_enumchildwindows"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_012",
+      "name": "Loader 012",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "APC"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_013",
+      "name": "Loader 013",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "Fiber"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_014",
+      "name": "Loader 014",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "callback_timer"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_020",
+      "name": "Loader 020",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "callback_timer"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_022",
+      "name": "Loader 022",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "callback_enumchildwindows"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_023",
+      "name": "Loader 023",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "function_pointer"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_024",
+      "name": "Loader 024",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "callback_timer"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_025",
+      "name": "Loader 025",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "callback_enumwindows"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_026",
+      "name": "Loader 026",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "callback_enumwindows"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_027",
+      "name": "Loader 027",
+      "components": {
+        "storage": "embedded",
+        "allocator": "HeapCreate",
+        "copier": "memcpy",
+        "executor": "Fiber"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_028",
+      "name": "Loader 028",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "Fiber"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "scenario_029",
+      "name": "Loader 029",
+      "components": {
+        "storage": "embedded",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "APC"
+      },
+      "status": "validated",
+      "created_at": "2026-03-05T20:04:41.973592"
+    },
+    {
+      "id": "evasion_001",
+      "name": "Evasion Loader 001",
+      "base_loader": "loader_004",
+      "evasion_techniques": ["T004", "T012", "T014", "T029"],
+      "components": {
+        "storage": "embedded_encrypted_xor",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "callback_enumchildwindows"
+      },
+      "evasion_details": {
+        "T004_string_xor": "XOR encrypted shellcode with key 0x5A",
+        "T012_anti_debug": "IsDebuggerPresent, CheckRemoteDebuggerPresent, NtGlobalFlag",
+        "T014_etw_bypass": "EtwEventWrite patched with ret",
+        "T029_peb_walking": "API resolution via PEB and hash"
+      },
+      "status": "compiled",
+      "created_at": "2026-03-06T11:26:00.000000"
+    },
+    {
+      "id": "evasion_002",
+      "name": "Evasion Loader 002",
+      "base_loader": "loader_035",
+      "evasion_techniques": ["T003", "T011", "T021", "T027"],
+      "components": {
+        "storage": "embedded_encrypted_rc4",
+        "allocator": "VirtualAlloc",
+        "copier": "memcpy",
+        "executor": "callback_flsalloc"
+      },
+      "evasion_details": {
+        "T003_api_hashing": "API resolution by hash from kernel32 exports",
+        "T011_sandbox_detection": "CPU cores, RAM size, disk size checks",
+        "T021_blockdlls": "PROCESS_MITIGATION_BINARY_SIGNATURE_POLICY enabled",
+        "T027_rc4_encryption": "RC4 encrypted shellcode with key 'EvasionKey2024!'"
+      },
+      "status": "compiled",
+      "created_at": "2026-03-06T11:36:00.000000"
+    }
+  ]
+}

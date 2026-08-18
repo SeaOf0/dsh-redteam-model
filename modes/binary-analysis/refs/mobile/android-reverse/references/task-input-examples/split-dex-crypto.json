@@ -1,0 +1,42 @@
+{
+  "target": "samples/com.demo.feature.apks",
+  "targetType": "apks",
+  "objective": "识别动态特性模块中的 DexClassLoader 装载链，恢复支付签名协议并产出可重放夹具",
+  "requirements": {
+    "summary": "需要 split 结构说明、协议夹具和 hook 样本",
+    "deliverables": [
+      "run/split-delivery-notes.md",
+      "run/dex-loader-dump-notes.md",
+      "run/crypto-fixtures.json"
+    ],
+    "dynamicAllowed": true
+  },
+  "boundaries": {
+    "summary": "允许动态 dump 与 hook，不做重打包安装",
+    "activeTriggerAllowed": true
+  },
+  "packageName": "com.demo.feature",
+  "abi": "arm64-v8a",
+  "androidVersion": "Android 12",
+  "deviceMode": "emulator",
+  "attachMode": "spawn",
+  "frameworkHints": [
+    "Split APK"
+  ],
+  "protectionHints": [
+    "DexClassLoader",
+    "Frida"
+  ],
+  "processHints": [
+    "spawn"
+  ],
+  "entryHints": [
+    "PayActivity",
+    "buildPaymentSignature"
+  ],
+  "completionCriteria": [
+    "明确目标逻辑所在 split 和 Dex 装载时机",
+    "保存至少一组有效协议夹具",
+    "给出后续纯提取或移植的起点"
+  ]
+}

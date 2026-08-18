@@ -1,0 +1,51 @@
+rules:
+- id: tainted-html-response
+  message: >-
+    Detected user input flowing into an HTML response. You may be
+    accidentally bypassing secure methods
+    of rendering HTML by manually constructing HTML and this could create a cross-site
+    scripting vulnerability, which could let attackers steal sensitive user data.
+  metadata:
+    cwe:
+    - "CWE-79: Improper Neutralization of Input During Web Page Generation ('Cross-site Scripting')"
+    owasp:
+    - A07:2017 - Cross-Site Scripting (XSS)
+    - A03:2021 - Injection
+    category: security
+    technology:
+    - aws-lambda
+    cwe2022-top25: true
+    cwe2021-top25: true
+    subcategory:
+    - vuln
+    likelihood: MEDIUM
+    impact: MEDIUM
+    confidence: MEDIUM
+    references:
+    - https://owasp.org/Top10/A03_2021-Injection
+  languages:
+  - javascript
+  - typescript
+  severity: WARNING
+  mode: taint
+  pattern-sources:
+  - patterns:
+    - pattern-either:
+      - pattern-inside: |
+          exports.handler = function ($EVENT, ...) {
+            ...
+          }
+      - pattern-inside: |
+          function $FUNC ($EVENT, ...) {...}
+          ...
+          exports.handler = $FUNC
+      - pattern-inside: |
+          $FUNC = function ($EVENT, ...) {...}
+          ...
+          exports.handler = $FUNC
+    - pattern: $EVENT
+  pattern-sinks:
+  - patterns:
+    - focus-metavariable: $BODY
+    - pattern-inside: |
+        {..., headers: {..., 'Content-Type': 'text/html', ...}, body: $BODY, ... }

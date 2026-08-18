@@ -1,0 +1,381 @@
+rules:
+  # ============================================
+  # JavaScript/TypeScript 通用安全规则
+  # ============================================
+  
+  # ============================================
+  # P0 - XSS (跨站脚本攻击)
+  # ============================================
+  
+  - id: js-xss-innerHTML
+    patterns:
+      - pattern: element.innerHTML = ...
+      - pattern: $ELEMENT.innerHTML = $HTML
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+    message: "检测到 innerHTML 直接赋值。可能导致 XSS 攻击。建议使用 textContent 或 createElement 替代。"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+      owasp: "A03:2021 - Injection"
+  
+  - id: js-xss-document-write
+    patterns:
+      - pattern: document.write(...)
+      - pattern: document.writeln(...)
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 document.write()。直接写入 HTML 内容可能导致 XSS。建议使用 DOM 操作 API 替代。"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+      owasp: "A03:2021 - Injection"
+  
+  - id: js-xss-eval
+    patterns:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+      - pattern: setTimeout($CODE, ...)
+      - pattern: setInterval($CODE, ...)
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 eval() 或类似动态代码执行。可能导致代码注入攻击。建议避免使用 eval，使用 JSON.parse 或其他安全替代方案。"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-95"
+      owasp: "A03:2021 - Injection"
+  
+  # ============================================
+  # P1 - DOM XSS
+  # ============================================
+  
+  - id: js-dom-xss-location-hash
+    patterns:
+      - pattern: location.hash
+      - pattern: window.location.hash
+      - pattern: document.location.hash
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+    message: "检测到 location.hash 使用。直接使用 URL hash 值可能导致 DOM XSS。建议对 hash 值进行验证和编码。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+  
+  - id: js-dom-xss-location-search
+    patterns:
+      - pattern: location.search
+      - pattern: window.location.search
+      - pattern: document.location.search
+      - pattern: new URLSearchParams(location.search)
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+    message: "检测到 location.search 使用。URL 参数可能包含恶意内容，建议验证和编码后再使用。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+  
+  - id: js-dom-xss-document-referrer
+    patterns:
+      - pattern: document.referrer
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 document.referrer 使用。Referrer 可能包含敏感信息或被伪造，建议谨慎使用。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-200"
+  
+  # ============================================
+  # P1 - 原型污染
+  # ============================================
+  
+  - id: js-prototype-pollution-merge
+    patterns:
+      - pattern-regex: '\.merge\s*\(\s*\.\.\.|Object\.assign\s*\(\s*\.\.\.|lodash\.merge|_.merge'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到对象合并操作。可能导致原型污染攻击。建议检查合并对象的来源，避免合并用户输入。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-1321"
+  
+  - id: js-prototype-pollution-extend
+    patterns:
+      - pattern-regex: '\.extend\s*\(|jQuery\.extend|$.extend|_.extend'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 extend 操作。可能导致原型污染。建议使用 Object.assign 或检查 deep copy 参数。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-1321"
+  
+  - id: js-prototype-pollution-__proto__
+    patterns:
+      - pattern-regex: '__proto__|constructor\.prototype'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到直接操作 __proto__ 或 constructor.prototype。可能导致原型污染攻击。建议避免直接修改原型链。"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-1321"
+  
+  # ============================================
+  # P1 - 代码注入
+  # ============================================
+  
+  - id: js-code-injection-newFunction
+    patterns:
+      - pattern: new Function(...)
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 new Function()。动态创建函数可能导致代码注入。建议避免动态代码生成。"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-95"
+  
+  - id: js-code-injection-setTimeout-string
+    patterns:
+      - pattern: setTimeout($STRING, ...)
+      - pattern: setInterval($STRING, ...)
+      - pattern-regex: 'setTimeout\s*\(\s*["\''`]'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 setTimeout/setInterval 使用字符串参数。字符串会被 eval 执行，可能导致代码注入。建议使用函数引用替代。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-95"
+  
+  # ============================================
+  # P1 - 不安全的随机数
+  # ============================================
+  
+  - id: js-insecure-random-Math.random
+    patterns:
+      - pattern: Math.random()
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 Math.random() 使用。Math.random 不是加密安全的随机数生成器。对于安全敏感场景（如生成 token、密码），建议使用 crypto.getRandomValues 或 window.crypto.subtle。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-338"
+  
+  # ============================================
+  # P2 - 敏感信息泄露
+  # ============================================
+  
+  - id: js-info-leak-console-log
+    patterns:
+      - pattern-regex: 'console\.log\s*\([^)]*(?:password|token|secret|key|credential|auth)[^)]*\)'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 console.log 输出敏感信息。可能导致敏感信息泄露到日志或浏览器控制台。建议移除敏感信息的日志输出。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-532"
+  
+  - id: js-info-leak-localStorage-sensitive
+    patterns:
+      - pattern-regex: 'localStorage\.setItem\s*\([^)]*(?:password|token|secret|key|credential|auth)'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 localStorage 存储敏感信息。localStorage 可能被 XSS 攻击读取。建议使用 sessionStorage 或加密存储敏感信息。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-922"
+  
+  - id: js-info-leak-hardcoded-secret
+    patterns:
+      - pattern-regex: '(?:password|token|secret|api[_-]?key|private[_-]?key)\s*[=:]\s*["\''][^"\'']{8,}["\'']'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+    message: "检测到硬编码的敏感信息。可能导致源码泄露敏感凭证。建议使用环境变量或配置文件管理敏感信息。"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-798"
+  
+  # ============================================
+  # P2 - 不安全的正则表达式
+  # ============================================
+  
+  - id: js-regex-dos-backtracking
+    patterns:
+      - pattern-regex: '/\([^)]+\+\)\+\+|/\([^)]+\*\)\*\*|/\([^)]+\+\)\{|/\([^)]+\*\)\{'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到可能导致 ReDoS 的正则表达式。嵌套量词可能导致指数级回溯。建议优化正则表达式避免嵌套量词。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-1333"
+  
+  # ============================================
+  # P2 - 不安全的 JSON 处理
+  # ============================================
+  
+  - id: js-json-insecure-parse
+    patterns:
+      - pattern: JSON.parse($INPUT)
+      - pattern-regex: 'JSON\.parse\s*\(\s*(?:location|document|window|params|query|req)'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 JSON.parse 处理用户输入。可能导致 JSON 注入或原型污染。建议验证 JSON 输入来源和内容。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-502"
+  
+  # ============================================
+  # P2 - 不安全的 URL 处理
+  # ============================================
+  
+  - id: js-url-open-redirect
+    patterns:
+      - pattern-regex: 'window\.location\s*=\s*(?:location|document|params|query|req)|location\.href\s*=\s*(?:location|document|params|query|req)'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+        - "*.jsx"
+        - "*.tsx"
+    message: "检测到基于用户输入的 URL 跳转。可能导致开放重定向攻击。建议验证和限制跳转目标 URL。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-601"
+  
+  # ============================================
+  # P2 - 不安全的 Cookie 设置
+  # ============================================
+  
+  - id: js-cookie-insecure-httponly
+    patterns:
+      - pattern-regex: 'document\.cookie\s*=\s*[^;]+;?\s*(?!httponly)'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 Cookie 设置未包含 HttpOnly 标志。可能导致 XSS 攻击读取 Cookie。建议设置 HttpOnly 标志。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-1004"
+  
+  - id: js-cookie-insecure-secure
+    patterns:
+      - pattern-regex: 'document\.cookie\s*=\s*[^;]+;?\s*(?!secure)'
+    paths:
+      include:
+        - "*.js"
+        - "*.ts"
+    message: "检测到 Cookie 设置未包含 Secure 标志。可能导致 Cookie 在 HTTP 连接中被窃取。建议设置 Secure 标志。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-614"
+  
+  # ============================================
+  # P2 - 不安全的第三方库使用
+  # ============================================
+  
+  - id: js-lib-jquery-old-version
+    patterns:
+      - pattern-regex: 'jquery-[0-2]\.|jquery-3\.[0-5]\.'
+    paths:
+      include:
+        - "*.html"
+        - "*.js"
+    message: "检测到旧版本 jQuery (< 3.6.0)。旧版本存在已知 XSS 漏洞。建议升级到 jQuery 3.7.0+ 或最新版本。"
+    severity: WARNING
+    languages: [javascript]
+    metadata:
+      category: security
+      cwe: "CWE-937"
+  
+  - id: js-lib-lodash-old-version
+    patterns:
+      - pattern-regex: 'lodash@[0-4]\.'
+    paths:
+      include:
+        - "package.json"
+    message: "检测到旧版本 lodash (< 4.17.21)。存在原型污染漏洞。建议升级到 lodash 4.17.21+。"
+    severity: WARNING
+    languages: [json]
+    metadata:
+      category: security
+      cwe: "CWE-1321"

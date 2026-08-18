@@ -1,0 +1,64 @@
+{
+  "target": {
+    "value": "samples/com.demo.login.apks",
+    "type": "apks",
+    "packageName": "com.demo.login",
+    "parts": [
+      "base.apk",
+      "split_config.arm64_v8a.apk",
+      "config.zh.apk"
+    ]
+  },
+  "objective": "恢复登录签名主链，确定 Flutter 容器、JNI 桥接与 Cronet pinning 分层，并交付一次本地复现",
+  "requirements": {
+    "summary": "需要 task-local 闭环、一次 run-local、本地调用样例与 API 调用样例",
+    "deliverables": [
+      "report.md",
+      "run/framework-runtime-notes.md",
+      "run/network-stack-notes.md",
+      "run/verification.spec.json",
+      "run/verification-result.json"
+    ],
+    "localReproductionRequested": true,
+    "apiCallExampleRequired": true,
+    "dynamicAllowed": true
+  },
+  "boundaries": {
+    "summary": "允许 Frida、抓包和本地重放，不做静态 patch，不使用真实生产账号",
+    "activeTriggerAllowed": true,
+    "forbiddenActions": [
+      "上传真实会话票据",
+      "修改生产服务器配置"
+    ]
+  },
+  "abi": "arm64-v8a",
+  "androidVersion": "Android 14",
+  "deviceMode": "physical",
+  "attachMode": "spawn",
+  "protectionHints": [
+    "CertificatePinner",
+    "RootBeer",
+    "JNI"
+  ],
+  "frameworkHints": [
+    "Flutter"
+  ],
+  "networkHints": [
+    "Cronet"
+  ],
+  "processHints": [
+    "spawn",
+    "isolated process",
+    "child process"
+  ],
+  "entryHints": [
+    "LoginActivity",
+    "signRequest",
+    "registerNatives"
+  ],
+  "completionCriteria": [
+    "明确 Flutter 容器到登录签名函数的边界",
+    "恢复 Java -> JNI -> Native 网络栈的关键路径",
+    "完成一次本地输入到签名输出的复现"
+  ]
+}

@@ -1,0 +1,9 @@
+# The dsh-stage-gate bundle patch: registers the stage-gate host plugin.
+#
+# Host-plane row (no isolate realm — it registers the stage_gate/gates_list tools into the
+# host `tools` registry), so the tools are visible to every preset, matching the 全模式共用
+# semantics of the gate discipline it enforces.
+
+- insert:
+    - id: stage-gate
+      name: '@dsh-external/dsh-stage-gate'

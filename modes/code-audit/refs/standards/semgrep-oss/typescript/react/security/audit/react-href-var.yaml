@@ -1,0 +1,90 @@
+rules:
+  - id: react-href-var
+    message: >-
+      Detected a variable used in an anchor tag with the 'href' attribute. A
+      malicious actor may be able to input the 'javascript:' URI, which could
+      cause cross-site scripting (XSS). It is recommended to disallow
+      'javascript:' URIs within your application.
+    metadata:
+      cwe:
+        - "CWE-79: Improper Neutralization of Input During Web Page Generation
+          ('Cross-site Scripting')"
+      owasp:
+        - A07:2017 - Cross-Site Scripting (XSS)
+        - A03:2021 - Injection
+      references:
+        - https://reactjs.org/blog/2019/08/08/react-v16.9.0.html#deprecating-javascript-urls
+        - https://pragmaticwebsecurity.com/articles/spasecurity/react-xss-part1.html
+      category: security
+      confidence: LOW
+      technology:
+        - react
+      license: Commons Clause License Condition v1.0[LGPL-2.1-only]
+      cwe2022-top25: true
+      cwe2021-top25: true
+      subcategory:
+        - audit
+      likelihood: LOW
+      impact: MEDIUM
+    languages:
+      - typescript
+      - javascript
+    severity: WARNING
+    mode: taint
+    pattern-sources:
+      - label: TAINTED
+        patterns:
+          - pattern-either:
+              - pattern-inside: |
+                  function ...({..., $X, ...}) { ... }
+              - pattern-inside: |
+                  function ...(..., $X, ...) { ... }
+          - focus-metavariable: $X
+          # This rule causes too many false positives without this addition
+          - pattern-either:
+            - pattern: $X.$Y
+            - pattern: $X[...]
+          # this removes .map(...) etc which likely comes from hard coded values.
+          - pattern-not-inside: |
+              $F. ... .$SANITIZEUNC(...)
+      - label: CONCAT
+        requires: TAINTED
+        patterns:
+          - pattern-either:
+              - pattern: |
+                  `...${$X}...`
+              - pattern: |
+                  $SANITIZE + <... $X ...>
+          - pattern-not: |
+              `${$X}...`
+          - pattern-not: |
+              $X + ...
+          - focus-metavariable: $X
+      - label: CLEAN
+        by-side-effect: true
+        patterns:
+          - pattern-either:
+              - pattern: $A($SOURCE)
+              - pattern: $SANITIZE. ... .$A($SOURCE)
+              - pattern: $A. ... .$SANITIZE($SOURCE)
+          - focus-metavariable: $SOURCE
+          - metavariable-regex:
+              metavariable: $A
+              regex: (?i)(.*valid|.*sanitiz)
+    pattern-sinks:
+      - requires: TAINTED and not CONCAT and not CLEAN
+        patterns:
+          - focus-metavariable: $X
+          - pattern-either:
+              - pattern: |
+                  <$EL href={$X} />
+              - pattern: |
+                  React.createElement($EL, {href: $X})
+              - pattern-inside: |
+                  $PARAMS = {href: $X};
+                  ...
+                  React.createElement($EL, $PARAMS);
+          - metavariable-pattern:
+              patterns:
+                - pattern-not-regex: (?i)(button)
+              metavariable: $EL

@@ -1,0 +1,72 @@
+rules:
+- id: hardcoded-jwt-secret
+  message: >-
+    A hard-coded credential was detected. It is not recommended to store credentials in source-code,
+    as this risks secrets
+    being leaked and used by either an internal or external malicious adversary. It is recommended to
+    use environment variables to securely provide credentials or retrieve credentials from a secure
+    vault or HSM (Hardware Security Module).
+  metadata:
+    interfile: true
+    cwe:
+    - 'CWE-798: Use of Hard-coded Credentials'
+    references:
+    - https://cheatsheetseries.owasp.org/cheatsheets/Secrets_Management_Cheat_Sheet.html
+    owasp:
+    - A07:2021 - Identification and Authentication Failures
+    asvs:
+      section: 'V3: Session Management Verification Requirements'
+      control_id: 3.5.2 Static API keys or secret
+      control_url: https://github.com/OWASP/ASVS/blob/master/4.0/en/0x12-V3-Session-management.md#v35-token-based-session-management
+      version: '4'
+    category: security
+    technology:
+    - jose
+    - jwt
+    - secrets
+    cwe2022-top25: true
+    cwe2021-top25: true
+    subcategory:
+    - vuln
+    likelihood: HIGH
+    impact: MEDIUM
+    confidence: HIGH
+  languages:
+  - javascript
+  - typescript
+  severity: WARNING
+  patterns:
+  - pattern-inside: |
+      $JOSE = require("jose");
+      ...
+  - pattern-either:
+    - pattern-inside: |
+        var {JWT} = $JOSE;
+        ...
+    - pattern-inside: |
+        var {JWK, JWT} = $JOSE;
+        ...
+    - pattern-inside: |
+        const {JWT} = $JOSE;
+        ...
+    - pattern-inside: |
+        const {JWK, JWT} = $JOSE;
+        ...
+    - pattern-inside: |
+        let {JWT} = $JOSE;
+        ...
+    - pattern-inside: |
+        let {JWK, JWT} = $JOSE;
+        ...
+  - pattern-either:
+    - pattern: |
+        JWT.verify($P, "...", ...);
+    - pattern: |
+        JWT.sign($P, "...", ...);
+    - pattern: |
+        JWT.verify($P, JWK.asKey("..."), ...);     
+    - pattern: |
+        $JWT.sign($P, JWK.asKey("..."), ...);
+  options:
+    symbolic_propagation: true
+    interfile: true

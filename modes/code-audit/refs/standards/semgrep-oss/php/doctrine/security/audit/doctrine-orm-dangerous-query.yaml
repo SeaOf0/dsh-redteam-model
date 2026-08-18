@@ -1,0 +1,71 @@
+rules:
+- id: doctrine-orm-dangerous-query
+  languages:
+  - php
+  message: >-
+    `$QUERY` Detected string concatenation with a non-literal variable in a Doctrine
+    QueryBuilder method. This could lead to SQL injection if the variable is
+    user-controlled and not properly sanitized. In order to prevent SQL
+    injection, use parameterized queries or prepared statements instead.
+  metadata:
+    category: security
+    cwe:
+    - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+    license: Commons Clause License Condition v1.0[LGPL-2.1-only]
+    owasp:
+    - A01:2017 - Injection
+    - A03:2021 - Injection
+    references:
+    - https://www.doctrine-project.org/projects/doctrine-dbal/en/current/reference/query-builder.html#security-safely-preventing-sql-injection
+    - https://cheatsheetseries.owasp.org/cheatsheets/SQL_Injection_Prevention_Cheat_Sheet.html
+    technology:
+    - doctrine
+    cwe2022-top25: true
+    cwe2021-top25: true
+    subcategory:
+    - vuln
+    likelihood: MEDIUM
+    impact: MEDIUM
+    confidence: MEDIUM
+  mode: taint
+  pattern-sinks:
+  - patterns:
+    - focus-metavariable: $SINK
+    - pattern-either:
+      - pattern: $QUERY->add(...,$SINK,...)
+      - pattern: $QUERY->select(...,$SINK,...)
+      - pattern: $QUERY->addSelect(...,$SINK,...)
+      - pattern: $QUERY->delete(...,$SINK,...)
+      - pattern: $QUERY->update(...,$SINK,...)
+      - pattern: $QUERY->insert(...,$SINK,...)
+      - pattern: $QUERY->from(...,$SINK,...)
+      - pattern: $QUERY->join(...,$SINK,...)
+      - pattern: $QUERY->innerJoin(...,$SINK,...)
+      - pattern: $QUERY->leftJoin(...,$SINK,...)
+      - pattern: $QUERY->rightJoin(...,$SINK,...)
+      - pattern: $QUERY->where(...,$SINK,...)
+      - pattern: $QUERY->andWhere(...,$SINK,...)
+      - pattern: $QUERY->orWhere(...,$SINK,...)
+      - pattern: $QUERY->groupBy(...,$SINK,...)
+      - pattern: $QUERY->addGroupBy(...,$SINK,...)
+      - pattern: $QUERY->having(...,$SINK,...)
+      - pattern: $QUERY->andHaving(...,$SINK,...)
+      - pattern: $QUERY->orHaving(...,$SINK,...)
+      - pattern: $QUERY->orderBy(...,$SINK,...)
+      - pattern: $QUERY->addOrderBy(...,$SINK,...)
+      - pattern: $QUERY->set($SINK,...)
+      - pattern: $QUERY->setValue($SINK,...)
+    - pattern-either:
+      - pattern-inside: |
+          $Q = $X->createQueryBuilder();
+          ...
+      - pattern-inside: |
+          $Q = new QueryBuilder(...);
+          ...
+  pattern-sources:
+  - patterns:
+    - pattern-either:
+      - pattern: sprintf(...)
+      - pattern: |
+          "...".$SMTH
+  severity: WARNING

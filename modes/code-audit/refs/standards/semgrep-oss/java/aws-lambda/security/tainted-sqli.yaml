@@ -1,0 +1,72 @@
+rules:
+- id: tainted-sqli
+  message: >-
+    Detected SQL statement that is tainted by `$EVENT` object. This could lead to SQL
+    injection if variables in the SQL statement are not properly sanitized.
+    Use parameterized SQL queries or properly sanitize user input instead.
+  languages: [java]
+  severity: WARNING
+  mode: taint
+  pattern-sources:
+  - patterns:
+    - focus-metavariable: $EVENT
+    - pattern-either:
+      - pattern: |
+          $HANDLERTYPE $HANDLER($TYPE $EVENT, com.amazonaws.services.lambda.runtime.Context $CONTEXT) {
+            ...
+          }
+      - pattern: |
+          $HANDLERTYPE $HANDLER(InputStream $EVENT, OutputStream $OUT, com.amazonaws.services.lambda.runtime.Context $CONTEXT) {
+            ...
+          }
+  pattern-sinks:
+  - patterns:
+    - pattern-either:
+      - pattern: |
+          (java.sql.CallableStatement $STMT) = ...; 
+      - pattern: |
+          (java.sql.Statement $STMT) = ...;
+      - pattern: |
+          (java.sql.PreparedStatement $STMT) = ...;
+      - pattern: |
+          $VAR = $CONN.prepareStatement(...)
+      - pattern: |
+          $PATH.queryForObject(...);
+      - pattern: |
+          (java.util.Map<String, Object> $STMT) = $PATH.queryForMap(...);
+      - pattern: |
+          (org.springframework.jdbc.support.rowset.SqlRowSet $STMT) = ...;
+      - patterns:
+        - pattern-inside: |
+            (String $SQL) = "$SQLSTR" + ...;
+            ...
+        - pattern: $PATH.$SQLCMD(..., $SQL, ...);
+        - metavariable-regex:
+            metavariable: $SQLSTR
+            regex: (?i)(^SELECT.* | ^INSERT.* | ^UPDATE.*)
+        - metavariable-regex:
+            metavariable: $SQLCMD
+            regex: (execute|query|executeUpdate|batchUpdate)
+  options:
+    interfile: true
+  metadata:
+    category: security
+    technology:
+    - sql
+    - java
+    - aws-lambda
+    cwe:
+    - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+    owasp:
+    - A01:2017 - Injection
+    - A03:2021 - Injection
+    references:
+    - https://owasp.org/Top10/A03_2021-Injection
+    cwe2022-top25: true
+    cwe2021-top25: true
+    subcategory:
+    - vuln
+    likelihood: MEDIUM
+    impact: HIGH
+    confidence: MEDIUM
+    interfile: true

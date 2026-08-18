@@ -1,0 +1,18 @@
+# One installable bundle row: deterministic tool-call enforcement for the five
+# security presets. Host plane — the guard resolves the calling agent's preset
+# at execution time and only fires for pentest / code-audit / binary-analysis /
+# attack-defense / av-evasion; every other session is untouched.
+#
+# Denials are actionable (each names the fix: stage_gate call / ask-first flow /
+# rate flag) and append one line to <workspace>/enforce-log.md for the audit
+# trail. All four guards can be toggled; allowDirs exempts paths from the
+# write boundary (e.g. a shared tools dir on machines that install into one).
+- insert:
+    - id: dsh-sec-enforce
+      name: '@dsh-external/dsh-sec-enforce'
+      config:
+        reportGate: true
+        writeBoundary: true
+        dangerousOps: true
+        rateDiscipline: true
+        allowDirs: []

@@ -1,0 +1,43 @@
+{
+	"FixedFileInfo": {
+		"FileVersion": {
+			"Major": 10,
+			"Minor": 0,
+			"Patch": 19041,
+			"Build": 1
+		},
+		"ProductVersion": {
+			"Major": 10,
+			"Minor": 0,
+			"Patch": 19041,
+			"Build": 1
+		},
+		"FileFlagsMask": "3f",
+		"FileFlags": "00",
+		"FileOS": "40004",
+		"FileType": "01",
+		"FileSubType": "00"
+	},
+	"StringFileInfo": {
+		"Comments": "",
+		"CompanyName": "Microsoft Corporation",
+		"FileDescription": "Windows Update Service",
+		"FileVersion": "10.0.19041.1 (WinBuild.160101.0800)",
+		"InternalName": "wuauserv.dll",
+		"LegalCopyright": "© Microsoft Corporation. All rights reserved.",
+		"LegalTrademarks": "",
+		"OriginalFilename": "wuauserv.dll",
+		"ProductName": "Microsoft® Windows® Operating System",
+		"ProductVersion": "10.0.19041.1",
+		"PrivateBuild": "",
+		"SpecialBuild": ""
+	},
+	"VarFileInfo": {
+		"Translation": {
+			"LangID": "0804",
+			"CharsetID": "04B0"
+		}
+	},
+	"IconPath": "",
+	"ManifestPath": ""
+}

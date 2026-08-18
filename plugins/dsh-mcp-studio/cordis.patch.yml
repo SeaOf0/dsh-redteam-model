@@ -1,0 +1,6 @@
+# One installable bundle row mounts the Host service and publishes its Web client.
+- insert:
+    - id: dsh-mcp-studio
+      name: '@dsh-external/dsh-mcp-studio'
+      config:
+        servers: []

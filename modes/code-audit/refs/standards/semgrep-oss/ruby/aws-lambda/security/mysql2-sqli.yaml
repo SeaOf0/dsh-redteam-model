@@ -1,0 +1,49 @@
+rules:
+- id: mysql2-sqli
+  languages:
+  - ruby
+  message: >-
+    Detected SQL statement that is tainted by `event` object. This could lead to SQL injection if the
+    variable is user-controlled
+    and not properly sanitized. In order to prevent SQL injection,
+    use parameterized queries or prepared statements instead.
+    You can use sanitize statements like so: `escaped = client.escape(user_input)`
+  mode: taint
+  metadata:
+    references:
+    - https://github.com/brianmario/mysql2
+    category: security
+    owasp:
+    - A01:2017 - Injection
+    - A03:2021 - Injection
+    cwe:
+    - "CWE-89: Improper Neutralization of Special Elements used in an SQL Command ('SQL Injection')"
+    technology:
+    - aws-lambda
+    - mysql2
+    cwe2022-top25: true
+    cwe2021-top25: true
+    subcategory:
+    - vuln
+    likelihood: MEDIUM
+    impact: HIGH
+    confidence: MEDIUM
+  pattern-sinks:
+  - patterns:
+    - pattern: $QUERY
+    - pattern-either:
+      - pattern: $CLIENT.query($QUERY,...)
+      - pattern: $CLIENT.prepare($QUERY,...)
+    - pattern-inside: |
+        require 'mysql2'
+        ...
+  pattern-sanitizers:
+  - pattern: $CLIENT.escape(...)
+  pattern-sources:
+  - patterns:
+    - pattern: event
+    - pattern-inside: |
+        def $HANDLER(event, context)
+          ...
+        end
+  severity: WARNING

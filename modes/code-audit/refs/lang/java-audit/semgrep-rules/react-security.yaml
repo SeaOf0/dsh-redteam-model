@@ -1,0 +1,255 @@
+rules:
+  # ============================================
+  # React 安全规则
+  # ============================================
+  
+  # ============================================
+  # P0 - dangerouslySetInnerHTML XSS
+  # ============================================
+  
+  - id: react-xss-dangerouslySetInnerHTML
+    patterns:
+      - pattern-regex: 'dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+        - "*.ts"
+    message: "检测到 dangerouslySetInnerHTML。直接渲染 HTML 内容可能导致 XSS 攻击。建议避免使用 dangerouslySetInnerHTML，或确保内容经过严格消毒（使用 DOMPurify 等库）。"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+      owasp: "A03:2021 - Injection"
+  
+  - id: react-xss-dangerouslySetInnerHTML-userInput
+    patterns:
+      - pattern-regex: 'dangerouslySetInnerHTML\s*=\s*\{\s*\{\s*__html\s*:\s*(?:props|state|params|query|location|req|res|data)'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+    message: "检测到 dangerouslySetInnerHTML 直接使用用户输入。高危 XSS 漏洞！建议使用 DOMPurify 消毒后再渲染。"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+  
+  # ============================================
+  # P1 - href 注入
+  # ============================================
+  
+  - id: react-xss-href-injection
+    patterns:
+      - pattern-regex: 'href\s*=\s*\{(?:props|state|params|query|location|req|res|data|window)'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+    message: "检测到 href 属性使用用户输入。可能导致 XSS 或开放重定向。建议验证 URL 格式，使用白名单限制跳转目标。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+  
+  - id: react-xss-javascript-href
+    patterns:
+      - pattern-regex: 'href\s*=\s*["\'']javascript:'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+    message: "检测到 javascript: 协议的 href。可能导致 XSS 攻击。建议避免使用 javascript: 协议。"
+    severity: ERROR
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+  
+  # ============================================
+  # P1 - 不安全的 URL 跳转
+  # ============================================
+  
+  - id: react-open-redirect-history-push
+    patterns:
+      - pattern-regex: 'history\.push\s*\(\s*(?:props|state|params|query|location|window)'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+    message: "检测到 history.push 使用用户输入。可能导致开放重定向攻击。建议验证和限制跳转目标 URL。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-601"
+  
+  - id: react-open-redirect-window-location
+    patterns:
+      - pattern-regex: 'window\.location\s*=\s*(?:props|state|params|query|location|history)'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+    message: "检测到 window.location 赋值使用用户输入。可能导致开放重定向。建议验证跳转目标。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-601"
+  
+  # ============================================
+  # P1 - SSR XSS
+  # ============================================
+  
+  - id: react-ssr-xss-renderToString
+    patterns:
+      - pattern-regex: 'renderToString\s*\(\s*<[^>]*(?:props|state|data|req|params)'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+        - "*.ts"
+    message: "检测到 renderToString 使用用户输入。SSR 渲染可能导致 XSS。建议确保数据在渲染前经过验证和编码。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+  
+  # ============================================
+  # P2 - 不安全的 ref 使用
+  # ============================================
+  
+  - id: react-insecure-ref-innerHTML
+    patterns:
+      - pattern-regex: 'ref\.current\.innerHTML\s*='
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+        - "*.ts"
+    message: "检测通过 ref 操作 innerHTML。可能导致 XSS。建议使用 textContent 或 React 状态管理替代。"
+    severity: WARNING
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
+  
+  # ============================================
+  # P2 - 敏感信息泄露
+  # ============================================
+  
+  - id: react-info-leak-console-state
+    patterns:
+      - pattern-regex: 'console\.log\s*\(\s*(?:this\.state|state|props)'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+    message: "检测到 console.log 输出 state 或 props。可能导致敏感信息泄露。建议移除生产环境中的调试日志。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-532"
+  
+  - id: react-info-leak-error-boundary
+    patterns:
+      - pattern-regex: 'componentDidCatch\s*\([^)]*\)\s*\{[^}]*console\.log|componentDidCatch\s*\([^)]*\)\s*\{[^}]*console\.error'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+    message: "检测到 Error Boundary 输出错误详情。可能导致敏感信息泄露。建议在生产环境中隐藏详细错误信息。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-209"
+  
+  # ============================================
+  # P2 - 不安全的 Context 使用
+  # ============================================
+  
+  - id: react-context-sensitive-data
+    patterns:
+      - pattern-regex: 'createContext\s*\(\s*\{[^}]*(?:password|token|secret|key|credential)'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+        - "*.ts"
+    message: "检测到 Context 存储敏感信息。可能导致敏感信息泄露到子组件。建议谨慎处理敏感数据的 Context 传递。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-200"
+  
+  # ============================================
+  # P2 - 不安全的第三方组件
+  # ============================================
+  
+  - id: react-lib-react-router-old
+    patterns:
+      - pattern-regex: 'react-router-dom@[0-5]\.'
+    paths:
+      include:
+        - "package.json"
+    message: "检测到旧版本 react-router-dom (< 6.0.0)。建议升级到 react-router-dom 6.x+。"
+    severity: INFO
+    languages: [json]
+    metadata:
+      category: security
+      cwe: "CWE-937"
+  
+  # ============================================
+  # P2 - 不安全的 Hooks 使用
+  # ============================================
+  
+  - id: react-hooks-useEffect-cleanup
+    patterns:
+      - pattern-regex: 'useEffect\s*\([^)]*\)\s*\{[^}]*return\s*\(\s*\)\s*=>\s*\{[^}]*\}'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+        - "*.js"
+        - "*.ts"
+    message: "检测到 useEffect 包含清理函数。请确保清理函数正确处理资源释放，避免内存泄漏。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-401"
+  
+  # ============================================
+  # P2 - 不安全的表单处理
+  # ============================================
+  
+  - id: react-form-uncontrolled-input
+    patterns:
+      - pattern-regex: '<input[^>]*(?:value|defaultValue)\s*=\s*\{(?:props|state|params|query|location|window)'
+    paths:
+      include:
+        - "*.jsx"
+        - "*.tsx"
+    message: "检测到 input 使用用户输入作为初始值。可能导致 XSS 或注入攻击。建议验证输入内容。"
+    severity: INFO
+    languages: [javascript, typescript]
+    metadata:
+      category: security
+      cwe: "CWE-79"
