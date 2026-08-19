@@ -30,6 +30,7 @@ var SEVERITY_ORDER = ["critical", "high", "medium", "low"];
 var STATUS_LABEL = { pending: "待验证", verified: "已验证", "false-positive": "误报", fixed: "已修复" };
 var EVIDENCE_LABEL = { confirmed: "已证实", partial: "部分证据", unknown: "未知" };
 var SOURCE_LABEL = { manual: "人工深审", "scan-confirmed": "扫描确认", "scan-false-positive": "扫描误报" };
+var AUDIT_MODE_LABEL = { static: "静态审计", dynamic: "动态·验证成功" };
 // 板式二分：findings=漏洞报告型（渗透/代审）；assets=产物/战果清单型（二进制/攻防/免杀）。
 var MODE_META = {
 	pentest: {
@@ -324,6 +325,7 @@ function mdReport(f, mode) {
 			"- 问题等级：" + (SEVERITY_LABEL[f.severity] || f.severity) + (f.cvss ? "（" + f.cvss + "）" : ""),
 			"- 问题类型 / RCE 主线归类：" + (f.type || "未分类") + (f.cwe ? " / " + f.cwe : ""),
 			"- 问题所在代码位置（sink 点）：" + (f.target || "（未填写）"),
+			"- 审计形态：" + (AUDIT_MODE_LABEL[f.auditMode] || "未标注（默认静态语义）"),
 			"- 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel) + " ｜ 状态：" + (STATUS_LABEL[f.status] || f.status) + " ｜ 来源：" + (SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin),
 			"",
 			"## 审计链路（entry → sink）",
@@ -621,6 +623,10 @@ var CSS_SCREEN = [
 	".dsh-scr-clockwrap{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}",
 	".dsh-scr-range,.dsh-scr-date{background:rgba(10,26,48,.85);color:#bfe6ff;border:1px solid rgba(80,180,255,.4);border-radius:7px;padding:3px 8px;font-size:12px;outline:none;color-scheme:dark}",
 	".dsh-scr-range:hover,.dsh-scr-date:hover{border-color:rgba(120,210,255,.7)}",
+	".dsh-rtr-screen .dsh-rtr-btn{background:rgba(10,26,48,.85);color:#bfe6ff;border-color:rgba(80,180,255,.4)}",
+	".dsh-rtr-screen .dsh-rtr-btn:hover{background:rgba(28,58,100,.92);border-color:rgba(120,210,255,.7);color:#eaf6ff}",
+	".dsh-rtr-screen .dsh-rtr-btn:active{background:rgba(36,70,118,.95);color:#eaf6ff}",
+	".dsh-rtr-screen .dsh-rtr-btn:disabled{opacity:.45}",
 	".dsh-scr-hero{display:flex;align-items:center;justify-content:center;gap:clamp(14px,4vw,56px);padding:10px 6px 2px;flex-wrap:wrap}",
 	".dsh-scr-heronums{display:grid;grid-template-columns:repeat(2,minmax(108px,1fr));gap:12px;min-width:0}",
 	".dsh-scr-globewrap{position:relative;width:176px;height:176px;display:flex;align-items:center;justify-content:center;flex:none}",
@@ -643,10 +649,10 @@ var CSS_SCREEN = [
 	".dsh-rtr-distlegend{display:flex;gap:6px 10px;flex-wrap:wrap;min-width:0}",
 	".dsh-rtr-distleg{font-size:10px;color:var(--dsw-alias-label-secondary,#666);display:inline-flex;align-items:center;gap:3px;max-width:160px;overflow:hidden;white-space:nowrap}",
 	".dsh-rtr-distleg i{width:7px;height:7px;border-radius:2px;flex:none}",
-	".dsh-rtr-segbar{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:1px;background:var(--dsw-alias-bg-embedded,#f0f0f2)}",
+	".dsh-rtr-segbar{display:flex;height:14px;border-radius:7px;overflow:hidden;gap:1px;background:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff))}",
 	".dsh-rtr-segbar span{display:block;min-width:3px;transition:width .5s ease}",
 	".dsh-rtr-distdetails summary{font-size:10px;color:var(--dsw-alias-label-tertiary,#8a8a8f);cursor:pointer;user-select:none;width:max-content}",
-	".dsh-rtr-distdetails[open] summary{margin-bottom:2px;color:var(--dsw-alias-accent,#4c6ef5)}",
+	".dsh-rtr-distdetails[open] summary{margin-bottom:2px;color:var(--dsw-alias-state-business-primary,#4c6ef5)}",
 	".dsh-rtr-disttitle{font-size:11px;letter-spacing:.05em;color:var(--dsw-alias-label-tertiary,#8a8a8f)}",
 	".dsh-rtr-dist{display:flex;flex-direction:column;gap:3px;max-height:138px;overflow-y:auto;min-width:0}",
 	".dsh-rtr-distrow{display:grid;grid-template-columns:minmax(60px,110px) 1fr 26px;align-items:center;gap:6px;min-width:0}",
@@ -655,7 +661,7 @@ var CSS_SCREEN = [
 	".dsh-rtr-disttrack span{display:block;height:100%;border-radius:4px;background:linear-gradient(90deg,#3f8ef7,#38d4ff);transition:width .4s ease}",
 	".dsh-rtr-distrow.is-click{cursor:pointer}",
 	".dsh-rtr-distrow.is-click .dsh-rtr-disttrack span{background:linear-gradient(90deg,#7a5cf5,#b48cff)}",
-	".dsh-rtr-distrow.is-click:hover .dsh-rtr-distlbl{color:var(--dsw-alias-accent,#4c6ef5)}",
+	".dsh-rtr-distrow.is-click:hover .dsh-rtr-distlbl{color:var(--dsw-alias-state-business-primary,#4c6ef5)}",
 	".dsh-rtr-distval{font-size:11px;font-family:monospace;color:var(--dsw-alias-label-primary,#333);text-align:right}",
 	".dsh-scr-panel h4{margin:0 0 12px;font-size:12px;letter-spacing:.22em;color:#7fc4ff;font-weight:700}",
 	".dsh-scr-center{display:flex;flex-direction:column;gap:14px}",
@@ -693,17 +699,17 @@ var CSS_SCREEN = [
 
 var CSS = [
 	".dsh-rtr-root{height:100%;display:flex;min-height:0;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);font-size:13px}",
-	".dsh-rtr-side{width:168px;flex:none;border-right:1px solid var(--dsw-alias-border-l2,#e4e4e7);padding:14px 10px;display:flex;flex-direction:column;gap:2px;background:var(--dsw-alias-bg-embedded,#f7f7f8)}",
+	".dsh-rtr-side{width:168px;flex:none;border-right:1px solid var(--dsw-alias-border-l2,#e4e4e7);padding:14px 10px;display:flex;flex-direction:column;gap:2px;background:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff))}",
 	".dsh-rtr-side-title{font-size:12px;letter-spacing:.08em;color:var(--dsw-alias-label-tertiary,#8a8a8f);padding:0 8px 10px;font-weight:600}",
 	".dsh-rtr-side-item{display:flex;align-items:center;justify-content:space-between;gap:6px;padding:7px 10px;border:none;background:none;border-radius:7px;cursor:pointer;color:var(--dsw-alias-label-secondary,#5b5b60);font-size:13px;text-align:left}",
-	".dsh-rtr-side-item:hover{background:var(--dsw-alias-bg-hover,rgba(0,0,0,.05));color:var(--dsw-alias-label-primary,#1a1a1a)}",
-	".dsh-rtr-side-item.is-active{background:var(--dsw-alias-bg-active,rgba(0,0,0,.08));color:var(--dsw-alias-label-primary,#1a1a1a);font-weight:600}",
+	".dsh-rtr-side-item:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 7%,transparent));color:var(--dsw-alias-label-primary,#1a1a1a)}",
+	".dsh-rtr-side-item.is-active{background:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 12%,transparent);color:var(--dsw-alias-label-primary,#1a1a1a);font-weight:600}",
 	".dsh-rtr-count{font-size:11px;min-width:20px;text-align:center;border-radius:9px;padding:1px 5px;background:var(--dsw-alias-bg-base,#fff);border:1px solid var(--dsw-alias-border-l2,#e4e4e7);color:var(--dsw-alias-label-secondary,#5b5b60)}",
 	".dsh-rtr-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:auto;padding:14px 18px 18px;gap:12px}",
-	".dsh-rtr-meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary,#5b5b60);border:1px solid var(--dsw-alias-border-l1,#e9e9ec);border-radius:9px;padding:7px 12px;background:var(--dsw-alias-bg-embedded,#fafafb)}",
-	".dsh-rtr-meta b{color:var(--dsh-alias-label-primary,#1a1a1a);font-weight:600;margin-left:4px}",
+	".dsh-rtr-meta{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary,#5b5b60);border:1px solid var(--dsw-alias-border-l1,#e9e9ec);border-radius:9px;padding:7px 12px;background:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff))}",
+	".dsh-rtr-meta b{color:var(--dsw-alias-label-primary,#1a1a1a);font-weight:600;margin-left:4px}",
 	".dsh-rtr-meta.is-ghost{border-style:dashed;background:transparent;color:var(--dsw-alias-label-tertiary,#8a8a8f);padding:4px 12px}",
-	".dsh-rtr-metalink{font:inherit;font-size:12px;color:var(--dsw-alias-accent,#4c6ef5);background:none;border:none;cursor:pointer;padding:0}",
+	".dsh-rtr-metalink{font:inherit;font-size:12px;color:var(--dsw-alias-state-business-primary,#4c6ef5);background:none;border:none;cursor:pointer;padding:0}",
 	".dsh-rtr-metalink:hover{text-decoration:underline}",
 	".dsh-rtr-meta input{font:inherit;font-size:12px;padding:3px 8px;border:1px solid var(--dsw-alias-border-l2,#d4d4d8);border-radius:6px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a)}",
 	".dsh-rtr-stats{display:flex;flex-direction:column;gap:10px}",
@@ -714,27 +720,29 @@ var CSS = [
 	".dsh-rtr-statnum{font-size:21px;font-weight:700;line-height:1.2;margin-top:2px}",
 	".dsh-rtr-statlabel{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8a8f);letter-spacing:.05em}",
 	".dsh-rtr-statextra{display:flex;flex-direction:row;flex-wrap:wrap;gap:8px 16px;width:100%;align-items:flex-start}",
-	".dsh-rtr-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:var(--dsw-alias-bg-embedded,#f0f0f2);flex:1 1 100%}",
+	".dsh-rtr-bar{display:flex;height:10px;border-radius:5px;overflow:hidden;background:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff));flex:1 1 100%}",
 	".dsh-rtr-chiprow{display:flex;gap:6px;flex-wrap:wrap;flex:1 1 100%}",
 	".dsh-rtr-types{display:flex;gap:6px;flex-wrap:wrap}",
-	".dsh-rtr-typechip{font-size:11px;padding:2px 8px;border-radius:9px;background:var(--dsw-alias-bg-embedded,#f0f0f2);color:var(--dsw-alias-label-secondary,#5b5b60);border:1px solid var(--dsw-alias-border-l1,#e9e9ec);cursor:pointer}",
+	".dsh-rtr-typechip{font-size:11px;padding:2px 8px;border-radius:9px;background:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff));color:var(--dsw-alias-label-secondary,#5b5b60);border:1px solid var(--dsw-alias-border-l1,#e9e9ec);cursor:pointer}",
 	".dsh-rtr-typechip.is-static{cursor:default;opacity:.78}",
 	".dsh-rtr-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}",
 	".dsh-rtr-toolbar .dsh-rtr-spacer{flex:1}",
-	".dsh-rtr-select,.dsh-rtr-search{font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l2,#d4d4d8);border-radius:7px;background:var(--dsh-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a)}",
+	".dsh-rtr-select,.dsh-rtr-search{font:inherit;font-size:12px;padding:5px 8px;border:1px solid var(--dsw-alias-border-l2,#d4d4d8);border-radius:7px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a)}",
 	".dsh-rtr-search{width:170px}",
 	".dsh-rtr-btn{font:inherit;font-size:12px;padding:5px 11px;border-radius:7px;border:1px solid var(--dsw-alias-border-l2,#d4d4d8);background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);cursor:pointer;white-space:nowrap}",
-	".dsh-rtr-btn:hover{background:var(--dsw-alias-bg-hover,rgba(0,0,0,.05))}",
-	".dsh-rtr-btn.is-primary{border-color:transparent;background:var(--dsw-alias-accent,#4c6ef5);color:#fff}",
+	".dsh-rtr-btn:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 7%,transparent))}",
+	".dsh-rtr-btn.is-primary{border-color:transparent;background:var(--dsw-alias-state-business-primary,#4c6ef5);color:#fff}",
 	".dsh-rtr-btn.is-primary:hover{filter:brightness(1.05)}",
 	".dsh-rtr-btn.is-danger{color:#d5333c;border-color:#f1b8bf}",
+	".dsh-rtr-btn:active{background:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 13%,transparent)}",
+	".dsh-rtr-btn:focus-visible{outline:2px solid var(--dsw-alias-state-business-primary,#4c6ef5);outline-offset:1px}",
 	".dsh-rtr-btn:disabled{opacity:.5;cursor:default}",
 	".dsh-rtr-grouphead{display:flex;align-items:center;gap:10px;padding:10px 12px 4px;font-weight:600;font-size:12.5px;color:var(--dsw-alias-label-secondary,#5b5b60)}",
 	".dsh-rtr-grouphead .dsh-rtr-count{font-weight:400}",
 	".dsh-rtr-row{border:1px solid var(--dsw-alias-border-l1,#e9e9ec);border-radius:10px;overflow:hidden;background:var(--dsw-alias-bg-base,#fff)}",
 	".dsh-rtr-row + .dsh-rtr-row{margin-top:8px}",
 	".dsh-rtr-rowhead{display:flex;align-items:center;gap:10px;padding:9px 12px;cursor:pointer}",
-	".dsh-rtr-rowhead:hover{background:var(--dsw-alias-bg-hover,rgba(0,0,0,.03))}",
+	".dsh-rtr-rowhead:hover{background:var(--dsw-alias-interactive-bg-hover,color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 5%,transparent))}",
 	".dsh-rtr-seq{font-size:11px;color:var(--dsw-alias-label-tertiary,#8a8a8f);width:28px;flex:none;text-align:right}",
 	".dsh-rtr-title{font-weight:600;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 	".dsh-rtr-summ{flex:1;min-width:0;color:var(--dsw-alias-label-tertiary,#8a8a8f);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
@@ -747,7 +755,10 @@ var CSS = [
 	".dsh-rtr-st{flex:none;font-size:11px;padding:2px 8px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2,#d4d4d8);color:var(--dsw-alias-label-secondary,#5b5b60)}",
 	".dsh-rtr-st-verified{color:#2f9e63;border-color:rgba(47,158,99,.35);background:rgba(47,158,99,.08)}",
 	".dsh-rtr-st-false-positive{color:#8a8a8f;text-decoration:line-through}",
-	".dsh-rtr-detail{border-top:1px solid var(--dsw-alias-border-l1,#e9e9ec);padding:12px 16px;display:flex;flex-direction:column;gap:10px;background:var(--dsh-alias-bg-embedded,#fafafb)}",
+	".dsh-rtr-am{flex:none;font-size:11px;padding:2px 8px;border-radius:9px;border:1px solid}",
+	".dsh-rtr-am-static{color:var(--dsw-alias-label-secondary,#5b5b60);border-color:rgba(91,91,96,.35);background:rgba(91,91,96,.07)}",
+	".dsh-rtr-am-dynamic{color:#2f9e63;border-color:rgba(47,158,99,.35);background:rgba(47,158,99,.1);font-weight:600}",
+	".dsh-rtr-detail{border-top:1px solid var(--dsw-alias-border-l1,#e9e9ec);padding:12px 16px;display:flex;flex-direction:column;gap:10px;background:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff))}",
 	".dsh-rtr-fields{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--dsw-alias-label-secondary,#5b5b60)}",
 	".dsh-rtr-fields b{color:var(--dsw-alias-label-primary,#1a1a1a);font-weight:600;margin-left:4px}",
 	".dsh-rtr-block h4{margin:0 0 4px;font-size:12px;color:var(--dsw-alias-label-tertiary,#8a8a8f);letter-spacing:.04em}",
@@ -757,7 +768,7 @@ var CSS = [
 	".dsh-rtr-duo pre{margin:0;padding:10px 12px;border-radius:8px;background:var(--dsw-alias-bg-base,#fff);border:1px solid var(--dsw-alias-border-l1,#e9e9ec);white-space:pre-wrap;word-break:break-word;font-size:12px;max-height:280px;overflow:auto}",
 	".dsh-rtr-verdict{font-size:12px;padding:6px 12px;border-radius:8px;border:1px solid var(--dsw-alias-border-l2,#d4d4d8);background:var(--dsw-alias-bg-base,#fff)}",
 	".dsh-rtr-rowactions{display:flex;gap:6px;flex:none}",
-	".dsh-rtr-check{accent-color:var(--dsw-alias-accent,#4c6ef5)}",
+	".dsh-rtr-check{accent-color:var(--dsw-alias-state-business-primary,#4c6ef5)}",
 	".dsh-rtr-pager{display:flex;align-items:center;justify-content:center;gap:12px;padding:4px 0;font-size:12px;color:var(--dsw-alias-label-secondary,#5b5b60)}",
 	".dsh-rtr-empty{border:1px dashed var(--dsw-alias-border-l2,#d4d4d8);border-radius:10px;padding:36px 20px;text-align:center;color:var(--dsw-alias-label-tertiary,#8a8a8f);font-size:12px;line-height:1.9}",
 	".dsh-rtr-notice{position:sticky;top:0;z-index:2;font-size:12px;padding:6px 12px;border-radius:8px;background:rgba(76,110,245,.08);border:1px solid rgba(76,110,245,.25);color:var(--dsw-alias-label-primary,#1a1a1a)}",
@@ -765,7 +776,7 @@ var CSS = [
 	".dsh-rtr-tl{display:flex;flex-direction:column}",
 	".dsh-rtr-tl-item{display:flex;gap:12px;align-items:stretch;min-width:0}",
 	".dsh-rtr-tl-rail{display:flex;flex-direction:column;align-items:center;width:18px;flex:none}",
-	".dsh-rtr-tl-dot{width:10px;height:10px;border-radius:50%;background:var(--dsw-alias-accent,#4c6ef5);border:2px solid var(--dsw-alias-bg-base,#fff);flex:none;margin-top:22px;z-index:1}",
+	".dsh-rtr-tl-dot{width:10px;height:10px;border-radius:50%;background:var(--dsw-alias-state-business-primary,#4c6ef5);border:2px solid var(--dsw-alias-bg-base,#fff);flex:none;margin-top:22px;z-index:1}",
 	".dsh-rtr-tl-line{flex:1;width:2px;background:var(--dsw-alias-border-l2,#d4d4d8);margin-top:4px}",
 	".dsh-rtr-tl-item:last-child .dsh-rtr-tl-line{display:none}",
 	".dsh-rtr-tl-body{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;padding-bottom:12px}",
@@ -967,13 +978,14 @@ function StatsPanel(props) {
 				Object.keys(STATUS_LABEL).map(function (st) {
 					return React.createElement("span", {
 						key: st, className: "dsh-rtr-typechip",
-						style: props.statusFilter === st ? { borderColor: "var(--dsw-alias-accent,#4c6ef5)", color: "var(--dsw-alias-accent,#4c6ef5)" } : null,
+						style: props.statusFilter === st ? { borderColor: "var(--dsw-alias-state-business-primary,#4c6ef5)", color: "var(--dsw-alias-state-business-primary,#4c6ef5)" } : null,
 						onClick: function () { props.onStatus(props.statusFilter === st ? "" : st); }
 					}, STATUS_LABEL[st] + " " + (stats.byStatus[st] || 0));
 				})),
 			distSection(props.typeLabel, (stats.byType || []).map(function (t) { return { key: t.type, label: t.type, count: t.count }; })),
 			props.mode === "code-audit" ? distSection("CWE 分布", (stats.byCwe || []).map(function (c) { return { key: c.cwe, label: c.cwe, count: c.count }; })) : null,
 			props.mode === "code-audit" ? distSection("来源", (stats.bySource || []).map(function (c) { return { key: c.source, label: SOURCE_LABEL[c.source] || c.source, count: c.count }; })) : null,
+			props.mode === "code-audit" ? distSection("审计形态", (stats.byAuditMode || []).map(function (c) { return { key: c.auditMode, label: AUDIT_MODE_LABEL[c.auditMode] || c.auditMode, count: c.count }; })) : null,
 			props.mode === "binary-analysis" ? distSection("家族分布", (stats.byFamily || []).map(function (c) { return { key: c.family, label: c.family, count: c.count }; })) : null,
 			props.mode === "binary-analysis" ? distSection("壳/保护分布", (stats.byPacker || []).map(function (c) { return { key: c.packer, label: c.packer, count: c.count }; })) : null,
 			props.mode === "pentest" ? distSection("目标分布", (stats.byTarget || []).filter(function (t) { return t.target !== "（未填）"; }).map(function (t) { return { key: t.target, label: t.target, count: t.count, onClick: function () { props.onTarget(t.target); } }; })) : null));
@@ -1124,7 +1136,8 @@ function Detail(props) {
 			React.createElement("span", null, audit ? "sink 位置" : "地址", React.createElement("b", null, f.target || "未填写")),
 			React.createElement("span", null, "发现时间", React.createElement("b", null, fmtTime(f.createdAt))),
 			f.verifiedAt ? React.createElement("span", null, "验证时间", React.createElement("b", null, fmtTime(f.verifiedAt))) : null,
-			audit ? React.createElement("span", null, "来源", React.createElement("b", null, SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin)) : null),
+			audit ? React.createElement("span", null, "来源", React.createElement("b", null, SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin)) : null,
+			audit && f.auditMode ? React.createElement("span", null, "审计形态", React.createElement("b", { style: f.auditMode === "dynamic" ? { color: "#2f9e63" } : null }, AUDIT_MODE_LABEL[f.auditMode] || f.auditMode)) : null),
 		f.description ? Block({ title: binary ? "定性依据（结论摘要）" : "描述" }, f.description) : null,
 		!audit && f.impact ? Block({ title: binary ? "能力与危害" : "影响证明" }, f.impact) : null,
 		mode === "pentest" && (f.baseline || f.diffEvidence || f.markerEcho) ? React.createElement("div", { className: "dsh-rtr-duo" },
@@ -1319,6 +1332,7 @@ function ModePage(props) {
 				React.createElement("span", { className: "dsh-rtr-seq" }, "#" + f.seq),
 				React.createElement(Chip, { severity: f.severity }),
 				React.createElement("span", { className: "dsh-rtr-st dsh-rtr-st-" + f.status }, (stLabelSet[f.status] || f.status)),
+				mode === "code-audit" && f.auditMode ? React.createElement("span", { className: "dsh-rtr-am dsh-rtr-am-" + f.auditMode }, AUDIT_MODE_LABEL[f.auditMode] || f.auditMode) : null,
 				React.createElement("span", { className: "dsh-rtr-title" }, f.title),
 				React.createElement("span", { className: "dsh-rtr-summ" }, f.summary || ""),
 				React.createElement("span", { className: "dsh-rtr-time" }, fmtTime(f.updatedAt)),
@@ -1466,7 +1480,7 @@ function ModePage(props) {
 }
 
 
-//#region 任务台账大屏（会话作战视图：聚合本会话七模式数据）
+//#region 任务台账大屏（跨会话作战视图：聚合九模式数据）
 
 var SCR_MODE_LABEL = { redteam: "研究员·台账", pentest: "渗透测试", "code-audit": "代码审计", "binary-analysis": "二进制分析", "attack-defense": "攻防评估", "av-evasion": "免杀对抗", "incident-response": "应急溯源", "cloud-security": "云安全", "ctf-solver": "CTF 解题" };
 var SCR_MODE_VOCAB = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver"];
@@ -1477,6 +1491,7 @@ function BigScreen(props) {
 	var range = useState("today"); var setRange = range[1];
 	var customFrom = useState(""); var setCustomFrom = customFrom[1];
 	var customTo = useState(""); var setCustomTo = customTo[1];
+	var scrPg = useState(0); var setScrPg = scrPg[1];
 
 	var load = useCallback(function () {
 		var rt = rangeIso(range[0], customFrom[0], customTo[0]);
@@ -1513,6 +1528,10 @@ function BigScreen(props) {
 		return sevColors[s] + " " + from.toFixed(1) + "% " + (acc / sevTotal * 100).toFixed(1) + "%";
 	}).join(",");
 	var stRows = ov.recent || [];
+	var PG_SIZE = 12;
+	var pgMax = Math.max(0, Math.ceil(stRows.length / PG_SIZE) - 1);
+	var pgCur = Math.min(scrPg[0], pgMax);
+	var pgRows = stRows.slice(pgCur * PG_SIZE, pgCur * PG_SIZE + PG_SIZE);
 	var modeOf = function (m) { return SCR_MODE_LABEL[m] || m; };
 	return React.createElement("div", { className: "dsh-rtr-screen" },
 		React.createElement("div", { className: "dsh-scr-inner" },
@@ -1520,10 +1539,10 @@ function BigScreen(props) {
 				React.createElement("div", { className: "dsh-scr-live" }, React.createElement("span", { className: "dsh-scr-dot" }), "LIVE · 跨会话全局"),
 				React.createElement("div", { className: "dsh-scr-title" }, "REDTEAM 任务台账作战大屏", React.createElement("small", null, "GLOBAL LEDGER · 九模式跨会话聚合")),
 				React.createElement("div", { className: "dsh-scr-clockwrap" },
-					React.createElement("select", { className: "dsh-scr-range", value: range[0], onChange: function (e) { setRange(e.target.value); } },
+					React.createElement("select", { className: "dsh-scr-range", value: range[0], onChange: function (e) { setRange(e.target.value); setScrPg(0); } },
 						[["today", "今日"], ["3d", "近3天"], ["7d", "近7天"], ["30d", "近30天"], ["all", "全部"], ["custom", "自定义"]].map(function (r) { return React.createElement("option", { key: r[0], value: r[0] }, r[1]); })),
-					range[0] === "custom" ? React.createElement("input", { type: "date", className: "dsh-scr-date", value: customFrom[0], onChange: function (e) { setCustomFrom(e.target.value); } }) : null,
-					range[0] === "custom" ? React.createElement("input", { type: "date", className: "dsh-scr-date", value: customTo[0], onChange: function (e) { setCustomTo(e.target.value); } }) : null,
+					range[0] === "custom" ? React.createElement("input", { type: "date", className: "dsh-scr-date", value: customFrom[0], onChange: function (e) { setCustomFrom(e.target.value); setScrPg(0); } }) : null,
+					range[0] === "custom" ? React.createElement("input", { type: "date", className: "dsh-scr-date", value: customTo[0], onChange: function (e) { setCustomTo(e.target.value); setScrPg(0); } }) : null,
 					React.createElement("span", { className: "dsh-scr-clock" }, clock[0] || "--:--:--"))),
 			React.createElement("div", { className: "dsh-scr-hero" },
 				React.createElement("div", { className: "dsh-scr-heronums" },
@@ -1563,17 +1582,22 @@ function BigScreen(props) {
 						React.createElement("h4", null, "任务流水 · 最新登记"),
 						stRows.length === 0
 							? React.createElement("div", { className: "dsh-scr-empty" }, "该时间范围内暂无登记数据")
-							: React.createElement("div", { className: "dsh-scr-tablewrap" }, React.createElement("table", { className: "dsh-scr-table" },
-								React.createElement("thead", null, React.createElement("tr", null, React.createElement("th", null, "时间"), React.createElement("th", null, "模式"), React.createElement("th", null, "名称"), React.createElement("th", null, "类型"), React.createElement("th", null, "会话"), React.createElement("th", null, "状态"))),
-								React.createElement("tbody", null, stRows.map(function (f) {
-									return React.createElement("tr", { key: f.sessionId + "-" + f.mode + "-" + f.id },
-										React.createElement("td", null, fmtTime(f.updatedAt).slice(5)),
-										React.createElement("td", null, modeOf(f.mode)),
-										React.createElement("td", null, f.title),
-										React.createElement("td", null, f.type || "-"),
-										React.createElement("td", { title: f.sessionId }, f.sessionId ? String(f.sessionId).replace(/^session-/, "").slice(0, 8) : "-"),
-										React.createElement("td", null, React.createElement("span", { className: "dsh-scr-sev dsh-scr-sev-" + f.severity }, SEVERITY_LABEL[f.severity] || f.severity)));
-								})))))), 
+							: React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 8, minHeight: 0, flex: 1 } },
+								React.createElement("div", { className: "dsh-scr-tablewrap", style: { flex: 1, minHeight: 0 } }, React.createElement("table", { className: "dsh-scr-table" },
+									React.createElement("thead", null, React.createElement("tr", null, React.createElement("th", null, "时间"), React.createElement("th", null, "模式"), React.createElement("th", null, "名称"), React.createElement("th", null, "类型"), React.createElement("th", null, "会话"), React.createElement("th", null, "状态"))),
+									React.createElement("tbody", null, pgRows.map(function (f) {
+										return React.createElement("tr", { key: f.sessionId + "-" + f.mode + "-" + f.id },
+											React.createElement("td", null, fmtTime(f.updatedAt).slice(5)),
+											React.createElement("td", null, modeOf(f.mode)),
+											React.createElement("td", null, f.title),
+											React.createElement("td", null, f.type || "-"),
+											React.createElement("td", { title: f.sessionId }, f.sessionId ? String(f.sessionId).replace(/^session-/, "").slice(0, 8) : "-"),
+											React.createElement("td", null, React.createElement("span", { className: "dsh-scr-sev dsh-scr-sev-" + f.severity }, SEVERITY_LABEL[f.severity] || f.severity)));
+									}))),
+								pgMax > 0 ? React.createElement("div", { className: "dsh-rtr-pager", style: { justifyContent: "center" } },
+									React.createElement(Btn, { disabled: pgCur <= 0, onClick: function () { setScrPg(pgCur - 1); } }, "上一页"),
+									"第 " + (pgCur + 1) + " / " + (pgMax + 1) + " 页 · 共 " + stRows.length + " 条",
+									React.createElement(Btn, { disabled: pgCur >= pgMax, onClick: function () { setScrPg(pgCur + 1); } }, "下一页")) : null)))), 
 				React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } },
 					React.createElement("div", { className: "dsh-scr-panel" },
 						React.createElement("h4", null, "风险等级占比"),
@@ -1622,7 +1646,7 @@ function ResultsView(props) {
 			React.createElement("button", {
 				key: "__ledger__", type: "button",
 				className: "dsh-rtr-side-item" + (mode[0] === "__ledger__" ? " is-active" : ""),
-				style: { borderColor: "var(--dsw-alias-accent,#4c6ef5)", marginBottom: 6 },
+				style: { borderColor: "var(--dsw-alias-state-business-primary,#4c6ef5)", marginBottom: 6 },
 				onClick: function () { setMode("__ledger__"); }
 			}, "任务台账视图", React.createElement("span", { className: "dsh-rtr-count" }, Object.values(counts[0] || {}).reduce(function (a, b) { return a + b; }, 0))),
 			MODES.map(function (m) {

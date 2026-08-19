@@ -24,13 +24,17 @@
 | summary | 核心简介一句话 | 列表页展示；控制在一句 |
 | type | 漏洞/战果/交付物类型 | 按各模式类型词表（如 SQLi/XSS/未授权；可含 CWE） |
 | description | 描述 | 影响与成因；战果=内容摘要（凭据数/数据范围/权限级） |
-| poc | 测试过程/复现 EXP/使用方法 | 完整可复现步骤或脚本；代码审计填复现条件或利用前提 |
+| poc | 测试过程 + **完整 EXP（必填）** | 复杂漏洞=复现脚本（`exp/<finding-id>.py`，含用法）；简单漏洞=可直接复现的完整请求/命令/输入——只写「复现条件/利用前提」不算合格 |
 | evidence | 证据引用 | evidence-index 编号/产物路径；审计=双链比对文件 `artifacts/<id>-chains.md` |
-| fix | 修复建议 | 针对该问题点；免杀类=检测侧建议 |
+| fix | 修复建议（**每条 finding 必填**） | 针对该问题点的具体修法；免杀类=检测侧建议 |
 | status | pending/verified/false-positive/fixed | 默认 pending；已复核才填 verified/false-positive |
 | evidenceLevel | confirmed/partial/unknown | 证据等级，默认 unknown |
 
-## 代码审计富字段（findings 板式）
+## 代码审计富字段（findings 板式；**登记时必填组**：auditMode / chain / chainTracer / chainVerdict / snippetEntry / snippetSink / poc（完整 EXP） / fix）
+
+| 字段 | 语义 |
+|---|---|
+| auditMode | **审计形态（代审必填）**：`static`=静态审计（未提供本地复现环境，或环境未复现生效——代码层审计结果一律归此）；`dynamic`=动态·验证成功（用户提供的本地可用环境**真实复现生效**才归此）。提供了本地环境时审计自动动态优先，但未复现生效的 finding 仍标 static |
 
 | 字段 | 语义 |
 |---|---|

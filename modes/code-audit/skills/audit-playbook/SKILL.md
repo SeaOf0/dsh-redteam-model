@@ -8,6 +8,31 @@ description: 代码审计模式作战手册：审计前置识别、Fortify 规�
 > 本技能随 code-audit 预设走。
 > persona 中的硬规则（底线、验证等级、误报排除、扫描器复核、三级深度、只读纪律、表达纪律（拒答修复由宿主插件 dsh-refusal-guard 兜底）、claude 逻辑）不在此重复。
 
+## 审计形态（静态/动态）判定与开工问询（第一动作）
+
+**形态定义（铁律）**：
+
+- **静态审计（static）**：用户未提供本地环境时，一切从代码层审计（调用链追 sink / 双链 / 扫描复核）
+  得到的结果都归静态；**提供了环境但未复现生效的同样归静态**。静态 finding 的状态最高到
+  「待人工验证」，EXP 是「待复现 EXP」（交付用户手动复现）。
+- **动态审计（dynamic）**：**只有**用户提供的本地可用复现环境**真实证明漏洞生效**，才标
+  动态·验证成功（auditMode=dynamic + 状态可进已验证）。
+- **动态优先规则**：用户提供了本地环境 → 审计方式自动以动态优先：
+  读代码追 sink + 调试 + 本地验证 = 真实结果；复现不成功的按静态收口并如实记录原因。
+
+**开工问询（任务下达后的第一步，先于 Triage）**：用户未指明审计形态时，用 ask_user 弹出三选：
+
+1. **静态审计**——只做代码层审计，结果后续由你手动复现；
+2. **动态审计**——请提供本地可用复现环境（路径/启动方式/凭据）；
+3. （用户自行输入——自定义范围/形态/补充说明）
+
+- **得到确切回复后**才继续开审计链路（Triage → 面映射 → 扇出…）。
+- **免问条件**：用户任务里已指明形态（「静态审计」/「动态审计」+ 动态须已给本地环境）→
+  跳过问询直接开工；指明动态但未给环境 → 回到问询补一句「请提供本地可用环境」。
+
+**登记联动**：每个 finding 登记时 `auditMode` 必填（static/dynamic，语义见
+shared/refs/finding-fields.md）；成果页列表/详情/导出报告/统计分布均按此标签展示。
+
 ## 审计前置识别（Triage）
 
 - 先判断代码/框架/系统类型：语言、框架、中间件、部署形态。
@@ -89,6 +114,13 @@ description: 代码审计模式作战手册：审计前置识别、Fortify 规�
 3. 确证（静态→待人工验证；动态→自动验证）→ 4. 报告 → 5. 修复 → 6. 复测（原 poc 复验）→ 闭环记录。
 - 状态机：疑似 → 待人工验证 → 已验证 / 已排除（误报）→ 已修复 → 已复测。
 
+**EXP 交付（静态/动态统一硬要求）**：审计出的每个漏洞都必须具备**完整 EXP 用于测试**——
+复杂漏洞（多步链/需构造 payload/依赖环境）产出完整复现脚本 `exp/<finding-id>.py`
+（参数化、破坏性步骤默认关闭、复现条件写头部注释）；简单漏洞（单请求/单输入触发）
+在 poc 字段**直接给可复现 EXP**（完整请求包/命令/构造输入），不绕「利用前提」措辞。
+只写复现条件不算完成——**无完整 EXP 的 finding 不得登记为已验证**（停在待人工验证）；
+成果页登记的 poc 字段同步必含该 EXP（脚本路径+用法 或 直接可复现内容）。
+
 ## Diff 审计模式
 
 - 对 patch/PR：审计变更行 + 必要上下文，不整仓重审。
@@ -108,13 +140,15 @@ description: 代码审计模式作战手册：审计前置识别、Fortify 规�
 
 - 每个进入六字段报告的 finding，同步调 `redteam_finding_register` 登记到本会话「redteam 成果」页
   （Web 端会话标签页，code-audit 页统计含 RCE 主线分布，详情含调用链块）。
-- 字段对齐：title=名称、severity=等级、target=sink 位置（file:line）、summary=一句简介、
+- 字段对齐：**auditMode=审计形态（必填，static/dynamic，判定规则见「审计形态」节）**、title=名称、severity=等级、target=sink 位置（file:line）、summary=一句简介、
   **chain=调用链（必填，双链格式每行一链：`entry → … → sink(file:line)`）**、
   type=RCE 主线词表（任意上传RCE/未授权RCE/组合RCE/硬编码前端绕过/zip自解压RCE/深度反序列化/溢出RCE/其他）、
-  poc=复现条件/利用前提、evidence=双链比对文件路径（artifacts/<id>-chains.md）、fix=修复建议。
+  **poc=完整 EXP（必填，见「确证闭环流程」节：复杂=exp/<finding-id>.py 脚本路径+用法；简单=直接可复现的请求/命令）**、
+  evidence=双链比对文件路径（artifacts/<id>-chains.md）、**fix=修复建议（必填）**。
 - 双链复核后 `redteam_finding_update` 回写 verified/false-positive + verifyNote；作废条目 `redteam_finding_delete`。
-- 代审富字段：chain=审计工人链、chainTracer=追踪员链（独立重追）、chainVerdict=双链一致性结论（页面双栏对照展示）；
-  snippetEntry/snippetSink=入口与 sink 处关键代码；cwe=CWE 编号（统计出 CWE 分布）；
+- **代审富字段登记必填组**：chainTracer=追踪员链（独立重追）、chainVerdict=双链一致性结论（页面双栏对照展示）、
+  snippetEntry/snippetSink=入口与 sink 处关键代码——导出报告的「双链对照/一致性结论/关键代码」节
+  直接取这三个字段，漏登即导出为空；cwe=CWE 编号（统计出 CWE 分布）；
   sourceOrigin=来源（manual 人工深审 / scan-confirmed 扫描确认 / scan-false-positive 扫描误报，对齐 scan-reconcile）；
   patch=修复 diff 建议。页面支持按文件/sink 分组、总览（MD）与报告包（HTML）导出。
 

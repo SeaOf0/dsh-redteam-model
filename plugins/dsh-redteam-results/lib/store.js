@@ -63,6 +63,7 @@ CREATE TABLE IF NOT EXISTS findings (
 	identity    TEXT NOT NULL DEFAULT '',
 	permission  TEXT NOT NULL DEFAULT '',
 	resource    TEXT NOT NULL DEFAULT '',
+	audit_mode  TEXT NOT NULL DEFAULT '',
 	PRIMARY KEY (session_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_findings_session_mode ON findings(session_id, mode, seq);
@@ -75,7 +76,7 @@ CREATE TABLE IF NOT EXISTS session_meta (
 );
 `;
 
-const COLS = "session_id,id,seq,mode,title,severity,status,evidence_level,type,target,summary,description,poc,chain,evidence,fix,verify_note,created_at,updated_at,verified_at,baseline,diff_evidence,marker_echo,impact,cvss,retest_note,retest_at,request_pkt,response_pkt,snippet_entry,snippet_sink,chain_tracer,chain_verdict,cwe,patch,source_origin,sample_hash,family,packer,iocs,detection_rule,timeline_at,entry,identity,permission,resource";
+const COLS = "session_id,id,seq,mode,title,severity,status,evidence_level,type,target,summary,description,poc,chain,evidence,fix,verify_note,created_at,updated_at,verified_at,baseline,diff_evidence,marker_echo,impact,cvss,retest_note,retest_at,request_pkt,response_pkt,snippet_entry,snippet_sink,chain_tracer,chain_verdict,cwe,patch,source_origin,sample_hash,family,packer,iocs,detection_rule,timeline_at,entry,identity,permission,resource,audit_mode";
 const N_COLS = COLS.split(",").length;
 
 /** 存量库新列（逐列 ALTER，已存在则忽略）。 */
@@ -84,7 +85,9 @@ const MIGRATION_COLUMNS = [
 	"request_pkt", "response_pkt", "snippet_entry", "snippet_sink", "chain_tracer", "chain_verdict",
 	"cwe", "patch", "source_origin", "chain", "sample_hash", "family", "packer", "iocs", "detection_rule", "timeline_at",
 	"entry", "identity", "permission", "resource"
-];
+
+	, "audit_mode"
+];;
 
 /** 打开（或创建）库并预编译语句。dbPath 传 ":memory:" 供测试。 */
 export function openStore(dbPath) {
@@ -100,7 +103,7 @@ export function openStore(dbPath) {
 		insert: db.prepare(`INSERT INTO findings (${COLS}) VALUES (${"?,".repeat(N_COLS - 1)}?)`),
 		get: db.prepare(`SELECT ${COLS} FROM findings WHERE session_id = ? AND id = ?`),
 		nextSeq: db.prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM findings WHERE session_id = ? AND mode = ?"),
-		update: db.prepare(`UPDATE findings SET title=?, severity=?, status=?, evidence_level=?, type=?, target=?, summary=?, description=?, poc=?, chain=?, evidence=?, fix=?, verify_note=?, updated_at=?, verified_at=?, baseline=?, diff_evidence=?, marker_echo=?, impact=?, cvss=?, retest_note=?, retest_at=?, request_pkt=?, response_pkt=?, snippet_entry=?, snippet_sink=?, chain_tracer=?, chain_verdict=?, cwe=?, patch=?, source_origin=?, sample_hash=?, family=?, packer=?, iocs=?, detection_rule=?, timeline_at=?, entry=?, identity=?, permission=?, resource=? WHERE session_id=? AND id=?`),
+		update: db.prepare(`UPDATE findings SET title=?, severity=?, status=?, evidence_level=?, type=?, target=?, summary=?, description=?, poc=?, chain=?, evidence=?, fix=?, verify_note=?, updated_at=?, verified_at=?, baseline=?, diff_evidence=?, marker_echo=?, impact=?, cvss=?, retest_note=?, retest_at=?, request_pkt=?, response_pkt=?, snippet_entry=?, snippet_sink=?, chain_tracer=?, chain_verdict=?, cwe=?, patch=?, source_origin=?, sample_hash=?, family=?, packer=?, iocs=?, detection_rule=?, timeline_at=?, entry=?, identity=?, permission=?, resource=?, audit_mode=? WHERE session_id=? AND id=?`),
 		remove: db.prepare("DELETE FROM findings WHERE session_id = ? AND id = ?"),
 		listAll: db.prepare(`SELECT ${COLS} FROM findings WHERE session_id = ? AND mode = ? ORDER BY seq DESC`),
 		listAllAll: db.prepare(`SELECT ${COLS} FROM findings WHERE session_id = ? ORDER BY updated_at DESC, seq DESC`),
@@ -122,14 +125,14 @@ const cleanText = (v, max = 20000) => {
 };
 
 /** 追加的可选富字段（camelCase → 列名映射）。 */
-const EXTRA_FIELDS = ["baseline", "diffEvidence", "markerEcho", "impact", "cvss", "retestNote", "retestAt", "requestPkt", "responsePkt", "snippetEntry", "snippetSink", "chainTracer", "chainVerdict", "cwe", "patch", "sampleHash", "family", "packer", "iocs", "detectionRule", "timelineAt", "entry", "identity", "permission", "resource"];
+const EXTRA_FIELDS = ["baseline", "diffEvidence", "markerEcho", "impact", "cvss", "retestNote", "retestAt", "requestPkt", "responsePkt", "snippetEntry", "snippetSink", "chainTracer", "chainVerdict", "cwe", "patch", "sampleHash", "family", "packer", "iocs", "detectionRule", "timelineAt", "entry", "identity", "permission", "resource", "auditMode"];
 const COL_OF = {
 	baseline: "baseline", diffEvidence: "diff_evidence", markerEcho: "marker_echo", impact: "impact",
 	cvss: "cvss", retestNote: "retest_note", retestAt: "retest_at", requestPkt: "request_pkt",
 	responsePkt: "response_pkt", snippetEntry: "snippet_entry", snippetSink: "snippet_sink",
 	chainTracer: "chain_tracer", chainVerdict: "chain_verdict", cwe: "cwe", patch: "patch",
 	sampleHash: "sample_hash", family: "family", packer: "packer", iocs: "iocs", detectionRule: "detection_rule",
-	timelineAt: "timeline_at", entry: "entry", identity: "identity", permission: "permission", resource: "resource"
+	timelineAt: "timeline_at", entry: "entry", identity: "identity", permission: "permission", resource: "resource", auditMode: "audit_mode"
 };
 
 function rowToFinding(row) {
@@ -174,7 +177,7 @@ export function registerFinding(store, sessionId, mode, input) {
 		f.description, f.poc, f.chain, f.evidence, f.fix, f.verifyNote, f.createdAt, f.updatedAt, f.verifiedAt,
 		f.baseline, f.diffEvidence, f.markerEcho, f.impact, f.cvss, f.retestNote, f.retestAt, f.requestPkt,
 		f.responsePkt, f.snippetEntry, f.snippetSink, f.chainTracer, f.chainVerdict, f.cwe, f.patch, f.sourceOrigin,
-		f.sampleHash, f.family, f.packer, f.iocs, f.detectionRule, f.timelineAt, f.entry, f.identity, f.permission, f.resource
+		f.sampleHash, f.family, f.packer, f.iocs, f.detectionRule, f.timelineAt, f.entry, f.identity, f.permission, f.resource, f.auditMode
 	);
 	return f;
 }
@@ -209,7 +212,7 @@ export function updateFinding(store, sessionId, mode, id, patch = {}) {
 		next.baseline, next.diffEvidence, next.markerEcho, next.impact, next.cvss, next.retestNote, next.retestAt,
 		next.requestPkt, next.responsePkt, next.snippetEntry, next.snippetSink, next.chainTracer, next.chainVerdict,
 		next.cwe, next.patch, next.sourceOrigin, next.sampleHash, next.family, next.packer, next.iocs, next.detectionRule, next.timelineAt,
-		next.entry, next.identity, next.permission, next.resource, sessionId, id
+		next.entry, next.identity, next.permission, next.resource, next.auditMode, sessionId, id
 	);
 	return { ...prev, ...next };
 }
@@ -265,6 +268,7 @@ function statsOf(all) {
 	const typeMap = new Map();
 	const cweMap = new Map();
 	const sourceMap = new Map();
+	const auditModeMap = new Map();
 	const familyMap = new Map();
 	const packerMap = new Map();
 	const targetMap = new Map();
@@ -278,6 +282,7 @@ function statsOf(all) {
 		if (f.family) familyMap.set(f.family, (familyMap.get(f.family) ?? 0) + 1);
 		if (f.packer) packerMap.set(f.packer, (packerMap.get(f.packer) ?? 0) + 1);
 		sourceMap.set(f.sourceOrigin || "manual", (sourceMap.get(f.sourceOrigin || "manual") ?? 0) + 1);
+		if (f.auditMode) auditModeMap.set(f.auditMode, (auditModeMap.get(f.auditMode) ?? 0) + 1);
 		targetMap.set(f.target || "（未填）", (targetMap.get(f.target || "（未填）") ?? 0) + 1);
 		if (f.updatedAt > lastAt) lastAt = f.updatedAt;
 	}
@@ -290,6 +295,7 @@ function statsOf(all) {
 		byType: top(typeMap, 8).map(({ key, count }) => ({ type: key, count })),
 		byCwe: top(cweMap, 8).map(({ key, count }) => ({ cwe: key, count })),
 		bySource: top(sourceMap, 4).map(({ key, count }) => ({ source: key, count })),
+		byAuditMode: top(auditModeMap, 2).map(({ key, count }) => ({ auditMode: key, count })),
 		byTarget: top(targetMap, 8).map(({ key, count }) => ({ target: key, count })),
 		byFamily: top(familyMap, 8).map(({ key, count }) => ({ family: key, count })),
 		byPacker: top(packerMap, 6).map(({ key, count }) => ({ packer: key, count })),
@@ -361,7 +367,7 @@ export function ledgerOverview(store, sessionId) {
 		if (byEvidence[row.evidence_level] !== undefined) byEvidence[row.evidence_level] += 1;
 		if (row.updated_at > lastAt) lastAt = row.updated_at;
 	}
-	const recent = rows.slice(0, 24).map(rowToFinding);
+	const recent = rows.slice(0, 120).map(rowToFinding);
 	return { total: rows.length, byMode, byStatus, bySeverity, byEvidence, recent, lastAt };
 }
 
@@ -387,7 +393,7 @@ export function ledgerOverviewAll(store, { from = "", to = "" } = {}) {
 		if (byEvidence[row.evidence_level] !== undefined) byEvidence[row.evidence_level] += 1;
 		if (row.updated_at > lastAt) lastAt = row.updated_at;
 	}
-	const recent = rows.filter(inRange).slice(0, 24).map((row) => ({ ...rowToFinding(row), sessionId: row.session_id }));
+	const recent = rows.filter(inRange).slice(0, 120).map((row) => ({ ...rowToFinding(row), sessionId: row.session_id }));
 	return { total, sessions: sessions.size, byMode, byStatus, bySeverity, byEvidence, recent, lastAt, range: { from, to } };
 }
 
