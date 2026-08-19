@@ -840,6 +840,11 @@ function rangeIso(sel, cf, ct) {
 	return ["", ""];
 }
 var RANGE_OPTIONS = [["today", "今日"], ["3d", "近3天"], ["7d", "近7天"], ["30d", "近30天"], ["all", "全部"], ["custom", "自定义"]];
+/** 空态时间范围提示：当前范围可能滤掉了历史成果。 */
+function rangeHint(sel) {
+	var names = { today: "今日", "3d": "近3天", "7d": "近7天", "30d": "近30天", all: "全部", custom: "自定义" };
+	return "当前时间范围：" + (names[sel] || sel) + "——历史成果请切换上方时间范围";
+}
 /** 时间范围选择器（大屏与模式页共用）。props: range/customFrom/customTo/onChange(sel,cf,ct) */
 function RangePicker(props) {
 	return React.createElement("span", { className: "dsh-rtr-rangepicker" },
@@ -1171,7 +1176,7 @@ function ModePage(props) {
 	var selected = useState({}); var setSelected = selected[1];
 	var confirmDel = useState(""); var setConfirmDel = confirmDel[1];
 	var editingMeta = useState(false); var setEditingMeta = editingMeta[1];
-	var range = useState("today"); var setRange = range[1];
+	var range = useState("all"); var setRange = range[1];
 	var customFrom = useState(""); var setCustomFrom = customFrom[1];
 	var customTo = useState(""); var setCustomTo = customTo[1];
 	var rt = rangeIso(range[0], customFrom[0], customTo[0]);
@@ -1239,7 +1244,21 @@ function ModePage(props) {
 	function toggle(f) { setConfirmDel(""); setExpanded(expanded[0] === f.id ? "" : f.id); }
 	function onVerify(f) {
 		api("finding.verify", { sessionId: f.sessionId || sessionId, mode: mode, id: f.id })
-			.then(function (r) { setNotice(r && r.ok ? "验证请求已发送到会话（# " + f.seq + " " + f.title + "），复核后状态由会话回写" : "验证请求失败：" + ((r && r.error) || "未知错误")); })
+			.then(function (r) {
+				if (r && r.ok) { setNotice("验证请求已发送到原会话（# " + f.seq + " " + f.title + "），复核后状态由会话回写"); return; }
+				if (r && r.unreachable) {
+					// 原会话已删/不可达：人工复核兜底——用户确认后直接回写状态与注记
+					var ok = window.confirm(r.error + "\n\n是否人工复核后直接标记？\n确定=标记「已验证」，取消=改标「已失效」，关闭对话框=不做标记");
+					if (!ok && !window.confirm("标记为「已失效（误报）」？")) { setNotice("已取消标记——成果保持原状态"); return; }
+					var status = ok ? "verified" : "false-positive";
+					var note = window.prompt("人工复核结论（写入验证记录）：", "原会话不可达，人工复核" + (ok ? "通过" : "判伪")) || "";
+					api("finding.mark", { sessionId: f.sessionId || sessionId, id: f.id, status: status, verifyNote: note })
+						.then(function (m) { setNotice(m && m.ok ? "已人工标记 #" + f.seq + " → " + (status === "verified" ? "已验证" : "已失效") : "标记失败：" + ((m && m.error) || "未知")); if (grouped[0]) fetchGroups(); else fetchList({}); })
+						.catch(function (e) { setNotice("标记失败：" + (e && e.message ? e.message : e)); });
+					return;
+				}
+				setNotice("验证请求失败：" + ((r && r.error) || "未知错误"));
+			})
 			.catch(function (e) { setNotice("验证请求失败：" + (e && e.message ? e.message : e)); });
 	}
 	function onDelete(f) {
@@ -1381,6 +1400,7 @@ function ModePage(props) {
 		listBody = cpRows.length === 0
 			? React.createElement("div", { className: "dsh-rtr-empty" },
 				meta.empty, React.createElement("br", null),
+				rangeHint(range[0]), React.createElement("br", null),
 				"会话内模型会把攻击路径通过 redteam_finding_register 登记到这里（也可让模型补登记：\"把攻击路径登记到成果页\"）。")
 			: React.createElement("div", { className: "dsh-rtr-cp" }, cpRows.map(cpItem));
 	} else if (meta.archetype === "timeline") {
@@ -1388,12 +1408,13 @@ function ModePage(props) {
 		listBody = chronoRows.length === 0
 			? React.createElement("div", { className: "dsh-rtr-empty" },
 				meta.empty, React.createElement("br", null),
+				rangeHint(range[0]), React.createElement("br", null),
 				"会话内模型会把攻击链节点通过 redteam_finding_register 登记到这里（也可让模型补登记：\"把攻击链节点登记到成果页\"）。")
 			: React.createElement("div", { className: "dsh-rtr-tl" }, chronoRows.map(tlItem));
 	} else if (grouped[0]) {
 		var groups = view.groups || [];
 		listBody = groups.length === 0
-			? React.createElement("div", { className: "dsh-rtr-empty" }, meta.empty)
+			? React.createElement("div", { className: "dsh-rtr-empty" }, meta.empty, React.createElement("br", null), rangeHint(range[0]))
 			: groups.map(function (g) {
 				return React.createElement("div", { key: g.target },
 					React.createElement("div", { className: "dsh-rtr-grouphead" }, g.target, React.createElement("span", { className: "dsh-rtr-count" }, g.count + " 项")),

@@ -180,9 +180,20 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		if (!finding) return { ok: false, error: "finding 不存在" };
 		const agents = resolveAgents(ctx);
 		const agent = agents?.get?.(sessionId);
-		if (!agent || typeof agent.followup !== "function") return { ok: false, error: "会话不可达（代理未运行）" };
+		if (!agent || typeof agent.followup !== "function") return { ok: false, unreachable: true, error: "原会话不可达（会话可能已删除或代理未运行）——可人工复核后使用「标记验证结果」兜底" };
 		agent.followup({ id: `rtr-${Date.now()}-${finding.seq}`, content: [{ type: "text", text: verifyMessage(finding) }], source: { kind: "user" } });
 		return { ok: true };
+	}
+	if (endpoint === "finding.mark") {
+		// 原会话已删/不可达时的人工复核兜底：直接回写状态与复核注记（UI 动作，不经模型工具）。
+		const sessionId = String(p.sessionId ?? "");
+		const id = String(p.id ?? "");
+		const finding = getFinding(st, sessionId, id);
+		if (!finding) return { ok: false, error: "finding 不存在" };
+		const status = ["verified", "false-positive", "pending"].includes(p.status) ? p.status : undefined;
+		if (status === undefined) return { ok: false, error: "status 必须是 verified/false-positive/pending" };
+		const updated = updateFinding(st, sessionId, finding.mode, id, { status, verifyNote: String(p.verifyNote ?? "") || undefined });
+		return { ok: true, id: updated.id, status: updated.status, verifyNote: updated.verifyNote };
 	}
 	throw new Error(`unknown endpoint ${endpoint}`);
 }
