@@ -1,2 +1,2 @@
 name: 二进制分析模式
-description: 二进制分析：恶意样本逆向、脱壳还原（app 壳与 Windows IAT 修复），字节/指令级证据。
+description: 二进制分析：病毒分析、逆向破解、脱壳还原与固件硬件分析。

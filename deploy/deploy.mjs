@@ -42,6 +42,7 @@ const PLUGINS = [
 	{ name: "dsh-sec-enforce", hostPlane: true },
 	{ name: "dsh-redteam-results", hostPlane: true },
 	{ name: "dsh-hunter", hostPlane: true },
+	{ name: "dsh-mode-group", hostPlane: true },
 	{ name: "dsh-scanner-tools", hostPlane: false }
 ];
 const MODE = process.argv[2] ?? "";

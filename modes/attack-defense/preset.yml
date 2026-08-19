@@ -1,2 +1,2 @@
 name: 攻防评估模式
-description: 攻防评估编排：全链路红队评估、防御验证（detection gap）、证据化评分与复测闭环。
+description: 攻防评估：外网打点到内网横向的全链路对抗与防御验证。

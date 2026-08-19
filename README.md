@@ -20,7 +20,7 @@
 
 每个模式自包含四层资产：**persona**（角色/认识论/边界/报告纪律）→ **playbook**（方法论与门禁文本契约）→ **skills**（可加载技能）→ **refs/**（外部知识库，原文索引化，零本机路径）。
 
-## 运行时插件（九个）
+## 运行时插件（十个）
 
 | 插件 | 作用 | 挂载平面 |
 |---|---|---|
@@ -32,6 +32,7 @@
 | `dsh-mcp-studio` | MCP 加载工作台：通用类 MCP（burpsuite/yakit/chrome-dev-mcp 等）的接入、状态与诊断 | 宿主 |
 | `dsh-redteam-results` | 会话标签页「redteam 成果」：任务台账作战大屏 + 五板式成果页（发现/资产/台账/时间线/云攻击路径），九模式**跨会话**聚合与时间范围筛选（验证/删除回原始会话执行），SQLite 行级持久 | 宿主（bundles） |
 | `dsh-hunter` | 会话标签页「hunter 狩猎」：FOFA / Hunter / Quake 三平台资产搜索（统一 DSL 自动转平台语法、分页与限额导出、API key 独立存储），代码审计成果页「实测」按钮一键验证（指纹搜索→存活探测→EXP 验证，仅授权资产执行） | 宿主（bundles） |
+| `dsh-mode-group` | 新建会话屏模式选择器两级化：内置模式与研究员模式留顶层，八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单（视口自适应翻转、触屏加大命中区） | 宿主（bundles） |
 | `dsh-scanner-tools` | `nuclei_scan`/`httpx_probe`/`ffuf_fuzz` 封装：保守限速默认、防盲打（须先登记资产）、产物自动落证据索引 | preset（仅 pentest / attack-defense） |
 
 ## 安装
@@ -109,7 +110,7 @@ dsh-redteam-model/
 │       ├── skills/           # playbook 等模式技能
 │       └── refs/             # 知识库（README.md 全量索引，零本机路径）
 ├── shared/skills/            # 九预设共享技能（生态协作/独立复核/治理/边界）
-├── plugins/                  # 九个运行时插件（各自含 lib/ 测试/README）
+├── plugins/                  # 十个运行时插件（各自含 lib/ 测试/README）
 └── deploy/                   # 一键部署 CLI（deploy.mjs / verify-deployment.mjs / check-sources.mjs / DEPLOY.md）
 ```
 
@@ -127,6 +128,7 @@ dsh-redteam-model/
 - 新增 CI 自动测试；大屏与统计页视觉优化
 
 - 优化各个模式的方法论以及能力深度
+- 新增插件用于美化模式选择器
 
 ### v1.0.3（2026-08-18）
 

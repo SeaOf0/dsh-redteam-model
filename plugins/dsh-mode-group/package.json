@@ -1,0 +1,28 @@
+{
+	"name": "@dsh-external/dsh-mode-group",
+	"version": "1.0.0",
+	"description": "DSH web client plugin: two-tier agent-preset picker on the new-session screen — built-ins and the researcher entry stay top-level while the eight professional security modes fold into a hover/click submenu, viewport-adaptive, with no other surface touched.",
+	"keywords": ["deepseek", "deepseek-harness", "dsh-plugin", "dsh-bundle", "preset-picker"],
+	"type": "module",
+	"main": "./lib/index.js",
+	"exports": {
+		".": "./lib/index.js",
+		"./client": "./lib/client.js",
+		"./package.json": "./package.json"
+	},
+	"license": "MIT",
+	"author": "SeaOf0",
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		},
+		"client": {
+			"platform": "web",
+			"inject": [
+				"@deepseek-ai/dsh-client-connection",
+				"@deepseek-ai/dsh-client-runtime",
+				"@deepseek-ai/dsh-client-ui-slots"
+			]
+		}
+	}
+}

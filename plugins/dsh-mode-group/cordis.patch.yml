@@ -1,0 +1,5 @@
+# dsh-mode-group：新建会话屏模式选择器两级化。
+# 宿主平面：全模式可见；仅替换新会话屏的模式选择 chip（single 槽接管），其余表面不动。
+- insert:
+    - id: dsh-mode-group
+      name: '@dsh-external/dsh-mode-group'

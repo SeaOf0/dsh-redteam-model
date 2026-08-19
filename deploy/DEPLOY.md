@@ -1,7 +1,7 @@
 # 九预设 dsh-redteam-model 自包含部署套件（八专业模式 + redteam 主模式）
 
 **dsh-redteam-model/ 目录即完整交付物**：`modes/`（九预设全部资产：八专业模式 + redteam 主模式的
-persona/组合行/playbook/refs）+ `shared/`（共享技能）+ `plugins/`（九个模式插件）+ `deploy/`（本工具）。
+persona/组合行/playbook/refs）+ `shared/`（共享技能）+ `plugins/`（十个模式插件）+ `deploy/`（本工具）。
 预设发现链接指向 **modes/**——DSH 发现器只扫其直接子目录（九个干净预设），shared/plugins/deploy
 平铺在链接之外、不进模式列表。打包 dsh-redteam-model tar.gz 移交任何机器（macOS / Windows /
 Linux）即可一键部署。
@@ -23,6 +23,7 @@ Linux）即可一键部署。
 | dsh-sec-enforce | `plugins/` | 确定性工具拦截（报告门/写边界/高危/速率特征 + enforce-log 留痕） | 宿主（bundles） |
 | dsh-hunter | `plugins/` | 「hunter狩猎」：FOFA/Hunter/Quake 三平台资产搜索（统一 DSL 自动转语法/限额分页导出）+ 代码审计一键实测流水线（L0 指纹判定/L1 仅授权资产）+ 会话标签页（与 redteam 成果并排） | 宿主（bundles） |
 | dsh-redteam-results | `plugins/` | 会话隔离成果页「redteam 成果」（九模式侧栏；五板式（CTF 复用 ledger 台账板式）：渗透/代审=漏洞报告、二进制/攻防/免杀=产物清单、研究员=任务台账、应急=攻击链时间线、云安全=云攻击路径；redteam_finding_register/update/delete） | 宿主（bundles） |
+| dsh-mode-group | `plugins/` | 模式选择器两级化：新建会话屏将内置模式与研究员模式留顶层、八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单（视口自适应、触屏适配、槽竞争优雅降级） | 宿主（bundles） |
 | dsh-scanner-tools | `plugins/` | nuclei_scan/httpx_probe/ffuf_fuzz（速率纪律/防盲打/证据落盘） | **preset 平面**（仅 pentest/attack-defense/cloud-security 预设行挂载） |
 | dsh-mcp-studio | `plugins/` | MCP 加载工作台（通用类 MCP 宿主层共用挂载） | 宿主（bundles） |
 
