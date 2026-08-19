@@ -1,8 +1,9 @@
 # Java语言LDAP注入漏洞全解析
 
+> 来源：ChanziSAST 规则库语义规则提取（知识整理，含中文漏洞详解）。
 > 规则 ID：`any_any_ldapi` · 类别：ldapi · 关键 sink：DirContext, InitialDirContext, search
-> 说明：本条为语义知识（cypher 语义查询，不可直接挂 semgrep），下方「知识正文」为中文漏洞详解，
-> 配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
+> 说明：原文为 cypher 语义查询（不可直接挂 semgrep），下方「知识正文」为规则自带的中文漏洞详解，
+> 提取时未改写；配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
 
 
 ### Java语言LDAP注入漏洞全解析

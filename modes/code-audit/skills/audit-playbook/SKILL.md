@@ -144,6 +144,7 @@ error/warning/note（按 severity 映射）、`locations[].physicalLocation`=
   **期望工具集**，不声称任何工具已装——预设面向新环境分发，以**开工检测为准**：
   逐个 `command -v <工具>` 探测，把实测结果登记进工作区（evidence-index.md 的
   tool-plane 节）；后续只用检测到的工具。
+- **探测合并（多工具时）**：批量跑 `shared/scripts/tool-plane.sh`（Windows 用 `tool-plane.ps1`；参数=本手册期望工具清单），单次紧凑表直接登记 tool-plane 节——替代逐条 `command -v` 回显。
 - **四级兜底（与 pentest 同构）**：
   1. **检测到的本机工具 / bash 内置优先**；
   2. **MCP 兜底**——缺失但已连接 MCP（kali MCP、burpsuite MCP、yakit MCP、
@@ -310,6 +311,7 @@ trivy config --config-policy ./policy --namespaces user <dir>
 - **位置**：本预设目录下 `refs/`（与 `skills/` 同级）。加载本技能时你会拿到本技能的
   base 目录（SKILL.md 所在目录 = `skills/audit-playbook/`），refs/ 相对它 = `../../refs/`；
   用 read 直接读取，先读 `refs/README.md`（全量索引）。
+  **读取纪律**：refs 一律 grep/README 索引先行 → `read` 带 offset/limit 按节读；禁止整本 read；扫描类长输出先落盘再读摘要。
 - 本 playbook 是速查卡，refs/ 是案例库：需要细节时 read 该文件，不整段复制。
   **打包/迁移到任何机器路径都有效。**
 
@@ -357,6 +359,11 @@ trivy config --config-policy ./policy --namespaces user <dir>
   终态三选一**：`已审（有/无 finding）`、`N-A（附原因：该模块无此 sink 面/测试代码/
   第三方库且 SCA 线覆盖）`、`未完成（附预算原因）`。覆盖矩阵 = audit-coverage-matrix.md，
   随报告交付（对齐 refs/methodology/coverage.md 覆盖率纪律）。
+- **业务逻辑维度行（sink 轴之外每模块另过三行）**：①状态变更——状态机前置条件/跳步/回退
+  （订单、审批、改绑、退款流转）；②并发——双花/超卖/重复领取（检查共享资源的原子性与锁）；
+  ③客户端可控值——金额/数量/角色/折扣/回调 URL 等「应服务端决定」的值是否信任了前端传入。
+  这三行不是 sink（无危险函数可 grep），靠读业务流判定；终态三选一同 sink 格
+  （已审/N-A 附原因/未完成附预算原因）。与 RCE 主线互补：逻辑类 finding 常是组合链的低成本前置。
 - **深度分级影响深度，不影响排除**：快速扫描级=全格浅扫（sink 清单过一遍）；深度审计级=
   按优先级选格深追数据流——**低优先级格子降深度，不删格**；定向复核级=用户点名格子+
   上下文。分级选择记录进矩阵头部。

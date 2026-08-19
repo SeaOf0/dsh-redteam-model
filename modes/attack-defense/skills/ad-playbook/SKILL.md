@@ -42,10 +42,36 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 - 各阶段用 workflow 扇出，子代理分工：侦察组 / 突破验证组 / 横向组 / 报告组。
 - 关键发现经独立子代理交叉复核后才进报告。
 - 每阶段产出物登记证据索引（哈希 + 时间戳）。
+- **横向阶段以「单机落点信息收集」SOP 为前置**（见下节）：每拿下一台主机先过收集 SOP，再谈横向路径。
 - **持久化阶段定义（persona 硬规则）**：可行性验证 = 真实落地→验证生效→**立即登记**
   `persistence-registry.md`（技术类型 / 落点主机与位置 / 建立时间 / 生效验证证据 /
   **手动排除步骤**——写到照做能拆的程度），**不自动清理**；报告必须附持久化清单，
   detection gap 汇总中每条持久化对应「目标侧是否检测到」。
+
+## 单机落点信息收集（横向前置 SOP）
+
+> 命令级展开见 `refs/zh-intranet/intranet-host-collect.md`（Windows W1~W21 / Linux L1~L14
+> 模块库 + 触发表 + 执行通道坑表）；本节是编排约束。核心是**渐进式**——先轻量识别，
+> 再按模块逐层收集，按发现决定深挖方向，不一次性灌入大量命令。
+
+- **阶段 0（OS + OPSEC）**：识别目标系统；同时探测监控基线（Sysmon/PS 日志/auditd/EDR）——
+  有监控则切换低噪声命令形态（cmd 优先、少传文件）。识别结果与模块计划先报告再推进。
+- **基础收集 + 必做清单自检**：按模块表逐模块执行（用户/系统/网络双向/进程/服务/防火墙/
+  RDP/敏感文件/持久化面/所有用户家目录遍历…）；跑完**暂停深挖，对照模块表逐项标
+  ✅完成/⏭️跳过(原因)/❌失败**——收集覆盖情况登进 evidence-index 后才允许进深挖与横向派单
+  （与阶段终态表互为表里：终态表管阶段，模块清单管收集面）。
+- **按触发表深挖**：发现 Redis→缓存挖掘、Java 应用→jar 配置提取、RDP 记录→关联 IP、
+  数据库客户端→连接凭据、计划任务→读脚本正文……对每个服务问三问：能未授权访问吗？
+  拿到权限能做什么？它连着什么？（映射表见 refs 新篇「深挖触发表」节）
+- **资产归纳 + 凭证发散闭环**（让收集的信息「活」起来）：
+  ① 所有来源的 IP 去重合并成内网资产清单（跨网段机器优先标记）；
+  ② 对清单做定向深度扫描（配置/历史暴露的 IP 是高价值目标，不盲扫全段）；
+  ③ 凭证发散：收集的密码去重 + 家族衍生（同前缀@年份）→ 逐服务验证/低频爆破
+  （ssh/rdp/smb/mysql/mssql/redis/web 后台）→ **新凭据立即复用→再收集→循环扩大**；
+  爆破限速防锁定（速率纪律照常）。
+- **敏感信息跨源关联**：同一 IP 跨源合并、密码绑定服务、私钥 ↔ known_hosts 求交、
+  配置外联 IP 标为跨网段入口——全部以 links（discovered_on/leads_to/enables）写进
+  evidence-index 认知层，关系边聚合即攻击图（报告阶段直接导出路径台账）。
 
 ## 子代理编排
 
@@ -86,8 +112,8 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 ### 覆盖终态规则（防「选了第一条路走到黑」）
 
 - **候选路径台账**：路径规划员的每条 candidate_path 都有终态，三选一：
-  `走通（有已验证 finding）/ 失败（附原因）/ 未尝试（附理由：优先级让位/范围外）`。
-  chosen_path 失败必须回看台账选下一条或回侦察，**不得静默收兵**；
+  `走通（有已验证 finding）/ 失败（附原因）/ 未尝试（附理由：优先级让位/范围外）`；
+  走通的路径标注**链级 L1-L5**（见「验证与评分」节）。chosen_path 失败必须回看台账选下一条或回侦察，**不得静默收兵**；
   「全部候选路径失败」触发 claude 升级判据（见下）的前提是台账无未尝试项。
 - **阶段终态表**：五个阶段每阶段终态 = `执行（有产物）/ 不适用（附原因：如纯 Web
   任务无横向面）/ 未执行（附原因与用户知情）`——跳过任何阶段都要有交代，
@@ -143,6 +169,14 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 
 - 评分以证据为准，禁止叙事性定级。
 - 等级阶梯：分级写「能走到哪一级」（如：发现→验证→利用→影响），而非单一分数。
+- **确定性信号**：「利用」及以上等级的突破/横向验证，确认必须锚定不依赖模型判断的
+  布尔判据（标记回显/OOB 回调到达/对照文件字节一致/victim 标记数据被读到——分类信号表
+  见 pentest-playbook「验证姿势」节，两模式同标准）。
+- **利用链深度 L1-L5（与等级阶梯正交）**：每条 chosen_path 标链级——L1 单点利用；
+  L2 两步串联（上一漏洞的产物突破下一环节）；L3 多步组合（3-5 步，含提权或边界突破）；
+  L4 复杂链路（6 步以上，跨系统信息组合与状态规划）；L5 真实入侵级（外部入口到核心资产
+  完整路径，含防御规避）。等级阶梯量**单路径深度**，链级量**多漏洞串联能力**；
+  成果登记 chain 字段以 `L<级>:` 前缀标注（如 `L3: XSS窃会话→后台弱认证→上传getshell`）。
 - 未验证项标「疑似」且不计入评分。
 
 ## MITRE ATT&CK 映射
@@ -167,7 +201,8 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 ## 报告模板
 
 - 报告落盘 reports/：总体评估报告 + 逐 finding 六字段文件；消费 code-audit 静态发现时，待人工验证项汇入 pending-manual.md。
-- 附加：ATT&CK 映射、证据索引（哈希+时间戳）、证据化评分与修复优先级、detection gap 汇总。
+- 附加：ATT&CK 映射、证据索引（哈希+时间戳）、证据化评分与修复优先级、detection gap 汇总、
+  **链级分布**（L1-L5 各几条路径——本次评估串联能力的直观读数，与等级阶梯并列呈现）。
 - 修复复测闭环：修复后按原路径复测，结果回写报告。
 
 - 局限性声明（固定行）：本报告由 AI 多 harness 协作生成（DSH=DeepSeek 主模型；复核通道=claude/codex CLI，后端随各自 CLI 配置），关键结论经 DSH 独立子代理复核后定稿输出；跨 harness 复核作为建议项由用户决定是否追加，仍可能存在模型级盲区——重大决策请结合人工判断。
@@ -179,6 +214,7 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 - **工具平面检测制（与其余模式同构）**：本手册不声称任何工具已装——
   预设面向新环境分发，执行层工具（pentest/code-audit/binary-analysis 的工具卡）同样以
   **开工检测为准**（`command -v` 探测并登记 tool-plane）；缺失走四级兜底。
+- **探测合并（多工具时）**：批量跑 `shared/scripts/tool-plane.sh`（Windows 用 `tool-plane.ps1`；参数=本手册期望工具清单），单次紧凑表直接登记 tool-plane 节——替代逐条 `command -v` 回显。
 - **四级兜底（与其余模式同构）**：检测到的本机工具/bash
   优先 → 已连接 MCP 兜底 → **脚本兜底（用户不让装时：python3 优先、shell 次之、
   Windows 写 ps1/bat，落工作区 scripts/ 并登记 tool-plane「脚本代替 <工具>」，先自测再用）**
@@ -206,6 +242,7 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 - **侦察**：加载 pentest-playbook，用其侦察/资产速查卡与 refs（web/api/zh 等）。
 - **突破/横向/提权**：读 refs/offensive/（initial-access/lateral-movement/
   privilege-escalation/active-directory-security/evasion-techniques/c2-infrastructure）；
+  **已控主机的全量收集**读 refs/zh-intranet/intranet-host-collect.md（W/L 模块库）；
   执行工具用本手册**附录 A-2 内网工具链**（非 pentest 附录——pentest 附录只有 Web/侦察工具）。
 - **社工面**：refs/offensive/phishing-campaign.md、social-engineering.md（授权内）。
 
@@ -354,7 +391,7 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 
 - **位置**：本预设目录下 `refs/`。加载本技能时你会得到本技能的 base 目录
   （SKILL.md 所在目录 = `skills/ad-playbook/`），refs/ 相对它 = `../../refs/`；
-  用 read 直接读取，先读 `refs/README.md`（全量索引）。打包/迁移到任何机器路径都有效。
+  用 read 直接读取，先读 `refs/README.md`（全量索引）；读取纪律：grep/README 索引先行 → `read` 带 offset/limit 按节读，禁止整本 read，扫描类长输出先落盘再读摘要。打包/迁移到任何机器路径都有效。
 
 | 需求 | 读 refs/ 下文件 |
 |---|---|
@@ -364,5 +401,5 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 | 社工面 | offensive/phishing-campaign.md、social-engineering.md |
 | 防御验证（痕迹/取证/时间线） | defense/ 七篇 |
 | AI 目标攻击面 | ai/ai-prompt-injection.md、ai/ai-jailbreak-techniques.md、ai/ai-agent-safety.md |
-| 内网与域攻防（中文资产） | zh-intranet/ 十二篇（recon/lateral/domain-attacks/privesc/tunneling/credential-theft/password-collection 等） |
+| 内网与域攻防（中文资产） | zh-intranet/ 十三篇（host-collect 单机落点收集、recon/lateral/domain-attacks/privesc/tunneling/credential-theft/password-collection 等） |
 | 2025-2026 攻防趋势 | trends/ad-trends-2025-2026.md |

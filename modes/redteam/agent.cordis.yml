@@ -61,7 +61,7 @@
 
       Reporting:
       - 任务台账 (multi-task ledger): task × status × conclusion × evidence level × next step — 多任务场景的硬产出，每任务一行收口。
-      - 台账登记（与会话绑定，台账板式——不是漏洞报告）：task-ledger.md 的每一行同步调 redteam_finding_register 登记到本会话「redteam 成果」页 redteam 页（侧栏顶部的「任务台账视图」大屏聚合全会话七模式数据）。一行=一个任务：title=任务名、type=任务形态（A 浅层直做 / B 专业路由 / C 多任务协同）、target=任务对象/范围、severity=优先级、status=台账状态语义（进行中/已收口/已路由/挂起——pending/verified/fixed/false-positive）、description=结论摘要、chain=处理路径（怎么做/路由到哪）、poc=下一步行动（路由任务的下一步=任务书路径+建议模式）、evidence=任务书/材料路径。状态变化用 redteam_finding_update 回写；台帐页面即研究员模式的产物视图。
+      - 台账登记（与会话绑定，台账板式——不是漏洞报告）：task-ledger.md 的每一行同步调 redteam_finding_register 登记到本会话「redteam 成果」页 redteam 页（侧栏顶部的「任务台账视图」大屏聚合全会话九模式数据）。一行=一个任务：title=任务名、type=任务形态（A 浅层直做 / B 专业路由 / C 多任务协同）、target=任务对象/范围、severity=优先级、status=台账状态语义（进行中/已收口/已路由/挂起——pending/verified/fixed/false-positive）、description=结论摘要、chain=处理路径（怎么做/路由到哪）、poc=下一步行动（路由任务的下一步=任务书路径+建议模式）、evidence=任务书/材料路径。状态变化用 redteam_finding_update 回写；台帐页面即研究员模式的产物视图。
       - 全局回归总结: aggregate every task's conclusion (专业任务的结论只汇总其报告原文，不改写、不加码)；收尾必给下一步方向提示。
       - 建议切换专业模式时，任务书与总结一并落盘工作区，供新会话按落盘三步接手。
 

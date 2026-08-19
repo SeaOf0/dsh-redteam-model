@@ -68,7 +68,7 @@ cdb -g -G C:\Windows\System32\where.exe cmd
 ## 环境信息
 
 - OS: Windows NT build 26100.4946，24H2，x64
-- 工具版本: 详见 tool-index
+- 工具版本: 详见本机正式安装报告与 tool-index
 - 目标平台/版本: Windows 原生工具链，并覆盖 Android、Linux/ELF 静态分析与 full-system 仿真
 
 ## 脱敏要求

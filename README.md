@@ -37,7 +37,7 @@
 前置：**Node.js >= 22**（DSH 本身要求）。无需预装 pnpm/dsh（经 npx 拉起）；bash/python 非必需。
 
 ```bash
-tar -xzf dsh-redteam-model-1.0.4.tar.gz && cd dsh-redteam-model/deploy
+tar -xzf dsh-redteam-model-1.0.5.tar.gz && cd dsh-redteam-model/deploy
 node deploy.mjs            # 安装：预设链接 + 插件挂载 + 依赖安装（幂等可重跑）
 node deploy.mjs --check    # 离线校验：九预设挂载 + 插件真实 loader 路径 + bundle 声明
 node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
@@ -110,6 +110,11 @@ dsh-redteam-model/
 ```
 
 ## 版本变更
+
+### v1.0.5（2026-08-19）
+
+- 优化 token 消耗：登记工具 schema 瘦身（字段语义手册化）、治理信封降容与截断优先级、开局门禁按模式调用、工具平面探测合并、复核回传紧凑协议、refs 按节读取纪律、长会话压缩续接锚点
+- 深化技能知识树：二进制模式新增漏洞挖掘与利用开发手册 10 篇；攻防模式新增单机落点信息收集命令库；渗透模式漏洞挖掘面扩充（业务逻辑/并发/状态机）与功能级威胁建模；新增确定性验证信号、利用链分级与跨会话经验台账
 
 ### v1.0.4（2026-08-19）
 

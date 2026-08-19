@@ -1,8 +1,9 @@
 # Java Dubbo反序列化漏洞
 
+> 来源：ChanziSAST 规则库语义规则提取（知识整理，含中文漏洞详解）。
 > 规则 ID：`pom_dubbo_deserialization` · 类别：deser · 关键 sink：（cypher 结构提取，见原文）
-> 说明：本条为语义知识（cypher 语义查询，不可直接挂 semgrep），下方「知识正文」为中文漏洞详解，
-> 配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
+> 说明：原文为 cypher 语义查询（不可直接挂 semgrep），下方「知识正文」为规则自带的中文漏洞详解，
+> 提取时未改写；配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
 
 # Java Dubbo反序列化漏洞
 Dubbo是阿里巴巴开源的高性能、轻量级Java RPC框架，其底层依赖序列化/反序列化机制实现跨进程数据传输。反序列化漏洞的核心根源是：**攻击者构造恶意序列化数据，通过Dubbo的反序列化流程执行任意代码**，该类漏洞贯穿Dubbo不同版本和使用场景，以下从漏洞本质、触发场景、不同维度的漏洞变体、影响范围等维度完整描述。

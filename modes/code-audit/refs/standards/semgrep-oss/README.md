@@ -83,7 +83,7 @@
 
 ## 5. 验证结果
 
-使用 `semgrep 1.172.0` 的 `semgrep --validate --config <路径>` 逐语言目录全量校验（覆盖全部 788 条，0 配置错误）：
+使用本机 `semgrep 1.172.0` 的 `semgrep --validate --config <路径>` 逐语言目录全量校验（覆盖全部 788 条，0 配置错误）：
 
 ```
 PASS  java        (115 rules)

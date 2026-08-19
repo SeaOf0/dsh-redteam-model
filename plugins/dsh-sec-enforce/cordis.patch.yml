@@ -1,7 +1,8 @@
-# One installable bundle row: deterministic tool-call enforcement for the five
+# One installable bundle row: deterministic tool-call enforcement for the nine
 # security presets. Host plane — the guard resolves the calling agent's preset
-# at execution time and only fires for pentest / code-audit / binary-analysis /
-# attack-defense / av-evasion; every other session is untouched.
+# at execution time and only fires for redteam / pentest / code-audit /
+# binary-analysis / attack-defense / av-evasion / incident-response /
+# cloud-security / ctf-solver; every other session is untouched.
 #
 # Denials are actionable (each names the fix: stage_gate call / ask-first flow /
 # rate flag) and append one line to <workspace>/enforce-log.md for the audit

@@ -6,9 +6,8 @@ description: 云安全攻防模式作战手册：云平台（AWS/Azure/GCP/阿�
 # 云安全攻防作战手册
 
 > 主观念=攻击路径主线；七门 C1-C7；成果页=云攻击路径板式（第五板式）。
-> 设计依据：`plugins/dsh-redteam-model/DESIGN.md` 第 16 节（cloud-security 立项）。
 > 开工顺序：工作区发现 → WORKSPACE.md → tool-plane 检测登记 → 优先看 route-boost 信封
-> （已含门禁与 canonical 名），信封缺失/不确定再调 gates_list。
+> （已含门禁与 canonical 名），信封缺失/不确定再调 gates_list（mode=cloud-security）。
 
 ## 定位与设计依据
 
@@ -129,8 +128,8 @@ claude 升级判据（建议项制）：判定级结论（路径 verified/排除
 
 ## 工具手册
 
-开工 `command -v` 探测登记 evidence-index tool-plane 节；检测到的优先 → MCP → 脚本兜底 →
-安装请求兜底（四级）。核心工具面：
+开工 `command -v` 探测登记 evidence-index tool-plane 节（多工具时批量跑 `shared/scripts/tool-plane.sh`，Windows 用 `tool-plane.ps1`，单次紧凑表登记）；检测到的优先 → MCP → 脚本兜底 →
+安装请求兜底（四级）。refs 读取纪律：grep/README 索引先行 → read 带 offset/limit 按节读，禁止整本 read。核心工具面：
 
 - **厂商 CLI 与 SDK**：aws / az / gcloud / aliyun / tccli / obsutil+coscmd / hcloud——每个厂商
   的探测与验证用其原生 CLI（只读 API 优先）。安装：brew/apt/pip 均可，用户不让装则用其 REST

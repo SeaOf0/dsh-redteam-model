@@ -1,7 +1,7 @@
 {
 	"name": "@dsh-external/dsh-stage-gate",
 	"version": "1.0.0",
-	"description": "DSH stage-gate host plugin: the stage_gate / gates_list model tools validate task-workspace artifacts against the five security presets' gate schemas (structural checks, v1), append verdicts to gate-log.md, and list each mode's canonical gate files",
+	"description": "DSH stage-gate host plugin: the stage_gate / gates_list model tools validate task-workspace artifacts against the nine security presets' gate schemas (structural checks, v1), append verdicts to gate-log.md, and list each mode's canonical gate files",
 	"keywords": [
 		"deepseek",
 		"deepseek-harness",

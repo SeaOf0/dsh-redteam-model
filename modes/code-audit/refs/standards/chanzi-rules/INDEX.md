@@ -1,6 +1,6 @@
-# 规则知识库索引
+# ChanziSAST 规则知识库索引
 
-> 122 条 Java 生态漏洞规则的语义知识正文，按类别分目录存放；cypher 查询本体不在本目录（依赖语义查询引擎，无法离线重放）。
+> 提取自 ChanziSAST 122 条 cypher 规则的知识正文（未改写），按类别分目录存放；cypher 本体不在本目录（语义查询引擎依赖，无法离线重放）。
 > 使用方式：按类别/规则 ID 用 read 直接读取；与 refs/standards/fortify-kingdom-reference.md
 > （定级与分类）及 lang/*/semgrep-rules/（可执行规则）配合。
 

@@ -1,6 +1,6 @@
 # packer 技能（shellcode 免杀加载器打包）
 
-> 本目录随 av-evasion 预设打包分发。
+> 本目录随 av-evasion 预设打包分发。内容整理收录，按原文收录。
 > 定位：把 .bin shellcode 打包成免杀 Windows 可执行文件的工程技能——注入技术/SyscallN 参数表、
 > 防御模块、加解密、随机化、Go stager、QVM 专项绕过（UUID 编码 + Fiber + IAT 欺骗 + Overlay 注水）。
 

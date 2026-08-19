@@ -134,8 +134,8 @@ Interceptor.attach(ptr('0xVM_DISPATCH'), {
 
 ## 来源与延伸
 
-- NoVmp（ozerelkerem，VTIL 静态 devirtualizer VMProtect 3.x）：https://github.com/ozerelkerem/NoVmp
-- VMProtect 2 脱壳流程（VMP2 IAT 修复）：http://www.qwbw.cn/news/101858
+- NoVmp（ozerelkerem，VTIL 静态 devirtualizer VMProtect 3.x）：https://github.com/ozerelkerem/NoVmp （审计报告 §4）
+- VMProtect 2 脱壳流程（VMP2 IAT 修复）：http://www.qwbw.cn/news/101858 （审计报告 §4）
 - VTIL：https://github.com/vtil-project/VTIL-Core
 - VMProtect/Themida 识别与常规段脱壳（非 VM 段）：`tools-advanced.md`（VMProtect/Themida Analysis）、`tools/x64dbg-reversing/references/unpacking-oep-iat.md`。
 - Android DEX/ARM64 VMP（对等参照）：`mobile/android-reverse/references/vmp-analysis-playbook.md`。

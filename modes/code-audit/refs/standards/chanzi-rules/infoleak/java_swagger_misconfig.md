@@ -1,8 +1,9 @@
 # Java语言Swagger信息泄露漏洞
 
+> 来源：ChanziSAST 规则库语义规则提取（知识整理，含中文漏洞详解）。
 > 规则 ID：`java_swagger_misconfig` · 类别：infoleak · 关键 sink：（cypher 结构提取，见原文）
-> 说明：本条为语义知识（cypher 语义查询，不可直接挂 semgrep），下方「知识正文」为中文漏洞详解，
-> 配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
+> 说明：原文为 cypher 语义查询（不可直接挂 semgrep），下方「知识正文」为规则自带的中文漏洞详解，
+> 提取时未改写；配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
 
 ## Java语言Swagger信息泄露漏洞
 Swagger（通常指Swagger 2.x/Springfox、OpenAPI 3.x/SpringDoc）是Java生态中主流的API文档自动生成工具，其核心通过注解扫描、配置解析自动生成可视化API文档（如/swagger-ui.html、/v3/api-docs等端点），方便开发调试，但配置或使用不当会导致**敏感信息泄露**，成为攻击者的信息收集入口。以下从漏洞本质、触发场景、泄露内容、影响范围、典型案例等维度完整描述该漏洞。

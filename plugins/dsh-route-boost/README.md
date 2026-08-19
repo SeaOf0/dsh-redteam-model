@@ -1,6 +1,6 @@
 # dsh-route-boost
 
-七预设（modes/）的**逐轮治理信封**——「红队完整上线」逐轮注入逻辑的 DSH
+九预设（modes/）的**逐轮治理信封**——「红队完整上线」逐轮注入逻辑的 DSH
 原生实现，v0.2 补齐其阶段记忆/证据预判/强制检索三要素后**核心能力对齐并在四维反超**
 （结构门禁 18>5 门、组合层物理强制、跨模型双签真实存在、变化才注入的成本模型）。
 
@@ -27,7 +27,7 @@ refs: refs/<命中类目>/README.md（指针不灌正文，控上下文成本）
 
 - **阶段粘滞（v0.2）**：无关键词命中的输入沿用上一阶段（裸"继续"不重置），显式关键词覆盖；
 - **证据等级预判（v0.2）**：从用户文本推断 confirmed/partial/unknown 注入（沿袭
-  evidence-level 的七预设版）；
+  evidence-level 的九预设版）；
 - **强制检索提示（v0.2）**：refs 无命中时提示"先 web_search 或读本模式 refs/README.md，
   勿凭记忆自答"（其 internet-fallback "never let the model self-answer" 的等价物）。
 
@@ -42,17 +42,17 @@ goal（截断 80）+ 准则 met 进度 + 未收口 id + 待办数 + 最近门判
 ## 已知取舍
 
 - **正文级 skill-boost 不做（设计取舍）**：对方每轮灌命中技能前 2000 字，我们只给指针——
-  七预设 refs 规模大（500+ 篇），逐轮灌正文会撑爆上下文；模型按指针自取 + persona 纪律。
+  九预设 refs 规模大（500+ 篇），逐轮灌正文会撑爆上下文；模型按指针自取 + persona 纪律。
   翻转开关留 v0.3（includeRefs 已参数化）。
 - **会话内模式切换**：DSH 平台约束（仅 blank 会话可选预设），生态规则（子代理+跨模式
   playbook）补偿，本插件不解决。
-- **OPSEC 关键词调级**：不补——七预设速率纪律在 persona/playbook 有静态默认，
+- **OPSEC 关键词调级**：不补——九预设速率纪律在 persona/playbook 有静态默认，
   运行时调级价值低。
 
 ## 验证
 
 - `node test/run.mjs` — 121 项离线单测（路由命中/粘滞/证据/信封渲染/gate 引用存在性/决定性）
-- `node ../../../.zcode/chain-probe.mjs` — 七预设作用域真实 `systemPrompt.assemble()` 渲染实证
+- `node ../../../.zcode/chain-probe.mjs` — 九预设作用域真实 `systemPrompt.assemble()` 渲染实证
 - `node ../../../.zcode/route-boost-live.mjs` — 真实 AgentLoop 四轮 8 项检查（注入/切换/去重/粘滞/
   证据行/留痕）全部通过
 - 真机验收：重启 dsh web 后任一模式会话发首条消息，观察 `[route-boost]` 快照与阶段切换时机

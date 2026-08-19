@@ -436,7 +436,7 @@ https://mvnrepository.com/artifact/org.apache.shiro/shiro-core
 web_search "mvnrepository {groupId} {artifactId}" -n 5
 
 # 2. web_fetch 提取页面内容
-# 使用 web_fetch 工具访问组件页面
+# 在 OpenClaw 中使用 web_fetch 工具访问组件页面
 ```
 
 **方式二：直接 web_fetch 组件页面**
@@ -972,7 +972,7 @@ https://mvnrepository.com/artifact/org.apache.shiro/shiro-core
 web_search "mvnrepository {groupId} {artifactId}" -n 5
 
 # 方式二：直接 web_fetch 组件页面
-# 使用 web_fetch 工具访问 mvnrepository.com 页面
+# 使用 OpenClaw 的 web_fetch 工具访问 mvnrepository.com 页面
 ```
 
 **检查示例**：

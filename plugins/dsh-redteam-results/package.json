@@ -1,7 +1,7 @@
 {
 	"name": "@dsh-external/dsh-redteam-results",
 	"version": "1.0.1",
-	"description": "Session-scoped redteam findings registry for the six security presets: model-side register/update/delete tools, a loopback RPC surface, and a per-session conversation tab (redteam 成果) with per-mode pages — pentest page ships first with severity stats, type distribution, lifecycle status, pagination, verify-to-session and MD exports.",
+	"description": "Session-scoped redteam findings registry for the nine security presets: model-side register/update/delete tools, a loopback RPC surface, and a per-session conversation tab (redteam 成果) with per-mode pages — pentest page ships first with severity stats, type distribution, lifecycle status, pagination, verify-to-session and MD exports.",
 	"keywords": [
 		"deepseek",
 		"deepseek-harness",

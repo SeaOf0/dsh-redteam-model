@@ -103,7 +103,7 @@ if __name__ == '__main__':
 
 ## 对本包的改进建议
 
-- 可把本流程沉淀为 `pwn-rop-cheatsheet.md` 模板，供同类题目复用
+- CTF-Sandbox-Orchestrator 的 `competition-reverse-pwn` 应增加 `pwn-rop-cheatsheet.md`，把这个流程做成模板
 - bootstrap manifest 加入 pwntools / pwndbg / one_gadget
 
 ## 可复用的模式/脚本片段

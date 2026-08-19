@@ -1,6 +1,6 @@
 // Offline deployment verification for the seven-preset bundle (six modes + redteam controller).
 // Boots a minimal cordis host (same seam set as the real one), then:
-//   1. mounts all five presets via agentPresets.standingKeyFor (composition files load);
+//   1. mounts all nine presets via agentPresets.standingKeyFor (composition files load);
 //   2. loads every deployed plugin's bundle row through the REAL loader path
 //      (loader.create with the profile's baseUrl — bare specifiers resolve exactly as at boot);
 //   3. reads each preset's preset.yml metadata (roster display parses).

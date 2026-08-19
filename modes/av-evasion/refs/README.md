@@ -63,7 +63,7 @@
 | linux-bypass.md | Linux 安全机制对抗（345 行） | Linux 实验 |
 | sandbox-escape.md | 沙箱逃逸（365 行——检测沙箱环境本身也是检测侧知识） | 沙箱感知研究 |
 | java-memory-shell.md | Java 内存马（193 行） | 内存马研究（检测侧配对产出） |
-| webshell-evasion.md | 脚本类 webshell 过检测（84 行：静态变形/结构伪装/通信隐蔽/驻留/检测侧配对） | webshell 免杀研究 |
+| webshell-evasion.md | 脚本类 webshell 过检测（84 行：静态变形/结构伪装/通信隐蔽/驻留/检测侧配对） | webshell 免杀研究（自建） |
 | ai-av-evasion-v41.md | Module Stomping 类载荷实现（2026-07 版） | 载荷类研究（版本对比） |
 | ai-av-evasion-v40.md | 同套件 2026-06 版（Fiber+回调双路径） | 技术演进对比 |
 | kb/ | 结构化技术库（evasion_techniques / loader_techniques / scenarios 三份 JSON） | 实验设计检索 |
@@ -139,19 +139,31 @@
 |---|---|---|
 | av-trends-2025-2026.md | 2025 主题逐条成对：内存载荷↔主动内存扫描、AMSI 变种/直接系统调用/ETW 篡改↔syscall 来源与 ETW 状态检测、DEF CON 32 内存取证反制、AI 辅助规避↔NDR 补偿层（附来源，2026-08 核实） | 实验规划前校准 |
 
-## 内容与许可说明
+## 来源与说明
 
-- 库内内容分两类：本模式自写条目（外部技术点在文中以 URL 注明出处）与第三方开源内容
-  （许可注记见各 README）。
-- **packer/**：SKILL/references/scripts/assets 全量随附，仅 tools 二进制（sgn.exe/keystone.dll）不随附。
-- **trends/**：自建综述，条目联网核实并附来源。
-- 本目录随预设打包分发；与 playbook 的关系：速查卡（playbook）→ 深度手册（refs/）→ 证据落盘
-  （任务工作区，见 ecosystem-cooperation 技能「产物落盘与交接约定」）。
+- **techniques/evasion-techniques**：内容整理收录；
+  **detection/malware-detection-yara**：内容整理收录
+  refs 同源，为单预设自包含复制）。
+- **techniques 工程 4 篇 + 综合/OS/沙箱/Linux/内存马/coverage（共 10 篇）与 kb/ 三份 JSON**：
+  ，按原文收录。
+  **webshell-evasion**：playbook 自建（主观念「webshell 过检测」补深，自建）。
+- **windows-av-evasion / macos-security-bypass**：；
+  **c2-custom-evasion / edr-telemetry-analysis / sigma-rule-development**：内容整理收录。
+- **ai-av-evasion 两篇**：。
+- **subagents/**：。
+- **zh/evasion-payloads-cn**：内容整理收录
+  （attack-defense 扩容时按生态分工留给本模式，现归位）。
+- **packer/**：内容整理收录，按原文收录；
+  SKILL/references/scripts/assets 全量随附，仅 tools 二进制（sgn.exe/keystone.dll）不随附。
+- **trends/**：playbook 自建（自建），条目联网核实并附来源。
+- 本目录随预设打包分发；第三方来源文件的许可注记见各 README。
+- 与 playbook 的关系：速查卡（playbook）→ 深度手册（refs/）→ 证据落盘（任务工作区，见
+  ecosystem-cooperation 技能「产物落盘与交接约定」）。
 
 ## 路径与链接约定
 
 - 库内文件一律相对路径引用，**禁止任何本机绝对路径**（预设将打包给其他用户使用）。
-- 库内文件内部的相对链接指向兄弟技能；按技能名在本库检索同名文件即可。
-- frontmatter（name/description）保留原样；refs/ 不经技能加载器发现，仅由 read 按需读取。
+- 收录文件内部的相对链接指向兄弟技能；按技能名在本库检索同名文件即可。
+- frontmatter 为源文件自带，保留原样；refs/ 不经技能加载器发现，仅由 read 按需读取。
 - 生态分工：本模式专注载荷对抗研究与检测配对；C2 基础设施/横向/域 payload 在
   attack-defense refs；利用链验证交 pentest；样本分析交 binary-analysis。

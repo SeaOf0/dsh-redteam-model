@@ -283,5 +283,5 @@ playbook 的 Gate B1 三验 = **dex 校验 / IAT 有效性 / 可运行性**（Wi
 
 - x64dbg + Scylla 用法：与 `x64dbg-reversing/SKILL.md`（MCP 命令）配套；ScyllaHide 反调试隐藏见 `methodology/anti-debugging.md`。
 - VMProtect/Themida 的 VM 段 devirtualization（非本文件「常规段脱壳」范围）：`methodology/reverse-engineering/references/native-vm-devirt.md`。
-- VMProtect 2 脱壳 IAT 修复流程参考：http://www.qwbw.cn/news/101858.。
+- VMProtect 2 脱壳 IAT 修复流程参考：http://www.qwbw.cn/news/101858 （审计报告 §4 来源）。
 - 手修 IAT 脚本兜底：playbook 四级兜底「脚本兜底」层（python3 + pefile/lief）。

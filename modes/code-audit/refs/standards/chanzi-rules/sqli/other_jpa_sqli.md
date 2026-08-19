@@ -1,8 +1,9 @@
 # Java JPA SQL注入漏洞
 
+> 来源：ChanziSAST 规则库语义规则提取（知识整理，含中文漏洞详解）。
 > 规则 ID：`other_jpa_sqli` · 类别：sqli · 关键 sink：EntityManager, createNativeQuery
-> 说明：本条为语义知识（cypher 语义查询，不可直接挂 semgrep），下方「知识正文」为中文漏洞详解，
-> 配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
+> 说明：原文为 cypher 语义查询（不可直接挂 semgrep），下方「知识正文」为规则自带的中文漏洞详解，
+> 提取时未改写；配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
 
 
 ## Java JPA SQL注入漏洞

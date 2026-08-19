@@ -38,7 +38,7 @@ codex:      { bin: codex, sandbox: workspace-write, timeoutMs: 600000, extraArgs
   claude-code 15s / codex 48s 双 completed）
 - `node ../../../.zcode/chain-probe.mjs` — 五预设作用域工具面应出现两个产品工具
 
-## 安装
+## 安装（本机已装）
 
 web profile `package.json`：dependencies 加 `@dsh-external/dsh-product-subagents` 的
 link + `dsh.profile.bundles` 追加同名 bundle，`pnpm install`，**重启 dsh web 生效**。

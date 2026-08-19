@@ -1,7 +1,7 @@
 {
 	"name": "@dsh-external/dsh-sec-enforce",
 	"version": "1.0.0",
-	"description": "DSH host-plane deterministic enforcement for the five security presets : ctx.tools.guard() pre-execute interception — report files require a stage_gate PASS in gate-log.md, writes stay inside the task workspace (least privilege), conservative high-risk bash patterns must go through the ask-first flow, and bare full-port scans without rate controls are rejected with the fix. Guards fire only for the five security presets; every denial appends to the workspace enforce-log.md.",
+	"description": "DSH host-plane deterministic enforcement for the nine security presets : ctx.tools.guard() pre-execute interception — report files require a stage_gate PASS in gate-log.md, writes stay inside the task workspace (least privilege), conservative high-risk bash patterns must go through the ask-first flow, and bare full-port scans without rate controls are rejected with the fix. Guards fire only for the nine security presets; every denial appends to the workspace enforce-log.md.",
 	"keywords": [
 		"deepseek",
 		"deepseek-harness",

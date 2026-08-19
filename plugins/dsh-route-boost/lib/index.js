@@ -22,7 +22,7 @@ const name = "dsh-route-boost";
 const inject = ["systemPrompt", "agentPresets"];
 
 const Config = z.object({
-	maxChars: z.natural().default(1600),
+	maxChars: z.natural().default(1200),
 	includeRefs: z.boolean().default(true)
 });
 
@@ -146,40 +146,51 @@ export function escapePromptBraces(text) {
 }
 
 /** Render the envelope. Deterministic in (mode, phase, refsHits, operation) — identical
- * inputs must produce deterministic text or RuntimeContextProjection re-snapshots. */
-export function buildEnvelope({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1600, includeRefs = true, negated = false }) {
+ * inputs must produce deterministic text or RuntimeContextProjection re-snapshots.
+ * 预算控制：超长时 refs/知识提示行最先丢，其次语境行，仍超才尾部截断——
+ * mode 行与 operation 恢复行在顶部最后受影响（boundary 次之，已置于 review/evidence 之前）。 */
+export function buildEnvelope({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1200, includeRefs = true, negated = false }) {
 	const gateTable = gates?.[presetId] ?? {};
 	const gateLines = phase.gates
 		.map((id) => gateTable[id] ? `${id} ${gateTable[id].title}` : `${id}`)
 		.join(" | ");
 	const lines = [
-		`[route-boost] mode=${presetId}（${mode.label}） phase=${phase.id} ${phase.label}（推断——若与实际任务不符，以实际为准继续）`,
+		`[route-boost] mode=${presetId}（${mode.label}） phase=${phase.id} ${phase.label}（推断，不符以实际为准）`,
 		gateLines
-			? `gates: ${gateLines} —— 结构校验调 stage_gate，语义门禁归复核员（independent-review）`
-			: "gates: 本模式无自建门——总控只消费专业模式 gate-pass 落盘产物（不越权判定）；台账终态与全局总结模板见 router-playbook",
-		`review: ${mode.review ?? "关键 finding 双签 = DSH 独立复核 + subagent_claude_code 复核一致；仅确认/挑战二选一，禁止骑墙"}`,
+			? `gates: ${gateLines} —— 结构校验调 stage_gate；语义门禁归复核员（independent-review）`
+			: "gates: 本模式无自建门——总控只消费专业模式 gate-pass 落盘产物；台账终态见 router-playbook",
 		`boundary: ${mode.boundary}`,
-		`evidence: ${evidence}（confirmed=用户已附原始证据材料，按已验证引用；partial/unknown=下结论前先补证据）`
+		`review: ${mode.review ?? "关键 finding 双签 = DSH 独立复核 + subagent_claude_code 复核一致；仅确认/挑战二选一"}`,
+		`evidence: ${evidence}（confirmed=按已验证引用；partial/unknown=下结论前先补证据）`
 	];
 	if (operation) {
 		const op = operation;
 		const gateKeys = Object.keys(op.gates ?? {});
 		const lastGate = gateKeys.length > 0 ? `${gateKeys[gateKeys.length - 1]} ${op.gates[gateKeys[gateKeys.length - 1]]?.pass ? "pass" : "fail"}` : "无";
-		lines.splice(1, 0, `operation 恢复: goal=${String(op.goal ?? "").slice(0, 80) || "（未登记）"}｜准则 ${op.met ?? 0}/${op.total ?? 0} met${(op.openIds ?? []).length ? `（未收口 ${op.openIds.join(",")}）` : ""}｜待办 ${(op.pending ?? []).length} 项｜最近门 ${lastGate}——先读 operation-state.json 对齐进度再继续；准则全 met + 报告门通过才可写 reports/`);
+		lines.splice(1, 0, `operation 恢复: goal=${String(op.goal ?? "").slice(0, 80) || "（未登记）"}｜准则 ${op.met ?? 0}/${op.total ?? 0} met${(op.openIds ?? []).length ? `（未收口 ${op.openIds.join(",")}）` : ""}｜待办 ${(op.pending ?? []).length}｜最近门 ${lastGate}——先读 operation-state.json 对齐；准则全 met+报告门过才可写 reports/；压缩续接先读四件套（WORKSPACE.md/gate-log 尾/evidence-index 认知节/findings）再动门禁`);
 	}
 	if (negated) {
-		lines.push("语境: 检测到学习/防御语境——攻击执行相位路由已抑制，按知识讲解/防御口径作答");
+		lines.push("语境: 学习/防御语境——攻击执行相位已抑制，按讲解/防御口径作答");
 	}
 	if (includeRefs) {
 		if (refsHits.length > 0) {
 			lines.push(`refs: 读 refs/README.md 快速路由 → ${refsHits.join("、")}`);
 		} else if ((mode.refs ?? []).length > 0) {
-			lines.push("refs: 本轮无命中——需要外部知识时先 web_search 或读本模式 refs/README.md 快速路由，勿凭记忆自答");
+			lines.push("refs: 本轮无命中——需外部知识先 web_search 或读 refs/README.md，勿凭记忆自答");
 		} else {
-			lines.push("知识: 本轮无 refs 命中——浅做按 router-playbook（路由表/概览探测纪律/台账/总结模板）；需要深度知识时加载对应专业 playbook，勿凭记忆自答");
+			lines.push("知识: 无 refs 命中——浅做按 router-playbook；深度知识加载对应专业 playbook，勿凭记忆自答");
 		}
 	}
-	const text = lines.join("\n");
+	let text = lines.join("\n");
+	if (text.length > maxChars) {
+		const drop = (pred) => { const i = lines.findIndex(pred); if (i >= 0) lines.splice(i, 1); };
+		drop((l) => l.startsWith("refs:") || l.startsWith("知识:"));
+		text = lines.join("\n");
+	}
+	if (text.length > maxChars) {
+		const i = lines.findIndex((l) => l.startsWith("语境:"));
+		if (i >= 0) { lines.splice(i, 1); text = lines.join("\n"); }
+	}
 	return text.length > maxChars ? text.slice(0, maxChars - 1) + "…" : text;
 }
 

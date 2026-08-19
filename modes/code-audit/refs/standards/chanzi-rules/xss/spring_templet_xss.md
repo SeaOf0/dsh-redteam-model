@@ -1,8 +1,9 @@
 # Java Spring MVC 中模版引擎渲染场景下XSS漏洞（仅描述漏洞场景，无修复建议）
 
+> 来源：ChanziSAST 规则库语义规则提取（知识整理，含中文漏洞详解）。
 > 规则 ID：`spring_templet_xss` · 类别：xss · 关键 sink：Model, ModelAndView, ModelMap, addAttribute, addObject, put
-> 说明：本条为语义知识（cypher 语义查询，不可直接挂 semgrep），下方「知识正文」为中文漏洞详解，
-> 配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
+> 说明：原文为 cypher 语义查询（不可直接挂 semgrep），下方「知识正文」为规则自带的中文漏洞详解，
+> 提取时未改写；配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
 
 
 ## Java Spring MVC 中模版引擎渲染场景下XSS漏洞（仅描述漏洞场景，无修复建议）

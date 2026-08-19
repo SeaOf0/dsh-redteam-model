@@ -83,7 +83,7 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 ## refs 快速路由（深度手册读 refs/）
 
 > 本 playbook 是速查卡，深度手册在 `../../refs/`（相对本 SKILL.md 目录）。用 read 按需读取，
-> 先读 `refs/README.md` 快速路由到目录，不要凭记忆自答。
+> 先读 `refs/README.md` 快速路由到目录，不要凭记忆自答；grep/README 索引先行 → read 带 offset/limit 按节读，禁止整本 read。
 
 | 任务 | refs 目录 |
 |---|---|

@@ -3,7 +3,7 @@
 > 本文件为 `c2-custom-evasion.md` 技能文件索引的伴生手册（补齐断链），并承担 **P0-7「C2 流量特征消除工程」**
 > 与 P1 的 TLS 指纹（JA4）、DNS/ICMP 隧道、域前置高信誉域细节。
 > 覆盖 **TLS 指纹伪造（uTLS/ja3transport/JA4）→ 域前置（Google Meet/YouTube/GCP）→ DNS 隧道 → 云 API 滥用 → 检测侧（NDR/JA3 基线）→ 实测判据**。
-> 授权立场见 `refs/README.md`；外部技术点（JA4 指南、uTLS go-bypasser、域前置 cryptika 研究）在文中以 URL 注明。
+> 授权立场见 `refs/README.md`；外部来源见审计报告 §5（JA4 指南、uTLS go-bypasser、域前置 cryptika 研究）。
 
 ## 1. TLS 指纹伪造（JA3 / JA4 / uTLS）
 

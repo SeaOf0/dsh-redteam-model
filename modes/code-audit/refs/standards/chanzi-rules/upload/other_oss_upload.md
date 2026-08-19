@@ -1,8 +1,9 @@
 # 对象存储（OSS）上传任意文件的安全问题
 
+> 来源：ChanziSAST 规则库语义规则提取（知识整理，含中文漏洞详解）。
 > 规则 ID：`other_oss_upload` · 类别：upload · 关键 sink：BlobClient, COSClient, OSSClient, S3Client, Storage, UploadManager, create, createFrom, put, putObject, uploadFile
-> 说明：本条为语义知识（cypher 语义查询，不可直接挂 semgrep），下方「知识正文」为中文漏洞详解，
-> 配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
+> 说明：原文为 cypher 语义查询（不可直接挂 semgrep），下方「知识正文」为规则自带的中文漏洞详解，
+> 提取时未改写；配合 fortify-kingdom-reference 的定级指南与各语言 sink 手册使用。
 
 
 ## 对象存储（OSS）上传任意文件的安全问题

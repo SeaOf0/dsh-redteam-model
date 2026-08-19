@@ -97,6 +97,7 @@ description: 二进制分析模式作战手册：样本登记与活体处置 SOP
   **期望工具集**，不声称任何工具已装——预设面向新环境分发，以**开工检测为准**：
   逐个 `command -v <工具>` 探测，把实测结果登记进工作区（evidence-index.md 的
   tool-plane 节）；后续只用检测到的工具。
+- **探测合并（多工具时）**：批量跑 `shared/scripts/tool-plane.sh`（Windows 用 `tool-plane.ps1`；参数=本手册期望工具清单），单次紧凑表直接登记 tool-plane 节——替代逐条 `command -v` 回显。
 - **四级兜底（与 pentest/code-audit 同构）**：
   1. **检测到的本机工具 / bash 内置优先**；
   2. **MCP 兜底**——缺失但已连接 MCP（kali MCP、burpsuite MCP、yakit MCP、chrome MCP、
@@ -202,12 +203,14 @@ description: 二进制分析模式作战手册：样本登记与活体处置 SOP
 - **位置**：本预设目录下 `refs/`（与 `skills/` 同级）。加载本技能时你会拿到本技能的
   base 目录（SKILL.md 所在目录 = `skills/re-playbook/`），refs/ 相对它 = `../../refs/`；
   用 read 直接读取，先读 `refs/README.md`（全量索引）。
+  **读取纪律**：refs 一律 grep/README 索引先行 → `read` 带 offset/limit 按节读；禁止整本 read；扫描类长输出先落盘再读摘要。
 - 本 playbook 是速查卡，refs/ 是案例库：需要细节时 read 该文件，不整段复制。
   **打包/迁移到任何机器路径都有效。**
 
 | 需求 | 读 refs/ 下文件 |
 |---|---|
 | 二进制漏洞研究（pwn：stack/heap/kernel） | pwn/（SKILL + references 3 篇） |
+| 漏洞挖掘与利用开发（fuzz 搭建/崩溃分析/利用构造/缓解与边界） | exploit-dev/（10 篇：fuzzing·课程、exploit-development·路线图、crash-analysis、windows-mitigations、windows-boundaries、vuln-classes、basic-exploitation、shellcode；利用验证实操交 pentest/attack-defense、载荷规避交 av-evasion） |
 | 硬件/无线/工控（固件相邻面） | hardware/（hardware-security/radio-sdr/ot-ics/wifi-wireless） |
 | EDR 绕过逆向（检测侧视角，分析归本模式、规则产出接 av） | edr-bypass-re/（telemetry-blinding/hook-survey/unhook） |
 | Android 逆向增量（Kotlin 名恢复/动态分析/frida 脚本） | mobile/android-reverse/engineering-skill-v1、v2/ |

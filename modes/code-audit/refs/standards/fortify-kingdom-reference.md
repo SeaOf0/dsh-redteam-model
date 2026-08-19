@@ -62,7 +62,7 @@
 
 - `standards/chanzi-rules/`：122 条 Java 生态漏洞规则知识（SQLi/SSRF/SSTI/XXE/XSS/反序列化/
   代码执行/命令注入/越权/上传/弱口令/硬编码等 20 类），每条含**关键 sink API 清单** +
-  **中文漏洞详解**（本质/触发场景/危险与安全 API 对比/示例代码）。
+  **中文漏洞详解**（本质/触发场景/危险与安全 API 对比/示例代码），提取自 ChanziSAST 规则库。
 - 用法：先读 `chanzi-rules/INDEX.md` 按类别定位，再 read 具体规则文件；
   其 sink 清单与各语言手册（php-sink-reference 等）互为印证，命中即按本文档定级。
 - 与可执行规则的边界：chanzi 规则是**语义知识**（cypher 查询引擎依赖，不可离线重放）；

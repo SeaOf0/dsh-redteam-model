@@ -5,7 +5,7 @@ description: .NET/C# 反序列化审计手册。覆盖 BinaryFormatter/LosFormat
 
 # .NET 反序列化审计手册（dotnet-deser-audit）
 
-> 定位：C#/.NET 无独立审计总手册（库内暂无），本篇是反序列化主线的规则降级兜底——把
+> 定位：C#/.NET 无独立审计总手册（源库未收录），本篇是反序列化主线的规则降级兜底——把
 > .NET 反序列化入口、格式化器、gadget 链、ViewState 判据补齐成「入口识别→危险模式→
 > 验证方法→修复建议」完整路径。扫描规则直接挂载
 > `refs/standards/semgrep-oss/csharp/lang/security/insecure-deserialization/`。

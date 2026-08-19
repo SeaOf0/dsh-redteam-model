@@ -6,9 +6,8 @@ description: CTF 解题模式作战手册：题面登记与线索梳理、模块
 # CTF 解题作战手册
 
 > 主观念=flag 真实性主线；两门 board/flag；成果页=ledger 台账板式（复用）。
-> 设计依据：`plugins/dsh-redteam-model/DESIGN.md` 第 17 节（ctf-solver 立项）。
 > 开工顺序：工作区发现 → WORKSPACE.md → tool-plane 检测登记 → 优先看 route-boost 信封
-> （已含门禁与 canonical 名），信封缺失/不确定再调 gates_list。
+> （已含门禁与 canonical 名），信封缺失/不确定再调 gates_list（mode=ctf-solver）。
 
 ## 定位与设计依据
 
@@ -98,7 +97,7 @@ flag 本体在台账最多出现一次（以验证证据为准，防泄题重复
 - pwn/re：gdb/pwndbg、ropper/ROPgadget、ghidra/ida、qemu（按需，缺失走脚本兜底或安装请求）
 - crypto：sage/python3、openssl、cyberchef（网页）
 - forensics：volatility3、binwalk/foremost、wireshark/tshark、grep 全家桶
-- 探测制：开工 command -v 登记 evidence-index tool-plane 节，检测到的优先 → MCP → 脚本兜底 → 安装请求。
+- 探测制：开工 command -v 登记 evidence-index tool-plane 节（多工具时批量跑 `shared/scripts/tool-plane.sh`，Windows 用 `tool-plane.ps1`，单次紧凑表登记），检测到的优先 → MCP → 脚本兜底 → 安装请求。
 
 ## 附录
 

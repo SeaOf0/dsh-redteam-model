@@ -134,7 +134,7 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 // 10. config schema defaults
 {
 	const c = Config({});
-	ok("config defaults (maxChars 1600, includeRefs true)", c.maxChars === 1600 && c.includeRefs === true);
+	ok("config defaults (maxChars 1200, includeRefs true)", c.maxChars === 1200 && c.includeRefs === true);
 }
 
 // 11. av boundary 新口径 + V1 新门 + refs 标签可查
@@ -256,7 +256,7 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	ok("否定语境+无命中不继承粘滞执行相位", inferPhase(pentest, "这个漏洞的修复方案给我讲讲", "verify").id === "recon");
 	ok("裸继续仍粘滞（无否定词）", inferPhase(pentest, "继续", "verify").id === "verify");
 	const negEnv = buildEnvelope({ presetId: "pentest", mode: pentest, phase: pentest.phases[0], refsHits: [], gates: GATES, negated: true });
-	ok("negated envelope carries knowledge-mode hint", negEnv.includes("攻击执行相位路由已抑制"));
+	ok("negated envelope carries knowledge-mode hint", negEnv.includes("攻击执行相位已抑制"));
 	const plainEnv = buildEnvelope({ presetId: "pentest", mode: pentest, phase: pentest.phases[0], refsHits: [], gates: GATES });
 	ok("plain envelope has no negation hint", !plainEnv.includes("攻击执行相位路由已抑制"));
 }
