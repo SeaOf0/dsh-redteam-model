@@ -140,7 +140,7 @@
   runtime 注册另行处理）。
 - **zh-intranet/ 12 篇**：内容整理收录，按原文收录；
   「免杀与规避」一篇按生态边界未收——av-evasion 领域）。
-- **zh-intranet/intranet-host-collect.md**：自写，
+- **zh-intranet/intranet-host-collect.md**：自写（2026-08-19 补单机落点收集缺口），
   覆盖此前的「已控主机全量收集 SOP + 必做清单 + 触发表 + 凭证发散闭环」零覆盖项。
 - **trends/**：playbook 自建（自建），条目联网核实并附来源链接。
 - 本目录随预设打包分发；第三方来源文件的许可注记见各 README。

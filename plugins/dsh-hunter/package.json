@@ -1,25 +1,27 @@
 {
-	"name": "@dsh-external/dsh-redteam-results",
-	"version": "1.0.1",
-	"description": "Session-scoped redteam findings registry for the nine security presets: model-side register/update/delete tools, a loopback RPC surface, and a per-session conversation tab (redteam 成果) with per-mode pages — pentest page ships first with severity stats, type distribution, lifecycle status, pagination, verify-to-session and MD exports.",
+	"name": "@dsh-external/dsh-hunter",
+	"version": "1.0.0",
+	"description": "DSH hunter plugin: FOFA / Hunter(qianxin) / Quake(360) aggregated asset search with unified DSL → per-platform syntax conversion, quota-aware pagination/export, API-key settings panel, and the code-audit live-verification pipeline (L0 fingerprint check on internet assets, L1 minimal-impact EXP only on user-authorized assets).",
 	"keywords": [
 		"deepseek",
 		"deepseek-harness",
 		"dsh-plugin",
 		"dsh-bundle",
-		"findings-tracker",
-		"session-scoped"
+		"asset-hunting",
+		"fofa",
+		"hunter",
+		"quake"
 	],
 	"type": "module",
 	"main": "./lib/index.js",
 	"exports": {
 		".": "./lib/index.js",
 		"./client": "./lib/client.js",
-		"./package.json": "./package.json",
-		"./store": "./lib/store.js"
+		"./package.json": "./package.json"
 	},
 	"peerDependencies": {
-		"@deepseek-ai/dsh-tools": "*"
+		"@deepseek-ai/dsh-tools": "*",
+		"@dsh-external/dsh-redteam-results": "*"
 	},
 	"license": "MIT",
 	"author": "SeaOf0",

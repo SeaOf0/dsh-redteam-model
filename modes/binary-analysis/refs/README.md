@@ -55,7 +55,7 @@
 
 | 目录/文件 | 内容 | 何时读 |
 |---|---|---|
-| ida-reverse/ | IDA 逆向技能（含 ida-mcp-cheatsheet——IDA 的 MCP 桥接速查，配合 trends） | IDA 可用时（含 scripts/open.ps1|start.ps1：IDA 启动辅助）
+| ida-reverse/ | IDA 逆向技能（含 ida-mcp-cheatsheet——IDA 的 MCP 桥接速查，配合 trends） | IDA 可用时 （2026-08-17 补齐 scripts/open.ps1|start.ps1：IDA 启动辅助）
 | ida-ai-reversing/ | IDA AI 逆向工作流（397 行） | IDA + AI 协作 |
 | ida-plugin-ecosystem.md | IDA 插件生态 2025-2026（IDAPython/MCP 桥接/AI 插件/经典插件/新插件） | IDA 插件/脚本/AI 协作 |
 | x64dbg-reversing/ | x64dbg 动态调试手册（645 行，MCP 命令速查）+ references/unpacking-oep-iat.md（OEP 方法体系 + IAT 重建对比 + B1 三验判据）+ references/x64dbg-debugging-and-plugins.md（断点方法论/插件生态/脚本系统） | Windows 样本动态调试/脱壳 |
@@ -193,7 +193,7 @@ opcode 提取分类、运行时 VM 状态捕获——js-reverse 去混淆之外�
   `tools/x64dbg-reversing/references/x64dbg-debugging-and-plugins.md`（x64dbg 调试方法论/插件/脚本）、
   `tools/ghidra-mcp-workflow.md`（Ghidra headless + MCP 联动）、`methodology/downloader-chain-decoding.md`（下载器链逐级解码）
   —— 均为自写，外部技术点引审计报告 §4 与公开项目 URL；另在 `tools/x64dbg-reversing/SKILL.md` 补交叉引用。
-- **补足 exploit-dev/ 10 篇**：fuzzing 双篇 / 利用开发双篇 / 崩溃分析 /
+- **补足 exploit-dev/ 10 篇（2026-08-19）**：fuzzing 双篇 / 利用开发双篇 / 崩溃分析 /
   Windows 缓解 / Windows 边界 / 漏洞类别 / 基础利用 / shellcode，按原文收录（覆盖本库此前
   libFuzzer·honggfuzz·CWE·崩溃分析·Windows 利用开发·Windows 缓解·shellcode 机制七项零覆盖缺口）。
 - 本目录随预设打包分发；第三方来源文件的许可注记见各 README。

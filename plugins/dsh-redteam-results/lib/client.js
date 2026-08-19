@@ -1167,6 +1167,7 @@ function Detail(props) {
 		f.verifyNote ? Block({ title: "复核注记" }, f.verifyNote) : null,
 		mode === "pentest" && f.retestNote ? Block({ title: "复测记录" }, f.retestNote + (f.retestAt ? "（" + fmtTime(f.retestAt) + "）" : "")) : null,
 		React.createElement("div", { className: "dsh-rtr-rowactions" },
+			mode === "code-audit" ? React.createElement(Btn, { primary: true, onClick: function () { props.onLiveVerify ? props.onLiveVerify(f) : null; } }, "实测") : null,
 			React.createElement(Btn, { onClick: function () { props.onVerify(f); } }, "发送到会话验证"),
 			React.createElement(Btn, { onClick: function () { props.onExportOne(f); } }, "导出报告（MD）")));
 }
@@ -1274,6 +1275,23 @@ function ModePage(props) {
 			})
 			.catch(function (e) { setNotice("验证请求失败：" + (e && e.message ? e.message : e)); });
 	}
+	function onLiveVerify(f) {
+		// 一键实测：调 dsh-hunter 验证流水线（L0 指纹判定/L1 仅授权资产），结果回写 finding。
+		if (mode !== "code-audit") { setNotice("实测仅支持代码审计模式 finding"); return; }
+		setNotice("实测进行中：搜索资产 → 存活探测 → 指纹校验 →" + (f.auditMode === "dynamic" ? "影响面评估…" : "EXP 验证（L1 仅授权资产）…"));
+		fetch("/dsh-hunter/verify.live", {
+			method: "POST",
+			headers: { "content-type": "application/json" },
+			body: JSON.stringify({ sessionId: f.sessionId || sessionId, findingId: f.id, allMode: false })
+		}).then(function (r) { return r.json(); }).then(function (r) {
+			if (r && r.ok) {
+				setNotice("实测完成（#" + f.seq + "）：" + r.summary + (r.notified ? "" : "（原会话不可达，未注入通知）"));
+				if (grouped[0]) fetchGroups(); else fetchList({});
+				return;
+			}
+			setNotice("实测失败：" + ((r && r.error) || "未知错误"));
+		}).catch(function (e) { setNotice("实测失败：" + (e && e.message ? e.message : e)); });
+	}
 	function onDelete(f) {
 		if (confirmDel[0] !== f.id) { setConfirmDel(f.id); return; }
 		api("finding.delete", { sessionId: f.sessionId || sessionId, id: f.id })
@@ -1337,9 +1355,10 @@ function ModePage(props) {
 				React.createElement("span", { className: "dsh-rtr-summ" }, f.summary || ""),
 				React.createElement("span", { className: "dsh-rtr-time" }, fmtTime(f.updatedAt)),
 				React.createElement("span", { className: "dsh-rtr-rowactions", onClick: function (e) { e.stopPropagation(); } },
+					mode === "code-audit" ? React.createElement(Btn, { primary: true, onClick: function () { onLiveVerify(f); } }, "实测") : null,
 					React.createElement(Btn, { onClick: function () { onVerify(f); } }, "验证"),
 					React.createElement(Btn, { danger: true, onClick: function () { onDelete(f); } }, confirmDel[0] === f.id ? "确认删除" : "删除"))),
-			expanded[0] === f.id ? React.createElement(Detail, { f: f, mode: mode, meta: meta, onVerify: onVerify, onExportOne: exportOne }) : null);
+			expanded[0] === f.id ? React.createElement(Detail, { f: f, mode: mode, meta: meta, onVerify: onVerify, onLiveVerify: onLiveVerify, onExportOne: exportOne }) : null);
 	};
 
 	var tlItem = function (f) {
@@ -1370,7 +1389,7 @@ function ModePage(props) {
 						React.createElement("span", null, "主机 ", React.createElement("b", null, f.target || "（未填）")),
 						React.createElement("span", null, "证据 ", React.createElement("b", null, f.evidence || "（未填）")),
 						React.createElement("span", { className: "dsh-rtr-tl-concl" }, f.summary || "")),
-					open ? React.createElement(Detail, { f: f, mode: mode, meta: meta, onVerify: onVerify, onExportOne: exportOne }) : null)));
+					open ? React.createElement(Detail, { f: f, mode: mode, meta: meta, onVerify: onVerify, onLiveVerify: onLiveVerify, onExportOne: exportOne }) : null)));
 	};
 
 	var cpItem = function (f) {
@@ -1403,7 +1422,7 @@ function ModePage(props) {
 					hop("权限", f.permission),
 					hop("资源", f.resource || f.target),
 					hop("影响", f.impact || f.summary)),
-				open ? React.createElement(Detail, { f: f, mode: mode, meta: meta, onVerify: onVerify, onExportOne: exportOne }) : null));
+				open ? React.createElement(Detail, { f: f, mode: mode, meta: meta, onVerify: onVerify, onLiveVerify: onLiveVerify, onExportOne: exportOne }) : null));
 	};
 
 	var listBody;

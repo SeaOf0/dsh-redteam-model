@@ -1,0 +1,6 @@
+# dsh-hunter「hunter狩猎」：三平台资产搜索 + 代码审计一键实测验证流水线。
+# 宿主平面（全模式可见）：会话标签页「hunter 狩猎」（conversation.view slot，与
+# redteam 成果并排）+ /dsh-hunter RPC + 实测历史与 API key 独立 SQLite。
+- insert:
+    - id: dsh-hunter
+      name: '@dsh-external/dsh-hunter'

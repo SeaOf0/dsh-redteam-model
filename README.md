@@ -13,13 +13,14 @@
 | `code-audit` 代码审计 | 白盒源码审计，可 RCE 主线（上传/未授权/组合/反序列化/溢出等七类） | 双链一致（审计工人链 vs 追踪员链）；扫描命中对账；Fortify 分类定级 |
 | `binary-analysis` 二进制分析 | 病毒分析、逆向破解、脱壳还原 | 样本登记门（B0）前置；还原不完整=结论标疑似；假设台账终态 |
 | `attack-defense` 攻防评估 | 权限与数据主线的全链路对抗：侦察→突破→横向→持久化→报告 | 每阶段 gate-pass 才进下一阶段；持久化登记制；先留证后清理 |
+| `av-evasion` 免杀对抗 | 攻击视角的免杀研究：载荷开发与本地实验循环，技术与检测侧成对呈现（OPSEC 情报） | 本地默认验证+授权目标按任务；免杀技术与检测情报成对交付；V 门四声明 |
 | `incident-response` 应急溯源 | Windows/Linux 应急响应与攻击溯源：证据保全→失陷排查→攻击链时间线还原→定性→处置建议→报告 | 证据与时间线主线（无证据标疑似）；先留证后处置；删除类操作只出清单 |
 | `cloud-security` 云安全攻防 | 云平台（AWS/Azure/GCP/阿里云/腾讯云/华为云）与云原生（K8s/容器/Serverless/CI-CD）渗透：暴露面测绘、AK/SK 凭证利用、IAM 提权、元数据 SSRF、容器逃逸、云检测缺口 | 云攻击路径主线（入口→身份→权限→资源→影响）；只读探测优先；环境改动逐项登记还原 |
 | `ctf-solver` CTF 解题 | CTF 竞赛解题：题面登记、模块路由（web/pwn/reverse/crypto/misc 等）、解题循环、flag 台账与复盘 | flag 平台回显验证；解题台账终态；未解题如实记录卡点 |
 
 每个模式自包含四层资产：**persona**（角色/认识论/边界/报告纪律）→ **playbook**（方法论与门禁文本契约）→ **skills**（可加载技能）→ **refs/**（外部知识库，原文索引化，零本机路径）。
 
-## 运行时插件（八个）
+## 运行时插件（九个）
 
 | 插件 | 作用 | 挂载平面 |
 |---|---|---|
@@ -30,6 +31,7 @@
 | `dsh-product-subagents` | `subagent_claude_code`/`subagent_codex` provider：无头 spawn 本机 claude/codex CLI，跨 harness 复核按建议项由用户触发 | 宿主 |
 | `dsh-mcp-studio` | MCP 加载工作台：通用类 MCP（burpsuite/yakit/chrome-dev-mcp 等）的接入、状态与诊断 | 宿主 |
 | `dsh-redteam-results` | 会话标签页「redteam 成果」：任务台账作战大屏 + 五板式成果页（发现/资产/台账/时间线/云攻击路径），九模式**跨会话**聚合与时间范围筛选（验证/删除回原始会话执行），SQLite 行级持久 | 宿主（bundles） |
+| `dsh-hunter` | 会话标签页「hunter 狩猎」：FOFA / Hunter / Quake 三平台资产搜索（统一 DSL 自动转平台语法、分页与限额导出、API key 独立存储），代码审计成果页「实测」按钮一键验证（指纹搜索→存活探测→EXP 验证，仅授权资产执行） | 宿主（bundles） |
 | `dsh-scanner-tools` | `nuclei_scan`/`httpx_probe`/`ffuf_fuzz` 封装：保守限速默认、防盲打（须先登记资产）、产物自动落证据索引 | preset（仅 pentest / attack-defense） |
 
 ## 安装
@@ -37,7 +39,7 @@
 前置：**Node.js >= 22**（DSH 本身要求）。无需预装 pnpm/dsh（经 npx 拉起）；bash/python 非必需。
 
 ```bash
-tar -xzf dsh-redteam-model-1.0.5.tar.gz && cd dsh-redteam-model/deploy
+tar -xzf dsh-redteam-model-1.0.6.tar.gz && cd dsh-redteam-model/deploy
 node deploy.mjs            # 安装：预设链接 + 插件挂载 + 依赖安装（幂等可重跑）
 node deploy.mjs --check    # 离线校验：九预设挂载 + 插件真实 loader 路径 + bundle 声明
 node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
@@ -47,7 +49,7 @@ node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
 
 部署后 2 分钟人工验证：
 
-1. 打开 http://127.0.0.1:3080，roster 列出七个模式（redteam 安全研究员 + 六个专业模式）；
+1. 打开 http://127.0.0.1:3080，roster 列出九个模式（redteam 安全研究员 + 八个专业模式）；
 2. 任一会话让模型调 `gates_list`，返回专业模式门禁 schema；
 3. pentest/attack-defense 会话可见 `nuclei_scan` 等扫描工具（其余模式不可见 = preset 平面正确）；
 4. 发起任务后出现 `[route-boost] mode=... phase=...` 运行时信封快照；
@@ -61,7 +63,7 @@ node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
 
 ```mermaid
 flowchart TB
-    U[用户 @ dsh web :3080] --> PS[模式会话 pentest / code-audit / binary-analysis / attack-defense / av-evasion / incident-response]
+    U[用户 @ dsh web :3080] --> PS[模式会话 redteam / pentest / code-audit / binary-analysis / attack-defense / av-evasion / incident-response / cloud-security / ctf-solver]
 
     subgraph MODE[模式资产（预设四层）]
         PE[persona 角色与边界]
@@ -77,6 +79,7 @@ flowchart TB
         RG[dsh-refusal-guard 拒答修复]
         SA[dsh-product-subagents 双签 provider]
         MS[dsh-mcp-studio MCP 工作台]
+        HU[dsh-hunter 资产狩猎+实测]
     end
 
     SC[dsh-scanner-tools 扫描工具 preset 平面]
@@ -86,6 +89,7 @@ flowchart TB
     PS -->|工具调用| SG
     PS -->|write/bash| SE
     PS -->|复核委托| SA
+    PS -->|审计实测| HU
     PS -->|pentest/ad 专用| SC
     SG -->|判定| GL[(gate-log.md)]
     SE -->|拒绝留痕| EL[(enforce-log.md)]
@@ -105,11 +109,15 @@ dsh-redteam-model/
 │       ├── skills/           # playbook 等模式技能
 │       └── refs/             # 知识库（README.md 全量索引，零本机路径）
 ├── shared/skills/            # 九预设共享技能（生态协作/独立复核/治理/边界）
-├── plugins/                  # 八个运行时插件（各自含 lib/ 测试/README）
+├── plugins/                  # 九个运行时插件（各自含 lib/ 测试/README）
 └── deploy/                   # 一键部署 CLI（deploy.mjs / verify-deployment.mjs / check-sources.mjs / DEPLOY.md）
 ```
 
 ## 版本变更
+
+### v1.0.6（2026-08-19）
+
+- 新增 hunter 狩猎插件：FOFA / Hunter / Quake 三平台资产搜索（统一 DSL 自动转语法、限额导出），代码审计成果页「实测」按钮一键验证审计结果（指纹搜索→存活探测→EXP 验证，仅授权资产执行）
 
 ### v1.0.5（2026-08-19）
 

@@ -6,7 +6,7 @@ description: 九预设动态生态协作规则：模式是主镜头不是边界�
 # 九预设动态生态协作规则
 
 > 本技能被九个预设共同加载（位于 `plugins/dsh-redteam-model/shared/skills/`）。
-> 设计依据：模式设计文档第 8 节。
+
 
 ## 核心原则
 

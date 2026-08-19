@@ -6,6 +6,7 @@ description: 云安全攻防模式作战手册：云平台（AWS/Azure/GCP/阿�
 # 云安全攻防作战手册
 
 > 主观念=攻击路径主线；七门 C1-C7；成果页=云攻击路径板式（第五板式）。
+
 > 开工顺序：工作区发现 → WORKSPACE.md → tool-plane 检测登记 → 优先看 route-boost 信封
 > （已含门禁与 canonical 名），信封缺失/不确定再调 gates_list（mode=cloud-security）。
 

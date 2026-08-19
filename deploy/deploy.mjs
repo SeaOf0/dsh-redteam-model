@@ -41,6 +41,7 @@ const PLUGINS = [
 	{ name: "dsh-refusal-guard", hostPlane: true },
 	{ name: "dsh-sec-enforce", hostPlane: true },
 	{ name: "dsh-redteam-results", hostPlane: true },
+	{ name: "dsh-hunter", hostPlane: true },
 	{ name: "dsh-scanner-tools", hostPlane: false }
 ];
 const MODE = process.argv[2] ?? "";
@@ -87,6 +88,22 @@ function linkPluginPeers() {
 		n++;
 	}
 	log(`插件 peer 桥接完成（${n} 个 @deepseek-ai/* → 运行时；首次部署为悬挂链接，boot 后生效）`);
+	// 插件互依赖桥接：@dsh-external/<name> → plugins/<name>（如 dsh-hunter 依赖
+	// dsh-redteam-results/store）。自链接幂等，boot 后生效。
+	const extLocal = path.join(PLUGINS_ROOT, "node_modules", "@dsh-external");
+	fs.mkdirSync(extLocal, { recursive: true });
+	let m = 0;
+	for (const { name: pn } of PLUGINS) {
+		const srcDir = path.join(PLUGINS_ROOT, pn);
+		const dst = path.join(extLocal, pn);
+		let cur = null;
+		try { cur = fs.readlinkSync(dst); } catch { /* 非链接 */ }
+		if (cur === srcDir) continue;
+		if (existsAny(dst)) { fs.renameSync(dst, `${dst}.bak-${Date.now()}`); }
+		fs.symlinkSync(srcDir, dst);
+		m++;
+	}
+	log(`插件互依赖桥接完成（${m} 个 @dsh-external/* → plugins/）`);
 }
 
 function linkPresets() {

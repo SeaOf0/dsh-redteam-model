@@ -6,9 +6,6 @@ description: 九模式共用的独立复核员模板：交叉复核子代理的 
 # 独立复核员模板（independent-review）
 
 > 位置：`plugins/dsh-redteam-model/shared/skills/`，五个预设共同加载。
-> 设计依据：共性条款与防跳步第 ④ 层（落盘硬前置）。
-> 调研依据：PoC 动态验证即门禁、任务依赖等待等业界编排实践
-> 的 review 回环（review 可打回 exploit-dev）。
 
 ## 复核员的独立性规则（构造 prompt 时必须遵守）
 

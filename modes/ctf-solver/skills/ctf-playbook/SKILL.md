@@ -6,6 +6,7 @@ description: CTF 解题模式作战手册：题面登记与线索梳理、模块
 # CTF 解题作战手册
 
 > 主观念=flag 真实性主线；两门 board/flag；成果页=ledger 台账板式（复用）。
+
 > 开工顺序：工作区发现 → WORKSPACE.md → tool-plane 检测登记 → 优先看 route-boost 信封
 > （已含门禁与 canonical 名），信封缺失/不确定再调 gates_list（mode=ctf-solver）。
 
