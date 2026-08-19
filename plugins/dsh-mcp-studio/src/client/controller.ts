@@ -181,7 +181,7 @@ export class StudioController {
     }
     this.staged = {
       ...base,
-      servers: [...base.servers, {
+      servers: [{
         id,
         enabled: true,
         name,
@@ -194,7 +194,7 @@ export class StudioController {
         headers: [],
         toolCallTimeoutMs: 60_000,
         failOnStartupError: false,
-      }],
+      }, ...base.servers],
     }
     this.failed = false
     this.publish()

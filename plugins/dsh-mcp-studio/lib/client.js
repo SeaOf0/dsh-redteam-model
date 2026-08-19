@@ -865,10 +865,7 @@ function createStudioPage(face, t, pollStatus, diagnose, clearExecutions) {
       ] }) }),
       pasteNote !== void 0 && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: pasteNote.kind === "ok" ? "dsh-mcs-sub" : "dsh-mcs-errors", style: pasteNote.kind === "ok" ? void 0 : { padding: "6px 10px" }, children: pasteNote.text }),
       !state.writable && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("p", { className: "dsh-mcs-sub", children: t("readOnly") }),
-      state.errors.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "dsh-mcs-errors", children: [
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("strong", { children: t("errorsHeader") }),
-        /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("ul", { children: state.errors.map((error, index) => /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("li", { children: error }, index)) })
-      ] }),
+      state.errors.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("div", { className: "dsh-mcs-errors", children: /* @__PURE__ */ (0, import_jsx_runtime3.jsx)("strong", { children: t("errorsHeader") }) }),
       state.view.servers.length > 0 && /* @__PURE__ */ (0, import_jsx_runtime3.jsxs)("div", { className: "dsh-mcs-filterbar", children: [
         /* @__PURE__ */ (0, import_jsx_runtime3.jsx)(
           "input",
@@ -1205,7 +1202,7 @@ var StudioController = class {
     }
     this.staged = {
       ...base,
-      servers: [...base.servers, {
+      servers: [{
         id,
         enabled: true,
         name: name2,
@@ -1218,7 +1215,7 @@ var StudioController = class {
         headers: [],
         toolCallTimeoutMs: 6e4,
         failOnStartupError: false
-      }]
+      }, ...base.servers]
     };
     this.failed = false;
     this.publish();
@@ -1414,7 +1411,7 @@ var en = {
   unsaved: "Unsaved changes",
   readOnly: "The settings document is read-only.",
   saveFailed: "The last save was rejected. Review the values and save again.",
-  errorsHeader: "Fix these before saving:",
+  errorsHeader: "Complete the MCP configuration before saving.",
   loading: "Loading\u2026",
   statTotal: "Servers",
   statEnabled: "Enabled",
@@ -1504,7 +1501,7 @@ var zh = {
   unsaved: "\u6709\u672A\u4FDD\u5B58\u7684\u4FEE\u6539",
   readOnly: "\u8BBE\u7F6E\u6587\u6863\u5F53\u524D\u53EA\u8BFB\u3002",
   saveFailed: "\u4E0A\u6B21\u4FDD\u5B58\u88AB\u62D2\u7EDD\uFF0C\u8BF7\u68C0\u67E5\u914D\u7F6E\u540E\u91CD\u8BD5\u3002",
-  errorsHeader: "\u4FDD\u5B58\u524D\u8BF7\u5148\u4FEE\u590D\uFF1A",
+  errorsHeader: "\u8BF7\u5B8C\u5584mcp\u5185\u5BB9\u914D\u7F6E\u4FE1\u606F\u540E\u4FDD\u5B58\u3002",
   loading: "\u52A0\u8F7D\u4E2D\u2026",
   statTotal: "\u670D\u52A1\u5668",
   statEnabled: "\u5DF2\u542F\u7528",

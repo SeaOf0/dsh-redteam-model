@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-mcp-studio",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "MCP server studio for DeepSeek Harness: live-mounted servers with real connection status, a per-server tool browser, JSON import, and a dashboard-grade settings page.",
   "type": "module",
   "main": "./lib/index.js",

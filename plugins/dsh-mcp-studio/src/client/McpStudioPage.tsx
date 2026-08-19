@@ -236,7 +236,6 @@ export function createStudioPage(face: StudioCardFace, t: Translate, pollStatus:
         {state.errors.length > 0 && (
           <div className="dsh-mcs-errors">
             <strong>{t('errorsHeader')}</strong>
-            <ul>{state.errors.map((error, index) => <li key={index}>{error}</li>)}</ul>
           </div>
         )}
 
