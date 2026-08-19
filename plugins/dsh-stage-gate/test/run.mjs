@@ -66,6 +66,17 @@ expect("binary/B1 pass", v.pass === true, JSON.stringify(v.missing));
 v = runGate(fs, { mode: "attack-defense", stage: "persistence", workspace: F });
 expect("ad/persistence fails without registry", v.pass === false);
 
+// attack-defense report: 操作痕迹台账门禁（缺→不过；全→过）
+const adws = fs.mkdtempSync(path.join(path.dirname(F), "ad-report-"));
+const adreport = path.join(adws, "report.md");
+fs.writeFileSync(adreport, "# 报告\n漏洞名称…ATT&CK…detection gap…持久化清单…路径台账…阶段终态…\n");
+v = runGate(fs, { mode: "attack-defense", stage: "report", workspace: adws, file: adreport });
+expect("ad/report fails without op-traces", v.pass === false);
+fs.writeFileSync(path.join(adws, "op-traces.md"), "# 操作痕迹台账\n| 时间 | shell 地址 | ssh 密钥 | 创建的用户 | 位置 |\n|---|---|---|---|---|\n| 2026-01-01 | 无 | 无 | 无 | 无 |\n");
+v = runGate(fs, { mode: "attack-defense", stage: "report", workspace: adws, file: adreport });
+expect("ad/report passes with op-traces", v.pass === true, JSON.stringify(v.missing));
+fs.rmSync(adws, { recursive: true, force: true });
+
 // av V1 fail (no plan)
 v = runGate(fs, { mode: "av-evasion", stage: "V1", workspace: F });
 expect("av/V1 fails without plan", v.pass === false);

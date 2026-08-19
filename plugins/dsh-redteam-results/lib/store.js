@@ -9,7 +9,7 @@
 import { DatabaseSync } from "node:sqlite";
 
 const SEVERITIES = ["critical", "high", "medium", "low"];
-const STATUSES = ["pending", "verified", "false-positive", "fixed"];
+const STATUSES = ["pending", "code-reviewed", "verified", "false-positive", "fixed"];
 const EVIDENCE_LEVELS = ["confirmed", "partial", "unknown"];
 const SOURCE_ORIGINS = ["manual", "scan-confirmed", "scan-false-positive"];
 const DEFAULT_PAGE_SIZE = 10;
@@ -187,6 +187,10 @@ export function updateFinding(store, sessionId, mode, id, patch = {}) {
 	const row = store.get.get(sessionId, id);
 	if (row === undefined || row.mode !== mode) return undefined;
 	const prev = rowToFinding(row);
+	// fixed 只接受"此前已验证真实存在"的流转：先 verified、修复后复测不成功才可标记。
+	if (cleanEnum(patch.status, STATUSES, prev.status) === "fixed" && prev.status !== "verified") {
+		throw new Error("已修复 仅可用于此前已验证（verified）真实存在的 finding——先验证成立，用户修复后复测不成功再标记 fixed");
+	}
 	const next = {
 		title: cleanText(patch.title, 200) || prev.title,
 		severity: cleanEnum(patch.severity, SEVERITIES, prev.severity),

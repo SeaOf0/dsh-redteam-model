@@ -20,6 +20,21 @@ ok("register 自增序号且默认值齐备（pending/medium/unknown），行落
 	assert.deepEqual(getFinding(st, SID, "pentest-1").title, "SQL注入");
 });
 
+ok("状态语义：code-reviewed 可用、不记 verifiedAt；fixed 需先 verified", () => {
+	const st = openStore(":memory:");
+	registerFinding(st, SID, "code-audit", { title: "fastjson 反序列化", auditMode: "static" });
+	const u = updateFinding(st, SID, "code-audit", "code-audit-1", { status: "code-reviewed" });
+	assert.equal(u.status, "code-reviewed");
+	assert.ok(!u.verifiedAt, "code-reviewed 不记 verifiedAt");
+	let threw = false;
+	try { updateFinding(st, SID, "code-audit", "code-audit-1", { status: "fixed" }); } catch { threw = true; }
+	assert.ok(threw, "未 verified 直接 fixed 应抛错");
+	updateFinding(st, SID, "code-audit", "code-audit-1", { status: "verified", verifyNote: "本地复现 EXP 生效" });
+	const f2 = updateFinding(st, SID, "code-audit", "code-audit-1", { status: "fixed", retestNote: "修复后复测不成功" });
+	assert.equal(f2.status, "fixed");
+	st.close();
+});
+
 ok("register 越权值回落（severity/status/evidenceLevel 白名单）+ 长文本截断", () => {
 	const st = openStore(":memory:");
 	const long = "x".repeat(500);
@@ -151,6 +166,7 @@ ok("渗透富字段往返：三件套/影响/CVSS/请求包/复测", () => {
 		title: "SQLi", baseline: "正常 12 行", diffEvidence: "注入后 3 行", markerEcho: "r9t2k1",
 		impact: "脱库 users 5 行", cvss: "CVSS:3.1/AV:N (8.6)", requestPkt: "GET /?id=1'", responsePkt: "HTTP/1.1 200"
 	});
+	updateFinding(st, SID, "pentest", f.id, { status: "verified", verifyNote: "差分翻转+marker 回显" });
 	const u = updateFinding(st, SID, "pentest", f.id, { status: "fixed", retestNote: "复测已修复", retestAt: "2026-08-18T00:00:00Z" });
 	assert.equal(u.baseline, "正常 12 行");
 	assert.equal(u.markerEcho, "r9t2k1");

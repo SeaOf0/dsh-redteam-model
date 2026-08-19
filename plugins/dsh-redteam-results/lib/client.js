@@ -27,7 +27,7 @@ var MODES = [
 ];
 var SEVERITY_LABEL = { critical: "严重", high: "高危", medium: "中危", low: "低危" };
 var SEVERITY_ORDER = ["critical", "high", "medium", "low"];
-var STATUS_LABEL = { pending: "待验证", verified: "已验证", "false-positive": "误报", fixed: "已修复" };
+var STATUS_LABEL = { pending: "待验证", "code-reviewed": "代码侧已复核", verified: "已验证", "false-positive": "误报", fixed: "已修复" };
 var EVIDENCE_LABEL = { confirmed: "已证实", partial: "部分证据", unknown: "未知" };
 var SOURCE_LABEL = { manual: "人工深审", "scan-confirmed": "扫描确认", "scan-false-positive": "扫描误报" };
 var AUDIT_MODE_LABEL = { static: "静态审计", dynamic: "动态·验证成功" };
@@ -133,6 +133,10 @@ function cmpTimeline(a, b) {
 function statusLabelSetFor(archetype, mode) {
 	if (mode === "ctf-solver") return CTF_STATUS_LABEL;
 	return archetype === "assets" ? ASSET_STATUS_LABEL : archetype === "ledger" ? LEDGER_STATUS_LABEL : archetype === "timeline" ? TIMELINE_STATUS_LABEL : archetype === "cloudpath" ? CLOUDPATH_STATUS_LABEL : STATUS_LABEL;
+}
+function statusTextFor(f, mode, labelSet) {
+	if (mode === "code-audit" && f.status === "pending" && f.auditMode !== "dynamic") return "待动态验证";
+	return labelSet[f.status] || f.status;
 }
 
 function download(name, text, mime) {
@@ -754,6 +758,7 @@ var CSS = [
 	".dsh-rtr-sev-low{color:#3b7dd8;border-color:rgba(59,125,216,.35);background:rgba(59,125,216,.08)}",
 	".dsh-rtr-st{flex:none;font-size:11px;padding:2px 8px;border-radius:9px;border:1px solid var(--dsw-alias-border-l2,#d4d4d8);color:var(--dsw-alias-label-secondary,#5b5b60)}",
 	".dsh-rtr-st-verified{color:#2f9e63;border-color:rgba(47,158,99,.35);background:rgba(47,158,99,.08)}",
+		".dsh-rtr-st-code-reviewed{color:#0b7285;border-color:rgba(11,114,133,.35);background:rgba(11,114,133,.08)}",
 	".dsh-rtr-st-false-positive{color:#8a8a8f;text-decoration:line-through}",
 	".dsh-rtr-am{flex:none;font-size:11px;padding:2px 8px;border-radius:9px;border:1px solid}",
 	".dsh-rtr-am-static{color:var(--dsw-alias-label-secondary,#5b5b60);border-color:rgba(91,91,96,.35);background:rgba(91,91,96,.07)}",
@@ -1351,7 +1356,7 @@ function ModePage(props) {
 				}),
 				React.createElement("span", { className: "dsh-rtr-seq" }, "#" + f.seq),
 				React.createElement(Chip, { severity: f.severity }),
-				React.createElement("span", { className: "dsh-rtr-st dsh-rtr-st-" + f.status }, (stLabelSet[f.status] || f.status)),
+				React.createElement("span", { className: "dsh-rtr-st dsh-rtr-st-" + f.status }, statusTextFor(f, mode, stLabelSet)),
 				mode === "code-audit" && f.auditMode ? React.createElement("span", { className: "dsh-rtr-am dsh-rtr-am-" + f.auditMode }, AUDIT_MODE_LABEL[f.auditMode] || f.auditMode) : null,
 				React.createElement("span", { className: "dsh-rtr-title" }, f.title),
 				React.createElement("span", { className: "dsh-rtr-summ" }, f.summary || ""),

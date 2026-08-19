@@ -160,9 +160,12 @@ const GATES = {
 			requiresFile: true,
 			fileHint: "总评估报告文件路径",
 			checks: [
-				{ kind: "markers", file: "$file", markers: ["漏洞名称", "ATT&CK", "detection gap", "持久化清单", "路径台账", "阶段终态"] }
+				{ kind: "markers", file: "$file", markers: ["漏洞名称", "ATT&CK", "detection gap", "持久化清单", "路径台账", "阶段终态"] },
+				{ kind: "file", file: "op-traces.md" },
+				{ kind: "markers", file: "op-traces.md", markers: ["shell 地址", "ssh 密钥", "创建的用户"] },
+				{ kind: "table", file: "op-traces.md", minRows: 1, minCells: 4 }
 			],
-			manual: ["每个 finding 带复核 gate-pass 签名由报告员保证"]
+			manual: ["每个 finding 带复核 gate-pass 签名由报告员保证", "操作痕迹台账须覆盖全部已登记 webshell/ssh 密钥/新建用户（无则填「无」行）"]
 		}
 	},
 	"av-evasion": {

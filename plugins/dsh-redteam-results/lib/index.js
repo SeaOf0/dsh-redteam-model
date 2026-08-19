@@ -58,7 +58,17 @@ export function verifyMessage(finding) {
 	if (finding.evidence) lines.push(`证据引用：${finding.evidence}`);
 	if (finding.timelineAt) lines.push(`攻击时间：${finding.timelineAt}`);
 	if (finding.entry || finding.identity || finding.permission || finding.resource) lines.push(`攻击路径四要素：入口=${finding.entry || "缺"} ｜ 身份=${finding.identity || "缺"} ｜ 权限=${finding.permission || "缺"} ｜ 资源=${finding.resource || "缺"}`);
-	lines.push("请按本模式验证纪律复核（渗透模式=对照三件套：基线/差分/marker 逐字回显），复核后调 redteam_finding_update 回写 status（verified/false-positive）与 verifyNote。");
+	const statusGuide = finding.mode === "code-audit"
+		? ["请按代审验证纪律复核（双链一致/扫描对账），复核后调 redteam_finding_update 回写 status 与 verifyNote：",
+			"- 静态审计：复核通过只能回写 code-reviewed（代码侧已复核）——代码级推理不得标 verified；",
+			"- verified 仅限动态验证成功：EXP 本地复现真实生效，或在线授权环境实测 L1 通过；",
+			"- 动态审计复现不成立 → false-positive；验证未完成/环境性失败保持 pending。"].join("\n")
+		: ["请按本模式验证纪律复核（渗透模式=对照三件套：基线/差分/marker 逐字回显），复核后调 redteam_finding_update 回写 status 与 verifyNote：",
+			"- verified=验证完成且真实可再复现；",
+			"- 验证未完成或环境性失败（WAF 拦截/目标不可达/超时）→ 保持 pending，不得因此判 false-positive；",
+			"- false-positive=验证后确认漏洞不存在或误判；",
+			"- fixed=仅当此前已 verified 真实存在、用户修复后本次复测不成功才可标记（须有本次复测记录）。"].join("\n");
+	lines.push(statusGuide);
 	return lines.join("\n");
 }
 
@@ -190,8 +200,8 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		const id = String(p.id ?? "");
 		const finding = getFinding(st, sessionId, id);
 		if (!finding) return { ok: false, error: "finding 不存在" };
-		const status = ["verified", "false-positive", "pending"].includes(p.status) ? p.status : undefined;
-		if (status === undefined) return { ok: false, error: "status 必须是 verified/false-positive/pending" };
+		const status = ["verified", "false-positive", "pending", "code-reviewed"].includes(p.status) ? p.status : undefined;
+		if (status === undefined) return { ok: false, error: "status 必须是 verified/false-positive/pending/code-reviewed" };
 		const updated = updateFinding(st, sessionId, finding.mode, id, { status, verifyNote: String(p.verifyNote ?? "") || undefined });
 		return { ok: true, id: updated.id, status: updated.status, verifyNote: updated.verifyNote };
 	}
@@ -270,7 +280,7 @@ function apply(ctx) {
 		description: "按 id 更新一条 finding：状态流转（verified/false-positive/fixed）、字段修订、verifyNote 记复核结论、retestNote 记复测结论。语义全集见 shared/refs/finding-fields.md。",
 		parameters: {
 			id: { type: "string", required: true, description: "finding id（如 pentest-3）" },
-			status: { type: "string", enum: STATUSES, description: "新状态" },
+			status: { type: "string", enum: STATUSES, description: "新状态（verified=验证成功且可再复现；code-reviewed=代码审计静态复核通过；fixed=仅限此前已验证、修复后复测不成功）" },
 			verifyNote: { type: "string", description: "复核注记（结论+依据，简短）" },
 			severity: { type: "string", enum: SEVERITIES },
 			title: { type: "string" },

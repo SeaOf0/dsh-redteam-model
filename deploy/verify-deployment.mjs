@@ -94,6 +94,20 @@ for (const name of bundles) {
 	} catch (e) { failed++; console.log(`FAIL plugin ${name}: ${e.message}`); }
 }
 
+// preset 平面交付件不进 web bundles（由预设行挂载）——按依赖 link + dsh.bundle 声明校验，
+// 保证任何环境（含全新安装）九个交付插件都被覆盖到。
+for (const dir of DELIVERED) {
+	const name = `@dsh-external/${dir}`;
+	if (bundles.includes(name)) continue;
+	const link = pj.dependencies?.[name];
+	try {
+		if (!link?.startsWith("link:") || !fs.existsSync(link.slice(5))) throw new Error("依赖 link 缺失或失效");
+		const pkg = JSON.parse(fs.readFileSync(path.join(BUNDLE_DIR, dir, "package.json"), "utf8"));
+		if (!pkg.dsh?.bundle) throw new Error("package.json 缺 dsh.bundle 声明");
+		console.log(`OK   plugin ${name}（preset 平面）`);
+	} catch (e) { failed++; console.log(`FAIL plugin ${name}: ${e.message}`); }
+}
+
 // 3) stage-gate tool sanity (pure validators, no runtime state)
 const gateLib = await import(pathToFileURL(path.join(BUNDLE_DIR, "dsh-stage-gate", "lib", "index.js")).href);
 const modes = Object.keys(gateLib.GATES);
