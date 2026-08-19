@@ -39,7 +39,7 @@
 前置：**Node.js >= 22**（DSH 本身要求）。无需预装 pnpm/dsh（经 npx 拉起）；bash/python 非必需。
 
 ```bash
-tar -xzf dsh-redteam-model-1.0.6.tar.gz && cd dsh-redteam-model/deploy
+tar -xzf dsh-redteam-model-1.0.7.tar.gz && cd dsh-redteam-model/deploy
 node deploy.mjs            # 安装：预设链接 + 插件挂载 + 依赖安装（幂等可重跑）
 node deploy.mjs --check    # 离线校验：九预设挂载 + 插件真实 loader 路径 + bundle 声明
 node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
@@ -115,7 +115,7 @@ dsh-redteam-model/
 
 ## 版本变更
 
-### v1.0.6（2026-08-19）
+### v1.0.7（2026-08-19）
 
 - 新增 hunter 狩猎插件：FOFA / Hunter / Quake 三平台资产搜索（统一 DSL 自动转语法、限额导出），代码审计成果页「实测」按钮一键验证审计结果（指纹搜索→存活探测→EXP 验证，仅授权资产执行）
 
@@ -125,6 +125,8 @@ dsh-redteam-model/
 - 修复成果统计 bug：统计改为跨会话聚合，模式页与台账大屏支持时间范围筛选（今日/3天/7天/30天/自定义）
 - 完善调用逻辑：新增目标契约与中断恢复（operation-state.json）、报告门准则校验、证据血缘纪律；跨 harness 复核改为用户触发的建议项
 - 新增 CI 自动测试；大屏与统计页视觉优化
+
+- 优化各个模式的方法论以及能力深度
 
 ### v1.0.3（2026-08-18）
 
