@@ -108,6 +108,17 @@ await ok("流水线：无资产 → no-assets + 建议", async () => {
 	assert.equal(r.verdict, "no-assets");
 	assert.ok(r.suggestions.length >= 3);
 });
+await ok("流水线：L0 成立未授权 → 建议含渗透模式交接路径（不做死路拒绝）", async () => {
+	const http = await import("node:http");
+	const server = http.createServer((req, res) => { res.end("<html><head><title>调度中心</title></head></html>"); });
+	await new Promise((r) => server.listen(0, "127.0.0.1", r));
+	const assets = [makeAsset("127.0.0.1", String(server.address().port))];
+	const r = await verifyPipeline(async () => assets, async () => new Set(), { fingerprint: parseFingerprint('指纹:title="调度中心"'), budget: 1 });
+	assert.equal(r.verdict, "l0-confirmed");
+	assert.ok(r.suggestions.some((s) => s.includes("渗透测试模式")), "建议须含渗透模式路径");
+	assert.ok(r.suggestions.some((s) => s.includes("标记授权")), "建议须保留标记授权快验路径");
+	await new Promise((r2) => server.close(r2));
+});
 await ok("流水线：搜索抛错 → search-error", async () => {
 	const r = await verifyPipeline(async () => { throw new Error("401: key invalid"); }, async () => new Set(), { fingerprint: parseFingerprint('指纹:title="x"') });
 	assert.equal(r.verdict, "search-error");

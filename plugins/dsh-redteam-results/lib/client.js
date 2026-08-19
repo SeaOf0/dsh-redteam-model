@@ -1285,7 +1285,9 @@ function ModePage(props) {
 			body: JSON.stringify({ sessionId: f.sessionId || sessionId, findingId: f.id, allMode: false })
 		}).then(function (r) { return r.json(); }).then(function (r) {
 			if (r && r.ok) {
-				setNotice("实测完成（#" + f.seq + "）：" + r.summary + (r.notified ? "" : "（原会话不可达，未注入通知）"));
+				setNotice("实测完成（#" + f.seq + "）：" + r.summary
+					+ (r.suggestions && r.suggestions.length ? "｜下一步：" + r.suggestions.join("；") : "")
+					+ (r.notified ? "" : "（原会话不可达，未注入通知）"));
 				if (grouped[0]) fetchGroups(); else fetchList({});
 				return;
 			}

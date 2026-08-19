@@ -235,7 +235,7 @@ export async function verifyPipeline(searchFn, authorizedFn, opts = {}) {
 	const summary = l1Passed > 0
 		? `实测成立：授权资产上最小影响验证通过（L1）——静态审计结果真实可用`
 		: l0Hits > 0
-			? `框架真实存在且一致（L0）：${l0Hits} 个存活资产指纹一致——EXP 潜在可用，完整验证需授权资产或本地靶场`
+			? `框架真实存在且一致（L0）：${l0Hits} 个存活资产指纹一致——EXP 潜在可用；完整验证三条路：标记授权后重试 L1 / 交接渗透测试模式做完整 POC 验证 / 本地靶场`
 			: `资产存活但指纹均不一致（探测 ${capped.length} 个）——审计指纹可能过时或特征词偏差`;
 	return {
 		verdict,
@@ -246,8 +246,13 @@ export async function verifyPipeline(searchFn, authorizedFn, opts = {}) {
 			firstL1: firstL1 ? { ip: firstL1.asset.ip, port: firstL1.asset.port, expect: firstL1.l1.expect } : null
 		},
 		assets: report,
+		// 未授权资产不做死路拒绝：L1 快验之外给出渗透模式交接路径（含操作建议）与本地靶场兜底。
 		suggestions: l1Passed > 0 ? ["实测已成立，可回写 finding 状态为 verified"] : l0Hits > 0
-			? ["将任一一致资产在 hunter 页标记授权后重试 L1 验证", "或提供本地同版本靶场做完整 EXP 验证"]
+			? [
+				"路径一（L1 快验）：将任一一致资产在 hunter 页「标记授权」后重试实测——仅对该资产执行最小影响验证",
+				"路径二（完整 POC）：交接渗透测试模式执行——先向用户确认该资产的测试授权，再按渗透纪律做探测复测与完整 POC 验证（对照三件套留证、命中后按渗透模式登记成果并回标审计 finding）",
+				"路径三（本地兜底）：提供本地同版本靶场做完整 EXP 验证，不触互联网资产"
+			]
 			: ["检查指纹特征与目标框架实际 banner 是否一致", "用 hunter 页直接搜索框架名观察真实资产特征", "在本地搭建同版本环境确认 EXP 有效性"]
 	};
 }
