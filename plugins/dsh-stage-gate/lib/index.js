@@ -37,6 +37,7 @@ const GATES = {
 				{ kind: "markers", file: "assets.md", markers: ["WAF", "速率"] },
 				{ kind: "table", file: "assets.md", minRows: 2, minCells: 2 },
 				{ kind: "file", file: "evidence-index.md" },
+				{ kind: "markers", file: "evidence-index.md", markers: ["tool-plane", "MCP"] },
 				{ kind: "table", file: "evidence-index.md", minRows: 1, minCells: 2 }
 			],
 			manual: []
@@ -64,7 +65,9 @@ const GATES = {
 			title: "前置识别 + 面映射",
 			checks: [
 				{ kind: "file", file: "surface-map.md" },
-				{ kind: "markers", file: "surface-map.md", markers: ["入口", "sink", "深度"] }
+				{ kind: "markers", file: "surface-map.md", markers: ["入口", "sink", "深度"] },
+				{ kind: "file", file: "evidence-index.md" },
+				{ kind: "markers", file: "evidence-index.md", markers: ["tool-plane", "MCP"] }
 			],
 			manual: ["已知漏洞核对结论与深度分级合理性"]
 		},
@@ -124,6 +127,7 @@ const GATES = {
 				{ kind: "file", file: "assets.md" },
 				{ kind: "table", file: "assets.md", minRows: 2, minCells: 2 },
 				{ kind: "file", file: "evidence-index.md" },
+				{ kind: "markers", file: "evidence-index.md", markers: ["tool-plane", "MCP"] },
 				{ kind: "table", file: "evidence-index.md", minRows: 1, minCells: 2 }
 			],
 			manual: []
@@ -330,6 +334,7 @@ const GATES = {
 				{ kind: "markers", file: "challenge-board.md", markers: ["题名", "模块", "线索"] },
 				{ kind: "table", file: "challenge-board.md", minRows: 1, minCells: 3 },
 				{ kind: "file", file: "evidence-index.md" },
+				{ kind: "markers", file: "evidence-index.md", markers: ["tool-plane", "MCP"] },
 				{ kind: "table", file: "evidence-index.md", minRows: 1, minCells: 2 }
 			],
 			manual: ["每行线索已梳理、模块判定合理由总控判定"]

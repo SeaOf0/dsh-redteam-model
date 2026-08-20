@@ -142,12 +142,22 @@ flag 本体在台账最多出现一次（以验证证据为准，防泄题重复
 
 ## 工具手册（轻量）
 
+**通道阶梯（紧凑版，与前几模式同语义）**：检测制开工四列登记 tool-plane（CLI/MCP/
+installed-by-agent/install-failed）→ 已挂直接用 → 可自配 MCP（白名单 chrome-devtools 类）→
+安装阀门（首问批准=会话预授权；失败 3 次判死降级脚本；项目目录优先；收口问卸载）→ 脚本
+兜底（python3 先自测）→ 诚实降级。**kali MCP=CTF 主力备胎**（pwn/excavate 引擎、msf、
+searchsploit——宿主须可达，不可自配）；**附件=未知文件**：解包/运行适用虚拟化与沙箱公约
+（VM 级判据，未知样本严禁宿主机裸跑）。模块通道行：
+
 - 通用：python3（pwntools/z3/pycryptodome/requests）、file/strings/objdump、curl/wget、git
-- web：burp/curl/fuff（scanner 行内置 httpx_probe/ffuf_fuzz/nuclei_scan，沙盒内限速）
-- pwn/re：gdb/pwndbg、ropper/ROPgadget、ghidra/ida、qemu（按需，缺失走脚本兜底或安装请求）
-- crypto：sage/python3、openssl、cyberchef（网页）
-- forensics：volatility3、binwalk/foremost、wireshark/tshark、grep 全家桶
-- 探测制：开工 command -v 登记 evidence-index tool-plane 节（多工具时批量跑 `shared/scripts/tool-plane.sh`，Windows 用 `tool-plane.ps1`，单次紧凑表登记），检测到的优先 → MCP → 脚本兜底 → 安装请求。
+- web：curl + scanner 行（httpx_probe/ffuf_fuzz/nuclei_scan 沙盒内限速）→ chrome-devtools-mcp
+  （JS 渲染/交互题，可自配档）→ burp 类（需服务型）
+- pwn：pwntools（本地）→ gdb/pwndbg → ropper/ROPgadget → qemu（多架构）→ kali MCP
+  （ROP/堆利用引擎类）
+- reverse：反编译家族直接引 code-audit 卡 4（jadx/CFR/ilspycmd/pycdc/unluac，native 分流
+  本模式）+ ghidra headless/IDA（需服务型，GUI 请用户配合）
+- crypto：python3 + openssl + sage（缺失走安装阀门）→ cyberchef（网页）
+- forensics：binwalk/foremost/volatility3/tshark（本地）→ kali MCP 备胎
 
 ## 附录
 

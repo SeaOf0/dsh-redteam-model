@@ -1,7 +1,7 @@
 # 九预设 dsh-redteam-model 自包含部署套件（八专业模式 + redteam 主模式）
 
 **dsh-redteam-model/ 目录即完整交付物**：`modes/`（九预设全部资产：八专业模式 + redteam 主模式的
-persona/组合行/playbook/refs）+ `shared/`（共享技能）+ `plugins/`（十个模式插件）+ `deploy/`（本工具）。
+persona/组合行/playbook/refs）+ `shared/`（共享技能）+ `plugins/`（九个模式插件）+ `deploy/`（本工具）。
 预设发现链接指向 **modes/**——DSH 发现器只扫其直接子目录（九个干净预设），shared/plugins/deploy
 平铺在链接之外、不进模式列表。打包 dsh-redteam-model tar.gz 移交任何机器（macOS / Windows /
 Linux）即可一键部署。
@@ -23,7 +23,6 @@ Linux）即可一键部署。
 | dsh-sec-enforce | `plugins/` | 确定性工具拦截（报告门/写边界/高危/速率特征 + enforce-log 留痕） | 宿主（bundles） |
 | dsh-hunter | `plugins/` | 「hunter狩猎」：FOFA/Hunter/Quake 三平台资产搜索（统一 DSL 自动转语法/限额分页导出）+ 代码审计一键实测流水线（L0 指纹判定/L1 仅授权资产）+ 会话标签页（与 redteam 成果并排） | 宿主（bundles） |
 | dsh-redteam-results | `plugins/` | 会话隔离成果页「redteam 成果」（九模式侧栏；五板式（CTF 复用 ledger 台账板式）：渗透/代审=漏洞报告、二进制/攻防/免杀=产物清单、研究员=任务台账、应急=攻击链时间线、云安全=云攻击路径；redteam_finding_register/update/delete） | 宿主（bundles） |
-| dsh-mode-group | `plugins/` | 模式选择器两级化：新建会话屏将内置模式与研究员模式留顶层、八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单（视口自适应、触屏适配、槽竞争优雅降级） | 宿主（bundles） |
 | dsh-scanner-tools | `plugins/` | nuclei_scan/httpx_probe/ffuf_fuzz（速率纪律/防盲打/证据落盘） | **preset 平面**（仅 pentest/attack-defense/cloud-security 预设行挂载） |
 | dsh-mcp-studio | `plugins/` | MCP 加载工作台（通用类 MCP 宿主层共用挂载） | 宿主（bundles） |
 
@@ -69,6 +68,18 @@ profiles/web/package.json 只增不改（link 依赖 + bundles，插件路径一
 - **refs 零本机路径**（打包铁律）；跨平台命令等价见 ecosystem-cooperation「跨平台执行公约」；
 - **dsh 默认预设**：新机默认仍是官方 cordis；如需本项目预设为默认，改 ~/.dsh/settings.yaml 的
   agent-presets.default。
+- **Kali MCP 服务端**（可选，`deploy/assets/`）：`kali-mcp-server/` 为维护源目录、
+  `kali-mcp-server.zip` 为部署资产（源目录变更后重打包：进入源目录
+  `zip -rqX ../kali-mcp-server.zip . -x "*.pyc" -x "*__pycache__*"`）。在 Kali 主机上部署的
+  安全工具 MCP 服务（streamable-http，端口 8765）——把 Kali 上的 260+ 安全工具（nmap/nuclei/
+  sqlmap/ffuf/httpx/netexec/impacket 全家/evil-winrm/responder/msf/radare2/volatility3 等）封装为
+  结构化 MCP 工具远程调用；执行器带并发上限（默认 4，环境变量 KALI_MCP_MAX_CONCURRENT 可调）、
+  超长输出智能截断（output_truncated 标记）、逐工具超时。部署：
+  `unzip kali-mcp-server.zip -d ~/kali-mcp && cd ~/kali-mcp && pip install -r requirements.txt &&
+  python3 mcp_server.py --transport streamable-http --host 0.0.0.0 --port 8765 --allowed-host <本机IP>`；
+  客户端在 mcp-studio 一键预设「Kali MCP」填 `http://<kali-ip>:8765/mcp` 开启（默认关）。
+  服务无认证，仅在隔离/内网可达范围开放；被包装的工具均须已装在 Kali 上（未装即如实报错，
+  走通道降级）。许可证 MIT（zip 内 LICENSE）。
 
 ## 重新打包（本机）
 

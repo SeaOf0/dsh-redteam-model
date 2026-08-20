@@ -176,7 +176,7 @@ function bundle() {
 	const args = ["-czf", out,
 		"--exclude", "node_modules", "--exclude", ".git", "--exclude", ".zcode", "--exclude", ".DS_Store",
 		"--exclude", "*-bundle-*.tar.gz",
-		"--exclude", "dsh-redteam-model/DESIGN.md", "--exclude", "dsh-redteam-model/PROGRESS.md", "--exclude", "dsh-redteam-model/测试.md", "--exclude", "dsh-redteam-model/SOURCES.md",
+		"--exclude", "dsh-redteam-model/DESIGN.md", "--exclude", "dsh-redteam-model/PROGRESS.md", "--exclude", "dsh-redteam-model/测试.md", "--exclude", "dsh-redteam-model/SOURCES.md", "--exclude", "dsh-redteam-model/token节省方案.md",
 		"--exclude", ".github", "--exclude", ".cursorrules",
 		"dsh-redteam-model"];
 	// 从 dsh-redteam-model 的上级目录打包，使 tar 内含顶层 dsh-redteam-model/ 目录

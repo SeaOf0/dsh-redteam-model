@@ -1,0 +1,38 @@
+# Kali MCP Server 依赖
+# Python 3.8+ required
+
+# MCP SDK (Model Context Protocol)
+mcp>=1.0.0
+
+# 异步支持
+aiohttp>=3.8.0
+aiofiles>=23.0.0
+
+# 数据验证
+pydantic>=2.0.0
+anthropic>=0.35.0
+openai>=1.40.0
+
+# SSE 模式依赖 (远程访问)
+starlette>=0.27.0
+uvicorn>=0.23.0
+sse-starlette>=1.6.0
+
+# Web 界面
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# 模板引擎 (报告生成)
+jinja2>=3.1.0
+
+# 测试
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+
+# 可选: PWN工具支持
+# pwntools>=4.11.0
+
+# 可选: 浏览器自动化引擎 (反检测 + 心跳维持)
+# 安装后需运行: playwright install chromium
+# playwright>=1.40.0

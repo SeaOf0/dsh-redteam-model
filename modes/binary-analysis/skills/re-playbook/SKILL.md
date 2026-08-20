@@ -46,10 +46,13 @@ description: 二进制分析模式作战手册：样本登记与活体处置 SOP
 
 - **静态分析（默认形态）**：以**脱壳还原代码**为前提，只从代码层分析（结构解析/多视角交叉/
   符号执行/算法还原）——一切结论不执行样本即得出。
-- **动态分析**：运行时分析**必须在隔离 VM 内进行**——第一步探测本机是否存在可创建 VM 的
-  软件/工具（检测制：`command -v`/`Get-Command` 探 qemu-system-*/vmrun/VBoxManage/prlctl/
-  hyperkit/UTM/kvm 等，缺失走四级兜底或安装请求），创建专用 VM，把病毒/样本/木马后门/
-  webshell 等丢入 VM，**在 VM 内**开始运行时分析；frida 插桩、调试器附加等一切「让样本
+- **动态分析**：运行时分析**必须在隔离 VM 内进行**——开工按「虚拟化与沙箱公约」
+  （ecosystem-cooperation）检测虚拟化平面（VMware/Parallels/VirtualBox/Hyper-V/WSL/
+  qemu-KVM/multipass/UTM 等不限于）并走三级阶梯：**已有合格纯隔离沙箱直接复用**
+  （恢复基线快照）→ 有虚拟化软件则**基于已有系统克隆纯隔离沙箱**（新装 OS=系统级
+  绝不自动装，询问用户或由用户提供环境）→ 无虚拟化则静态优先 + 覆盖度台账登记缺口
+  收窄结论（**未知样本严禁宿主机直接运行**）。沙箱就绪后
+  把病毒/样本/木马后门/webshell 等丢入 VM，**在 VM 内**开始运行时分析；frida 插桩、调试器附加等一切「让样本
   执行」的动作同属动态分析，同受本节约束。
 
 **动态隔离铁律（persona 硬规则）**：
@@ -73,6 +76,22 @@ description: 二进制分析模式作战手册：样本登记与活体处置 SOP
   分析打包）→ **禁止运行**，只做静态并在报告如实记录动态缺口与原因；
 - **不确定/存在风险** → **把选择权交给用户**：ask_user 列出风险清单与已备好的隔离措施，
   由用户决定是否继续；用户未明确同意前不载入。
+
+### 反虚拟化检测对抗（样本分析 + 逆向破解双场景）
+
+样本带虚拟机/沙箱检测（CPUID/硬件指纹/驱动与注册表工件/时序差）时，**先定位检测面，再按
+成本递增选对抗路线**——检测点不定位就盲目改环境=白费功夫：
+
+| 路线 | 手段 | 性质 |
+|---|---|---|
+| ① 环境伪装 | VM 工件清理与伪装：注册表特征键、文件与驱动名、MAC 前缀、主机名/用户名——**按静态定位出的检测点针对性伪装**（strings/常量特征 "VMware"·"VBox"/CPUID leaf 0x40000000/交叉引用），不全量瞎改 | 沙箱侧干预，不动样本，成本最低 |
+| ② 检测点 hook | frida hook CPUID/rdtsc/注册表与进程枚举 API 伪装返回值 | 不改样本字节 |
+| ③ 静态 patch 检测分支 | 定位检测代码（入口附近跳转/常量特征）改跳转——**逆向破解场景主线动作**；patch 产物哈希登记 provenance | 改样本须登记 |
+| ④ 换环境 | 半虚拟化/物理机断网牺牲机——**用户确认制**（系统级铁则：不自动装系统，用户自备） | 成本最高 |
+
+四条路线绕不过 → 如实记录「样本检测到虚拟环境」，回静态路径，不硬跑（对抗失败也是分析
+结论）。检测面知识锚点：refs/dynamic/malware-analysis-dynamic.md（检测面清单）、
+refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debugging.md——只路由不重写。
 
 ## 壳/混淆识别与脱壳
 
@@ -188,27 +207,39 @@ description: 二进制分析模式作战手册：样本登记与活体处置 SOP
 
 ### 工具使用策略（总纲）
 
-- **工具平面检测制（替代本机快照，与其余模式同构）**：下文工具集是
-  **期望工具集**，不声称任何工具已装——预设面向新环境分发，以**开工检测为准**：
-  逐个 `command -v <工具>` 探测，把实测结果登记进工作区（evidence-index.md 的
-  tool-plane 节）；后续只用检测到的工具。
+- **通道决策三原则（binary 特化）**：①**静态优先、动态须隔离**（动态隔离铁律）；
+  ②**样本外传须登记**——经 kali MCP/任何远程通道把样本/镜像移出本机时，哈希登记
+  provenance，含敏感数据的样本先问用户；③产物结构化落盘（trace/伪代码/dump 进
+  artifacts/<hash>/，长输出走 A8 纪律）。
+- **工具平面检测制**：期望工具集不声称已装，开工检测为准；tool-plane 节四列——CLI
+  （command -v，批量 tool-plane.sh/.ps1）/ MCP（自省 `mcp__*`；涉 VM/沙箱任务另含
+  「虚拟化平面」行）/ installed-by-agent / install-failed。
 - **探测合并（多工具时）**：批量跑 `shared/scripts/tool-plane.sh`（Windows 用 `tool-plane.ps1`；参数=本手册期望工具清单），单次紧凑表直接登记 tool-plane 节——替代逐条 `command -v` 回显。
-- **四级兜底（与 pentest/code-audit 同构）**：
-  1. **检测到的本机工具 / bash 内置优先**；
-  2. **MCP 兜底**——缺失但已连接 MCP（kali MCP、burpsuite MCP、yakit MCP、chrome MCP、
-     js-reverse MCP 等）时落眼到 MCP 工具（`mcp__<server>__<tool>` 形态）；
-  3. **脚本兜底（用户不让装时）**——检测缺失、无 MCP 可替、且用户不批准安装时，
-     用脚本等价实现该能力：python3 优先（struct/capstone 解析 PE/ELF/Mach-O 头、
-     xor/解密器、IAT 重建等），纯 shell 次之；Windows 上写 ps1/bat。脚本落工作区
-     `scripts/`，登记 evidence-index.md tool-plane 节（标注「脚本代替 <工具>」），先自测可用再用于任务；
-  4. **安装请求兜底**——前三层都不成立且任务确需时向用户发送安装请求（注明工具/用途/依赖），
-     批准后安装到**项目目录**，任务结束提醒用户可手动卸载。
+- **通道完整阶梯（与前几模式同构，每级有出口有留痕）**：①已挂直接用（本机 CLI=主通道）；
+  ②可自配 MCP（白名单制）；**IDA/Ghidra MCP=需服务型**（实例须跑着；GUI 类同 dnSpy 原则
+  不自动开，请用户配合）；**kali MCP=远程备胎且样本外传须登记**（r2/binwalk/volatility——
+  样本移到用户受控 kali 可行，但哈希登记 provenance、敏感样本先问）；
+  ③安装阀门（CLI 缺失首问，批准=会话预授权；失败 3 次重试判死登记后降级；项目目录优先）；
+  ④脚本兜底（python3 优先〔struct/capstone 解析、xor/解密器、IAT 重建等〕→ shell → ps1，
+  落 scripts/ 先自测）；⑤诚实降级（动态环境全缺时静态结论+缺口登记，不虚构）；
+  收口卸载阀门（报告后按 installed-by-agent 问卸载）。
 - 期望工具集：核心 = 附录 A（结构解析/反汇编/调试主链），补充 = 附录 B（反编译器/
-  符号执行/固件扩展）；缺失不阻断开工，走四级兜底。平台专属工具（otool/lldb 等 macOS
+  符号执行/固件扩展）；缺失不阻断开工，走通道完整阶梯。平台专属工具（otool/lldb 等 macOS
   系）在非 macOS 环境换对应工具（readelf/gdb），按检测结果自适应。
 - **跨平台（win/mac/linux）**：哈希与字节证据命令按公约翻译（shasum/sha256sum/Get-FileHash、
   xxd/Format-Hex）；Windows 侧调试/脱壳用 x64dbg+Scylla（附录 B）；mingw 工具链自带
   strip/objcopy 可用其 x86_64-w64-mingw32- 前缀版本。
+
+### 能力级降级链（C-2：跨阶段复用查询）
+
+| 能力 | 首选 | 降级 | 兜底 | 判定依据 |
+|---|---|---|---|---|
+| 结构解析/分诊 | 本地 file/objdump/otool | r2（本地→kali MCP **样本外传须哈希登记+敏感先问**） | python struct 脚本 | 离线优先 |
+| 静态反汇编/反编译 | 本地 ghidra headless / r2 / IDA（**需服务型**：实例须跑着；GUI 不自动开，请用户配合） | objdump+capstone 脚本化 | 只读 disasm + 人工 | 产物形态 |
+| 动态分析 | **隔离 VM 内** frida/lldb/gdb（公约 VM 级判据） | qemu 用户态仿真（无 VM 时部分场景） | 静态优先+缺口登记 | 隔离铁律 |
+| 脱壳/还原 | upx/专用 unpacker（本地） | dump+IAT 重建脚本（附录已有） | 交生态（audit 审还原产物） | 还原完整性 B1 |
+| 反虚拟化检测对抗 | 环境伪装（按检测面） | hook → patch（登记）→ 换环境（用户确认制） | 回静态如实记录 | 检测面定位 |
+| 取证联动 | volatility3（本地） | kali MCP（镜像外传登记） | 脚本解析 | 协同 IR |
 
 ### 阶段速查卡（六要素：定位 / 高频命令模板 / 输出解读 / 证据留存 / 速率纪律 / 复核义务）
 

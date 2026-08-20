@@ -16,12 +16,12 @@ function api(endpoint, payload) {
 
 var MODES = [
 	{ id: "redteam", label: "研究员模式" },
+	{ id: "attack-defense", label: "攻防评估模式" },
 	{ id: "pentest", label: "渗透测试模式" },
 	{ id: "code-audit", label: "代码审计模式" },
-	{ id: "binary-analysis", label: "二进制分析模式" },
-	{ id: "attack-defense", label: "攻防评估模式" },
 	{ id: "av-evasion", label: "免杀对抗模式" },
 	{ id: "incident-response", label: "应急溯源模式" },
+	{ id: "binary-analysis", label: "二进制分析模式" },
 	{ id: "cloud-security", label: "云安全攻防模式" },
 	{ id: "ctf-solver", label: "CTF 解题模式" }
 ];
@@ -1509,7 +1509,7 @@ function ModePage(props) {
 //#region 任务台账大屏（跨会话作战视图：聚合九模式数据）
 
 var SCR_MODE_LABEL = { redteam: "研究员·台账", pentest: "渗透测试", "code-audit": "代码审计", "binary-analysis": "二进制分析", "attack-defense": "攻防评估", "av-evasion": "免杀对抗", "incident-response": "应急溯源", "cloud-security": "云安全", "ctf-solver": "CTF 解题" };
-var SCR_MODE_VOCAB = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver"];
+var SCR_MODE_VOCAB = ["redteam", "attack-defense", "pentest", "code-audit", "av-evasion", "incident-response", "binary-analysis", "cloud-security", "ctf-solver"];
 
 function BigScreen(props) {
 	var data = useState(null); var setData = data[1];

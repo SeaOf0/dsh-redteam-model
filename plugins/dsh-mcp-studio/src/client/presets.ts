@@ -12,6 +12,18 @@ export interface ServerPreset {
 
 export const SERVER_PRESETS: readonly ServerPreset[] = [
   {
+    id: 'chrome-devtools',
+    label: 'Chrome DevTools',
+    description: 'Chrome DevTools MCP：页面快照、点击、填表、网络与控制台（默认关闭；开启即经 npx 拉起）',
+    json: '{\n  "mcpServers": {\n    "chrome-devtools": {\n      "command": "npx",\n      "args": ["-y", "chrome-devtools-mcp@latest"],\n      "disabled": true\n    }\n  }\n}',
+  },
+  {
+    id: 'kali',
+    label: 'Kali MCP',
+    description: '远程 Kali 武器库（nmap/nuclei/sqlmap/netexec/impacket/msf 等 100+ 工具）。默认关闭：先把 <kali-ip> 换成 Kali 机地址（服务端以 streamable-http 运行在 8765），再开启；长扫描工具建议调大单次调用超时',
+    json: '{\n  "mcpServers": {\n    "kali": {\n      "type": "http",\n      "url": "http://<kali-ip>:8765/mcp",\n      "disabled": true\n    }\n  }\n}',
+  },
+  {
     id: 'everything',
     label: 'Everything',
     description: 'MCP 官方测试服务器，含 echo/add 等工具，适合验证链路',
@@ -52,12 +64,6 @@ export const SERVER_PRESETS: readonly ServerPreset[] = [
     label: 'GitHub',
     description: '仓库/Issue/PR 操作，需要 token',
     json: '{\n  "mcpServers": {\n    "github": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-github"],\n      "env": { "GITHUB_TOKEN": "ghp_xxx" }\n    }\n  }\n}',
-  },
-  {
-    id: 'chrome-devtools',
-    label: 'Chrome DevTools',
-    description: 'Chrome DevTools MCP：页面快照、点击、填表、网络与控制台（npx 拉起，可改本地路径）',
-    json: '{\n  "mcpServers": {\n    "chrome-devtools": {\n      "command": "npx",\n      "args": ["-y", "chrome-devtools-mcp@latest"]\n    }\n  }\n}',
   },
   {
     id: 'http-example',

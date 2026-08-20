@@ -24,6 +24,27 @@ expect("pentest/P1 pass", v.pass === true, JSON.stringify(v.missing));
 v = runGate(fs, { mode: "pentest", stage: "P1", workspace: path.join(F, "nowhere") });
 expect("pentest/P1 fails on missing workspace", v.pass === false);
 
+// pentest P1 fail when evidence-index lacks tool-plane/MCP markers
+{
+	const tmp = fs.mkdtempSync(path.join(path.dirname(F), "p1-nomcp-"));
+	for (const name of fs.readdirSync(F)) {
+		if (fs.statSync(path.join(F, name)).isFile()) fs.copyFileSync(path.join(F, name), path.join(tmp, name));
+	}
+	const ev = path.join(tmp, "evidence-index.md");
+	fs.writeFileSync(ev, fs.readFileSync(ev, "utf8").replace(/## tool-plane[\s\S]*$/, ""));
+	v = runGate(fs, { mode: "pentest", stage: "P1", workspace: tmp });
+	expect("pentest/P1 fails without tool-plane/MCP markers", v.pass === false);
+	v = runGate(fs, { mode: "attack-defense", stage: "recon", workspace: tmp });
+	expect("ad/recon fails without tool-plane/MCP markers", v.pass === false);
+	v = runGate(fs, { mode: "code-audit", stage: "A1", workspace: tmp });
+	expect("audit/A1 fails without tool-plane/MCP markers", v.pass === false);
+	for (const [mode, stage] of [["incident-response", "I1"], ["cloud-security", "C1"], ["binary-analysis", "B0"], ["ctf-solver", "board"]]) {
+		v = runGate(fs, { mode, stage, workspace: tmp });
+		expect(`${mode}/${stage} fails without tool-plane/MCP markers`, v.pass === false);
+	}
+	fs.rmSync(tmp, { recursive: true, force: true });
+}
+
 // pentest P2 requires file
 let threw = false;
 try { runGate(fs, { mode: "pentest", stage: "P2", workspace: F }); } catch { threw = true; }

@@ -25,10 +25,10 @@ binary-analysis / attack-defense / av-evasion / incident-response / cloud-securi
 | 任务输入 | 主镜头 |
 |---|---|
 | 通用/不确定/多领域混合、信息收集概览、多任务并行组织 | **redteam 总入口**（浅做 + 深度即路由，见 router-playbook） |
-| 黑盒目标 / 资产清单，要漏洞发现与验证 | pentest |
+| 黑盒目标 / 资产清单，要**全面漏洞挖掘**与验证（全等级穷尽、SRC 式） | pentest |
 | 源码 / 反编译产物 / 小程序解包代码，要代码级结论 | code-audit |
 | 二进制样本 / 需要脱壳还原 | binary-analysis |
-| 全链路评估 + 防御视角 + 评分 + 复测闭环 | attack-defense |
+| 全链路评估 + 防御视角 + 评分 + 复测闭环（**渗透定位=打点**，拿到立足点即转横向主线） | attack-defense |
 | 免杀技术研究与检测配套 | av-evasion |
 | 失陷主机调查 / 日志与样本排查 / 应急响应与攻击链还原报告 | incident-response |
 | 云平台 / 云原生目标（AWS/Azure/GCP/阿里云/腾讯云/华为云、K8s/容器/Serverless），要云攻击路径验证与权限链收口 | cloud-security |
@@ -160,7 +160,9 @@ WORKSPACE.md 内容：任务名 / 发起模式 / 状态 / 参与模式与活跃�
       `parent` 必须引用存在的父条目编号——无父不登、父缺不可信则该条降级「疑似」。复核员校验
       血缘完整性（见 independent-review），伪造血缘=按伪证据退回。
     - `tool-plane` 节：开工时 `command -v` 工具平面检测结果
-      （检测到/缺失分列 + 检测时间），各模式工具手册的检测制以此登记；只信此节列出的工具。
+      （检测到/缺失分列 + 检测时间），各模式工具手册的检测制以此登记；只信此节列出的工具；
+      涉虚拟机/沙箱的任务另含「虚拟化平面」行（虚拟化软件与已运行 VM 检测结果，
+      见「虚拟化与沙箱公约」）。
   - `assets.md` — 资产清单（pentest 基线，生态共享）。
   - `pending-manual.md` — 待人工验证清单（code-audit 产物；其他模式的静态发现同样汇入）。
   - `residue.md` — 残留清单 + 时间线。
@@ -190,7 +192,7 @@ WORKSPACE.md 内容：任务名 / 发起模式 / 状态 / 参与模式与活跃�
 
 > 预设面向三平台部署。工具手册的命令模板默认按 bash（macOS/Linux）书写；
 > Windows 上 DSH 自动禁用 bash 工具、启用 PowerShell（pwsh）——按本公约翻译命令。
-> 平台差异不构成「无法执行」的理由：先翻译，翻译不了的走四级兜底（MCP/脚本/安装请求）。
+> 平台差异不构成「无法执行」的理由：先翻译，翻译不了的走通道完整阶梯（MCP/脚本/问装/诚实降级）。
 
 | 场景 | macOS | Linux | Windows（PowerShell） |
 |---|---|---|---|
@@ -206,7 +208,7 @@ WORKSPACE.md 内容：任务名 / 发起模式 / 状态 / 参与模式与活跃�
 | 临时目录 | `/tmp/...` | `/tmp/...` | `$env:TEMP\...` |
 
 - 工具安装：各 playbook 附录 B 已按平台标注（macOS=brew、Debian/Ubuntu=apt、通用 pip/go/npm）；
-  Windows 优先 winget/choco 或官方发行包，仍无则走四级兜底。
+  Windows 优先 winget/choco 或官方发行包，仍无则走通道完整阶梯。
 - 工具平面检测制在 PowerShell 中同样适用：`Get-Command <工具>`（等价 `command -v`），
   检测结果照样登记 evidence-index.md 的 tool-plane 节。
 - 工作区路径一律用相对路径与固定布局（artifacts/reports 等），不用平台绝对路径；
@@ -214,7 +216,7 @@ WORKSPACE.md 内容：任务名 / 发起模式 / 状态 / 参与模式与活跃�
 
 ## 工具缺口脚本化策略（九预设统一）
 
-> 用户不让装工具时，用脚本代替工具功能——这是四级兜底的第 3 层，九预设统一执行。
+> 用户不让装工具时，用脚本代替工具功能——这是通道完整阶梯的脚本兜底层，九预设统一执行。
 
 - **脚本选型**：python3 优先（可维护、跨平台、标准库足用；requests/struct 等按需并注明依赖），
   纯 shell（bash/sh）次之；**Windows 上写 ps1/bat**（PowerShell 是 DSH 在 Windows 的 shell）。
@@ -228,6 +230,42 @@ WORKSPACE.md 内容：任务名 / 发起模式 / 状态 / 参与模式与活跃�
   目录枚举 → python requests + 字典；JS 路由提取 → python 正则解析 bundle；
   结构解析 → python struct 解析 PE/ELF/Mach-O 头；规则匹配 → python 字节匹配
   （标注近似自测，不算真实引擎判定）。
+
+## 虚拟化与沙箱公约（九预设统一）
+
+凡任务涉及虚拟机/沙箱——样本动态运行（binary/IR）、本地动态部署环境（code-audit）、
+攻击机（attack-defense 的 kali）、判定环境（av-evasion 的 Windows）——一律按本公约走：
+
+**检测先行（开工并入 tool-plane 节「虚拟化平面」行）**：
+- 虚拟化软件：VMware（`vmrun` / VMware Fusion）、Parallels（`prlctl`）、VirtualBox
+  （`VBoxManage`）、Hyper-V（`Get-VM`）、WSL（`wsl -l -v`，Linux 隔离级）、qemu/KVM +
+  libvirt（`virsh`）、multipass/UTM/Lima/Colima（macOS）——不限于以上，逐个
+  `command -v`/`Get-Command` 探测登记（含版本）；
+- 已在跑的 VM：`prlctl list -a` / `vmrun list` / `VBoxManage list runningvms` /
+  `virsh list --all` / `wsl -l -v`——登记系统/用途/网络形态/有无快照，判定能否直接复用。
+
+**三级阶梯（与工具通道阶梯同构：先复用、后新建、无则降级）**：
+1. **已有合格 VM 直接用**：攻击机检测到已运行的 kali VM 即直接启用（配合 mcp-studio
+   「Kali MCP」预设把工具面接进会话）；样本分析复用已有纯隔离沙箱（恢复基线快照再用）；
+2. **有虚拟化软件但无合格环境 → 基于已有系统新建**：克隆已有 VM / 恢复快照 + 基线
+   快照 + 一次性使用。**系统级绝不自动部署（铁则）**：kali/Windows 等操作系统不是小工具
+   ——新装 OS 一律询问用户或由用户提供环境（给 ISO/装好 VM/指路皆可），哪怕本机有虚拟化
+   软件也不自动装系统；动态运行样本/创建沙箱同样**只利用已有系统**创建；
+3. **无虚拟化 → 降级**：静态优先/仿真/脚本模拟，能力缺口如实登记进覆盖度台账并收窄
+   结论（诚实降级）；**未知样本严禁在宿主机直接运行**。
+
+**kali MCP 服务端的自动化部署（唯一允许自动化的系统级相关动作：往已有系统装小服务）**：
+检测到**已存在的 kali 环境**（VM/实体机可达）→ 可 ask 用户是否自动化部署服务端+连接
+（上传 zip → pip install -r requirements.txt → 以 streamable-http 启动 8765 带
+--allowed-host → mcp-studio「Kali MCP」预设填址开启）；**无 kali 环境时不提议部署**，
+先按上条铁则请用户自备系统后再来。
+
+**纯隔离判据（样本动态运行铁则，binary/IR 硬要求）**：与宿主零共享目录（共享文件夹/
+拖放/剪贴板全关）；网络 host-only 或断开（需外联观察时单独决策并留痕）；快照/一次性
+（跑完恢复或销毁）；宿主真实凭据与数据零进入。
+
+**隔离分级**：VM 级（未知样本/恶意负载必须）＞ 容器级（仅限已知非恶意的动态部署——
+代审本地靶场、依赖链验证等）＞ 宿主本机（禁止执行任何未知样本；已知工具走正常检测制）。
 
 ## EXP/POC 交付公约（九预设统一）
 

@@ -41,6 +41,22 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 - 每阶段产物登记证据索引（哈希 + 时间戳）。
 - 平台纪律：Windows 用 cmd/PowerShell 等价写法，Linux 用 shell；跨平台等价对照见 ecosystem-cooperation「跨平台执行公约」。
 
+## 阶段默认通道（装备栏：流程定默认，能力定降级；只读优先）
+
+> 元原则与前几模式同构；通道缺失按「工具手册·通道完整阶梯」降级。IR 特化第一判据=
+> **只读性**：任何通道（含脚本兜底与 kali MCP 备胎）都不得改动证据——镜像与日志先取
+> 哈希后分析，取证命令只读优先；写类动作一律走处置建议清单（用户确认制）。
+
+| 阶段/能力 | 默认通道 | 降级链 |
+|---|---|---|
+| 主机取证（Windows/Linux） | 本机只读工具组（Sysinternals·wevtutil·KAPE 等，见速查卡） | 镜像导出后离线解析 → kali MCP（volatility3/binwalk/foremost 备胎）→ 脚本（只读） |
+| 日志狩猎 | Chainsaw/Hayabusa（本地，Sigma 驱动） | wevtutil/Get-WinEvent 导出+rg → 脚本解析 |
+| 内存取证 | Volatility3（本地） | kali MCP volatility_analyze（内存镜像外传须哈希登记）→ 只读脚本解析 |
+| 网络取证 | tshark（本地 pcap） | 脚本解析 → 人工读流 |
+| 样本静态 | YARA/strings/哈希（本地） | kali MCP（binwalk_analysis 等）→ 协同 binary（生态流转） |
+| 样本动态 | **协同 binary-analysis**（纯隔离沙箱铁则，见虚拟化与沙箱公约） | 无环境→仅静态移交，禁止宿主机运行 |
+| IOC 富化 | TI refs + web_search | dsh-hunter（关联测绘）→ 脚本 |
+
 ## 扩线作战流程（多主机调查循环）
 
 > 五维定损（同「报告模板·影响范围评估」）不只是收尾统计——它是调查循环的驱动器：
@@ -200,7 +216,7 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 | Windows 主机取证组 | workflow 扇出（per-主机） | 保全指令 + 排查面清单 → 保全产物 + 排查发现 + 证据索引 | prompt 带 ir-playbook 证据保全章 + refs/windows 方法论，**不带处置章** |
 | Linux 主机取证组 | workflow 扇出（per-主机） | 同上（Linux 面） → 同上 | refs/linux cookbook + 方法论；取证命令只读优先 |
 | 日志分析组 | 单个 spawn 或 workflow | 导出的日志产物 → Event ID/时间窗/源 IP 聚合分析 | 只给日志材料，不给主链预判；单条日志不构成结论 |
-| 恶意样本组 | spawn（协同 binary-analysis） | 现场样本 + provenance → 深析结论（家族/行为/IOC） | 按生态规则移交 artifacts/<hash>/；结论回填定性 |
+| 恶意样本组 | spawn（协同 binary-analysis） | 现场样本 + provenance → 深析结论（家族/行为/IOC） | 按生态规则移交 artifacts/<hash>/；结论回填定性；**样本执行必须纯隔离沙箱**（虚拟化与沙箱公约 VM 级判据；无虚拟化环境→仅静态移交 binary 纪律，禁止宿主机运行） |
 | 时间线还原组 | 单个 spawn | 各线证据 → attack-timeline.md（逐节点闭合） | 只收证据产物；节点无证据编号即退回 |
 | 复核员 | 独立 spawn（`independent-review` 技能） | 原始材料（不给主链结论）→ 确认/挑战 + **gate-pass/fail** | 兼任门禁官；关键定性先 DSH 独立复核（跨模型复核为建议项，用户触发） |
 | 报告员 | spawn | 全部 gate-pass 的定性 → 应急溯源报告（时间线表+失陷原因+影响范围+处置建议） | 只收带复核签名与 gate-pass 的条目 |
@@ -252,10 +268,17 @@ create_goal 续接）→ 运行时插件（stage_gate 工具 + sec-enforce 报�
 
 ## 工具手册
 
-> **检测制**：开工 `command -v`（Windows 用 `Get-Command`）探测本机工具并登记 evidence-index.md 的
-> tool-plane 节（检测到/缺失分列）；只信该节列出的工具。缺失走四级兜底：检测到的优先 → MCP →
-> 脚本兜底（python3 优先/shell 次之/Windows ps1·bat，落 scripts/ 先自测）→ 安装请求（brew/apt/
-> winget/pip/go）。
+> **通道决策三原则（IR 特化）**：①**只读优先**——工具选择第一判据是只读性（脚本兜底同样只读，
+> 任何通道不得改动证据）；②证据保全优先于分析速度（先哈希/镜像/导出，后分析）；③输出可读性
+> （结构化 CSV/JSON 落盘进证据索引，长输出走 A8 纪律）。
+> **工具平面检测制**：期望工具集不声称已装，开工检测为准；tool-plane 节登记四列——CLI
+> （command -v，批量 tool-plane.sh/.ps1）/ MCP（自省 `mcp__*`，来源 mounted|self-configured）/
+> installed-by-agent（收尾卸载对账）/ install-failed（防重试白费）。
+> **通道完整阶梯**（与前几模式同构）：①已挂直接用 ②可自配 MCP（白名单制，chrome-devtools 类；
+> **kali MCP=取证备胎**——宿主未启动时 ask_user 请用户开）③安装阀门（CLI 缺失首问，批准=会话
+> 预授权；失败 3 次重试判死登记后降级；项目目录优先）④脚本兜底（python3→shell→ps1，**只读实现**，
+> 落 scripts/ 先自测）⑤诚实降级（能力缺口登记收窄结论）；收口卸载阀门（报告后按
+> installed-by-agent 问卸载，只卸 agent 装的）。
 > 速查细节读 refs 工具卡：`windows/tools/tool-cards.md`、`linux/tools/tool-cards.md`。
 
 ### Windows 核心工具（调查侧）
@@ -291,10 +314,13 @@ create_goal 续接）→ 运行时插件（stage_gate 工具 + sec-enforce 报�
 
 win/mac/linux 命令等价对照见 ecosystem-cooperation「跨平台执行公约」（哈希/检索/连通性/DNS 等 10 项）。
 
-### MCP 兜底（附录 C）
+### MCP 通道清单（附录 C，按可自配性分两性）
 
-模式专属 MCP 按需挂载（实现载体 dsh-mcp-studio）：Velociraptor MCP、Kuiper/TraceQuarry 取证工作台
-MCP 等——出现真实不可替代缺口时接入，本手册速查卡不依赖 MCP。
+**需服务型**（不可自配；宿主未启动/远端不可达时 ask_user 请用户开）：
+- **kali MCP**——IR 定位=**取证备胎**（volatility3/binwalk/foremost/strings 经其包装器；内存与
+  磁盘镜像外传到用户受控 kali 须哈希登记+provenance）；**Velociraptor MCP / Kuiper·TraceQuarry
+  取证工作台 MCP**——出现真实不可替代缺口时接入，本手册速查卡不依赖 MCP。
+**可自配型**（白名单制）：chrome-devtools-mcp（涉事系统 Web 控制台侧调查互证，低频）。
 
 ## 附录
 

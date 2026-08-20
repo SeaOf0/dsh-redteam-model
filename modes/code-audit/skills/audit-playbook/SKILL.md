@@ -33,6 +33,23 @@ description: 代码审计模式作战手册：审计前置识别、Fortify 规�
 **登记联动**：每个 finding 登记时 `auditMode` 必填（static/dynamic，语义见
 shared/refs/finding-fields.md）；成果页列表/详情/导出报告/统计分布均按此标签展示。
 
+## 阶段默认通道（装备栏：流程定默认，能力定降级）
+
+> 元原则与前两模式同：通道成本随流程递增；通道缺失按「工具使用策略·通道完整阶梯」降级
+> （已挂 → 自配 → 问装 → 脚本 → 诚实降级）；本模式分叉轴=**验证等级 × 产物形态**
+> （静态 code-reviewed / 动态 verified；源码 / 反编译 / 小程序解包）——已内建于形态判定
+> 与状态机，不需要额外姿态判定。跨阶段复用查附录 C-2。
+
+| 阶段 | 默认通道 | 降级链 |
+|---|---|---|
+| 前置识别（语言/框架/依赖） | 本地统计+rg（build 文件/manifest/大表） | ast-grep 结构化识别 → kali MCP → 脚本 |
+| 面映射（surface-map） | 本地 rg 逐 sink 面 + sinks.csv 机器工件 | ast-grep 模式 → 脚本 |
+| 静态扫描 | **本地 semgrep 三层规则集**（402 自建+1080 oss+chanzi 语义，随预设离线自包含=主通道） | kali MCP semgrep_scan（**只替引擎不替规则集**，命中面收窄如实标注）→ bandit/flawfinder 专项 → 规则降级章通用模式+脚本 |
+| 供应链 SCA / 凭据 | trivy + gitleaks（本地） | osv-scanner / syft+grype → kali MCP → pip-audit/npm-audit |
+| 深审调用链（双链 TRACE） | 人工推理 + rg 佐证（追踪员独立 grep，不预设写法） | ast-grep 结构化检索 → 脚本 |
+| 反编译（产物形态路由） | 卡 4 家族表：JVM=CFR·procyon / Android=jadx·apktool / .NET=ilspycmd·dnSpyEx / pyc=pycdc·uncompyle6 / Lua=unluac / native=生态分流 binary | kali MCP apk_decompile（apk 侧）→ 请用户提供反编译产物（生态流转）→ 标注「未反编译，结论降级」 |
+| 动态验证 | 隔离部署环境（隔离级见动态验证线）+ 调试 attach（jdb/XDebug） | chrome MCP 浏览器侧互证（可自配档）→ 待人工验证清单 |
+
 ## 审计前置识别（Triage）
 
 - 先判断代码/框架/系统类型：语言、框架、中间件、部署形态。
@@ -143,8 +160,20 @@ shared/refs/finding-fields.md）；成果页列表/详情/导出报告/统计分
 
 ### 卡 4 反编译产物审计
 - **入口判定**：binary-analysis 回传还原产物 / 直接给 apk·ipa·wxapkg。
+- **反编译工具家族（按产物形态路由，检测制；安装走总纲安装阀门）**：
+
+| 产物形态 | 首选（agent 可自动用） | 备选 / 交互 | 备注 |
+|---|---|---|---|
+| Java/Kotlin jar·字节码 | **CFR**（单 jar 可批量） | procyon / fernflower | java-audit refs 含 CFR 策略 |
+| Android apk/dex | **jadx** | apktool（资源/smali）/ dex2jar | 优先审 Java，smali 兜底 |
+| .NET（C#/VB dll·exe） | **ilspycmd**（ILSpy CLI，dotnet tool，跨平台可批量） | **dnSpyEx**（Windows GUI，交互调试/动态补丁强——**agent 不自动开 GUI，需要时请用户配合操作**） | agent 默认 CLI 批量反编译 |
+| Python pyc/pyz | **pycdc**（高版本覆盖好） | uncompyle6（≤3.8）/ decompyle3 | 解不出反汇编字节码兜底 |
+| Lua（游戏/嵌入式脚本） | **unluac**（jar 单文件） | luadec | 混淆 Lua 先过 js-reverse/方法论 refs |
+| Electron asar | **asar extract**（npm） | — | ≈源码级（同 pentest 客户端侧） |
+| native 二进制（C/C++/Go/Rust） | **生态分流 binary-analysis**（Ghidra headless/IDA/r2 产伪代码） | — | 脱壳还原+产物校验归 Gate B1，回流转本模式审伪代码 |
+
 - **打法**：先核对「完整性已验证」（B1 产物校验+哈希）→ 走「移动端/小程序反编译审计」
-  章打法（本卡=入口路由，不重复内容）；调用链标注反编译来源（`jadx#类#方法`）。
+  章打法（本卡=入口路由，不重复内容）；调用链标注反编译来源（`jadx#类#方法`·`ilspycmd#命名空间.类`·`CFR#类`）。
 
 ## 规则降级
 
@@ -154,6 +183,10 @@ shared/refs/finding-fields.md）；成果页列表/详情/导出报告/统计分
 
 - **环境启动登记**：用户提供环境后，先把启动方式/版本/关键配置登记进 evidence-index
   （环境差异是复现失败首因，登记是排障依据）。
+- **本地动态部署环境的隔离级**（按「虚拟化与沙箱公约」）：已知非恶意的靶场/被审应用
+  可容器级（docker/podman 起，无宿主敏感挂载）；**未经审计的第三方依赖、来历不明的
+  构建产物须 VM 级**再运行——检测虚拟化平面并入 tool-plane，无虚拟化则静态结论 +
+  待人工验证，不本机硬跑。
 - **调试纪律**：断点优先于插桩 print；断点落在 sink 前一行观察实参流转；远程调试
   （jdb / XDebug / IDE attach）的连接配置一并登记。
 - **payload 打点（动态版确定性信号）**：payload 携带高熵随机标记（marker），在断点变量/
@@ -252,23 +285,28 @@ error/warning/note（按 severity 映射）、`locations[].physicalLocation`=
 
 ### 工具使用策略（总纲）
 
-- **工具平面检测制（替代本机快照，与 pentest 同构）**：下文工具集是
-  **期望工具集**，不声称任何工具已装——预设面向新环境分发，以**开工检测为准**：
-  逐个 `command -v <工具>` 探测，把实测结果登记进工作区（evidence-index.md 的
-  tool-plane 节）；后续只用检测到的工具。
-- **探测合并（多工具时）**：批量跑 `shared/scripts/tool-plane.sh`（Windows 用 `tool-plane.ps1`；参数=本手册期望工具清单），单次紧凑表直接登记 tool-plane 节——替代逐条 `command -v` 回显。
-- **四级兜底（与 pentest 同构）**：
-  1. **检测到的本机工具 / bash 内置优先**；
-  2. **MCP 兜底**——缺失但已连接 MCP（kali MCP、burpsuite MCP、yakit MCP、
-     chrome MCP、js-reverse MCP 等）时落眼到 MCP 工具（`mcp__<server>__<tool>` 形态）；
-  3. **脚本兜底（用户不让装时）**——检测缺失、无 MCP 可替、且用户不批准安装时，
-     用脚本等价实现该能力：python3 优先，纯 shell 次之；Windows 上写 ps1/bat。
-     脚本落工作区 `scripts/`，登记 evidence-index.md tool-plane 节（标注「脚本代替 <工具>」），
-     先自测可用再用于任务；
-  4. **安装请求兜底**——前三层都不成立且任务确需时，向用户发送安装请求（注明工具/用途/依赖），
-     批准后安装到**项目目录**，任务结束提醒用户可手动卸载。
+- **通道决策三原则（audit 特化）**：①**规则集优先于引擎**——本地三层规则集是主资产，
+  引擎可被替代而规则集不随行（替代=命中面收窄，如实标注）；②输出可读性优先（扫描一律
+  `--json` 落盘再对账，长输出走 A8 纪律）；③最小装载成本（识别/面映射阶段不起扫描器）。
+- **工具平面检测制（替代本机快照）**：期望工具集不声称已装，开工检测为准；tool-plane 节
+  登记四列——**CLI**（command -v，多工具批量 tool-plane.sh/.ps1）/ **MCP**（自省
+  `mcp__<server>__<tool>`，mcp-studio 挂载时 tools.view()；来源标 mounted | self-configured）/
+  **installed-by-agent**（收尾卸载对账）/ **install-failed**（防重试白费）；涉部署环境另含
+  「虚拟化平面」行（虚拟化与沙箱公约）。
+- **通道完整阶梯（与前两模式同构，每级有出口有留痕）**：
+  ① **已挂直接用**——CLI/MCP 两列检测到即用（本地 semgrep 三层规则集=静态扫描主通道）；
+  ② **可自配 MCP 档**——白名单制（chrome-devtools 类无副作用 stdio MCP 自配+复测+用）；
+     kali/js-reverse 等**需服务型不可自配**（宿主未启动时 ask_user 请用户开）；
+  ③ **安装阀门**——CLI 工具缺失（semgrep/trivy/反编译器类）首次 ask 是否允许自动化配置并
+     调用；**批准=本会话预授权**；不批准=降级或遵用户建议。**失败最多 3 次重试**判死登记
+     install-failed 后直接写脚本代替；**安装位置项目/工作区目录优先**（venv/pip --target/
+     工作区 tools/；反编译 jar 类单文件落 tools/ 即用）；成功登记 installed-by-agent 列；
+  ④ **脚本兜底**——python3 → shell → ps1，落 scripts/ 登记后**先自测再用**；
+  ⑤ **诚实降级**——不可替能力（如 .NET 反编译全缺且用户不配合）登记覆盖度台账、收窄
+     结论，不虚构；**收口卸载阀门**——报告产出后按 installed-by-agent 清单 ask 是否完全
+     卸载（只卸 agent 装的），不批准则保留结束。
 - 期望工具集：核心 = 附录 A（扫描/供应链主链），补充 = 附录 B（语言专项扩展）；
-  缺失不阻断开工，走四级兜底。
+  缺失不阻断开工，走通道完整阶梯。
 - **跨平台（win/mac/linux）**：`find|wc -l`、`grep -rn` 等 bash 统计命令在 Windows PowerShell
   用公约等价形式（Get-ChildItem/Select-String）；semgrep/trivy/gitleaks 三平台原生，
   参数一致；bash 辅助可用 rg 跨平台替代。
@@ -411,12 +449,33 @@ trivy config --config-policy ./policy --namespaces user <dir>
 | sonar-scanner | SonarQube 引擎扫描（本地规则集） | -Dsonar.projectKey / -X | 官方 CLI |
 | syft / grype | SBOM 生成 / 漏洞匹配 | syft dir: / grype sbom: | brew install syft grype / apt 或官方发行包 |
 | pip-audit / npm-audit | 语言包管理器级漏洞核对 | pip-audit / npm audit --json | pipx / 内置 |
+| ilspycmd | .NET 反编译 CLI（ILSpy） | -p -o 目录 程序集 | dotnet tool install -g ilspycmd |
+| pycdc | Python pyc 反编译 | 源码构建 / 单文件 | brew install pycdc / 源码 |
+| uncompyle6 / decompyle3 | Python pyc 反编译（≤3.8 / 3.x） | 单文件 -o | pipx install |
+| procyon | Java 反编译备选 | -jar procyon.jar -o 目录 | release jar 落 tools/ |
+| unluac | Lua 反编译（jar） | java -jar unluac.jar | release jar 落 tools/ |
+| dnSpyEx | .NET GUI 调试器（交互补丁/动态调试） | Windows GUI | 官方 release——**用户自备配合，不自动装不开 GUI** |
 
-### 附录 C：MCP 兜底清单（已连接时优先）
+### 附录 C：MCP 通道清单（按可自配性分两性）
 
-- kali MCP / burpsuite MCP / yakit MCP / chrome MCP / js-reverse MCP 等——
-  审计场景下的动态验证与工具辅助可走 MCP；产出同样遵守证据标准与复核义务；
-  工具名与参数以实际注册为准（不虚构）。
+**需服务型**（宿主程序须运行/远端须可达——不可自配；宿主未启动时 ask_user 请用户开）：
+- **kali MCP**——审计侧定位=**引擎级备胎**（semgrep_scan/bandit_scan/flawfinder_scan/
+  apk_decompile 四包装器）；**规则集不随行**：kali 侧只带引擎自带规则，预设三层规则集在
+  本地，远程替代时命中面收窄必须如实标注；**js-reverse MCP**（JS 深度还原/混淆分析，须就绪）。
+**可自配型**（白名单制，无副作用本地 stdio MCP，自配+复测+用）：
+- **chrome-devtools-mcp**——动态验证的浏览器侧互证通道（与部署环境互补）。
+- 产出同样遵守证据标准与对账纪律；工具名与参数以实际注册为准（不虚构）。
+
+### 附录 C-2：能力级降级链（跨阶段复用查询）
+
+| 能力 | 首选 | 降级 | 兜底 | 判定依据 |
+|---|---|---|---|---|
+| 静态规则扫描 | 本地 semgrep 三层规则集 | kali MCP semgrep_scan（规则集不随行，收窄标注） | 规则降级章通用模式+脚本 | 规则覆盖面 |
+| 供应链 SCA / 凭据 | trivy + gitleaks | osv-scanner / syft+grype | pip-audit / npm-audit（内置） | 覆盖面 |
+| 结构化检索 / 面映射 | rg / grep | ast-grep | 脚本 | 输出可读性 |
+| 反编译（各形态） | 卡 4 家族表首选 | 家族备选 → kali apk_decompile（apk 侧） | 请用户提供产物 → 结论降级标注 | 产物形态 |
+| 动态部署验证 | 隔离部署环境（容器级/VM 级） | chrome MCP 浏览器互证 | 待人工验证清单 | 验证等级 |
+| 调试 / 断点 | jdb / XDebug attach | 打点日志 | 静态链 + marker 互证 | 确定性信号 |
 
 ### 附录 D：预设内参考案例库（refs/：随预设分发，无任何机器特定路径）
 

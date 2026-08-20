@@ -163,6 +163,9 @@ export function buildEnvelope({ presetId, mode, phase, refsHits, evidence = "unk
 		`review: ${mode.review ?? "关键 finding 双签 = DSH 独立复核 + subagent_claude_code 复核一致；仅确认/挑战二选一"}`,
 		`evidence: ${evidence}（confirmed=按已验证引用；partial/unknown=下结论前先补证据）`
 	];
+	if (phase.channel) {
+		lines.splice(2, 0, `channel: ${phase.channel}（本阶段默认通道；缺失按工具手册·通道完整阶梯降级）`);
+	}
 	if (operation) {
 		const op = operation;
 		const gateKeys = Object.keys(op.gates ?? {});

@@ -147,6 +147,22 @@ environment-restore.md（含手动排除步骤），不自动清理（与 C6 同
 缺字段即中止。report 门过前 sec-enforce 拦截写 reports/——报告先落工作区根目录 → 过 C7 →
 再复制进 reports/。所有 file 参数必须传绝对路径。
 
+## 阶段默认通道（装备栏：流程定默认，能力定降级；只读 API 优先）
+
+> 元原则同构；**kali MCP 与云无关**（kali 无云工具）——本模式不依赖不推荐。分叉轴=
+> **只读探测 → 写操作门禁**（persona 只读 API 优先纪律的通道化）：一切枚举/验证先只读，
+> 写类 API（创建/修改/持久化）走变更性操作询问与 C3 登记。
+
+| 阶段 | 默认通道 | 降级链 |
+|---|---|---|
+| 资产测绘（含影子资产） | dsh-hunter（测绘补盲，已挂即用）+ 被动情报 | web_search/OSINT → 脚本 |
+| 身份确认 | 厂商 CLI（aws sts get-caller-identity / aliyun sts GetCallerIdentity 等） | REST API + python requests 脚本（凭证不变） → curl 直调 |
+| 权限侦察 / 枚举 | 厂商 CLI（只读 List/Get 类） | SDK 脚本 → 框架类（Pacu/CloudFox，获取路径见 tool-cards） |
+| 攻击路径验证 | 厂商 CLI 只读验证 → 写操作过门禁（C2 证据 + 变更性询问） | 同上 |
+| 元数据 / SSRF 探测 | curl（169.254.169.254 端点对照表在 refs） | python requests 脚本 |
+| K8s / 容器面 | kubectl（只读优先）/ docker、crictl | kube-hunter/CDK 类（检测后）→ 脚本 |
+| 控制台 Web 侧互证 | chrome-devtools-mcp（可自配档） | 本地浏览器人工（请用户配合） |
+
 ## 七门门禁（阶段产物过 gate 才进下一阶段）
 
 | 门 | 结构校验物（canonical） | 语义（manual，复核员判定） |
@@ -234,8 +250,15 @@ claude 升级判据（建议项制）：判定级结论（路径 verified/排除
 
 ## 工具手册
 
-开工 `command -v` 探测登记 evidence-index tool-plane 节（多工具时批量跑 `shared/scripts/tool-plane.sh`，Windows 用 `tool-plane.ps1`，单次紧凑表登记）；检测到的优先 → MCP → 脚本兜底 →
-安装请求兜底（四级）。refs 读取纪律：grep/README 索引先行 → read 带 offset/limit 按节读，禁止整本 read。核心工具面：
+**通道决策三原则（cloud 特化）**：①**只读 API 优先**（枚举/验证一律 List/Get；写类走变更性
+询问+C3 登记）；②**凭证安全**——云凭据只进 creds-cloud.txt（权限内登记），绝不写入报告正文/
+台账明文/工具输出回显；③结构化输出（CLI `--output json` 落盘对账）。
+**工具平面检测制**：tool-plane 节四列（CLI/MCP/installed-by-agent/install-failed）；
+**通道完整阶梯**同构五级+双阀门：①已挂直接用（厂商 CLI=主通道，属小工具可走安装阀门：
+aws/az/gcloud/aliyun/tccli 缺失首问、批准=会话预授权、失败 3 次判死降级脚本、项目目录优先）
+②可自配 MCP（chrome-devtools 类白名单）③安装阀门 ④脚本兜底（REST API + python requests
+等价实现厂商 CLI，凭证不变）⑤诚实降级；**kali MCP 不依赖**；收口卸载阀门照常。
+refs 读取纪律：grep/README 索引先行 → read 带 offset/limit 按节读，禁止整本 read。核心工具面：
 
 - **厂商 CLI 与 SDK**：aws / az / gcloud / aliyun / tccli / obsutil+coscmd / hcloud——每个厂商
   的探测与验证用其原生 CLI（只读 API 优先）。安装：brew/apt/pip 均可，用户不让装则用其 REST

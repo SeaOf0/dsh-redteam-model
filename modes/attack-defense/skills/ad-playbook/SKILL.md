@@ -50,6 +50,36 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
   **手动排除步骤**——写到照做能拆的程度），**不自动清理**；报告必须附持久化清单，
   detection gap 汇总中每条持久化对应「目标侧是否检测到」。
 
+## 阶段默认通道（装备栏：流程定默认，能力定降级；内网按监测姿态分叉）
+
+> 元原则同 pentest：通道成本随流程递增、轻重分离；通道缺失按「工具使用策略·通道完整阶梯」
+> 降级（已挂 → 自配 → 问装 → 脚本 → 诚实降级）；跨阶段复用查附录 C-2；内网动作先过 §0.5 姿态卡。
+
+| 阶段/能力 | 默认通道 | 降级链 |
+|---|---|---|
+| 外部测绘侦察（找面） | **dsh-hunter**（测绘，已挂即用） | kali MCP（amass_scan/theharvester_osint）→ web_search/OSINT refs → 脚本 |
+| 外部探活/指纹/入口盘点 | curl/httpx（轻通道先行） | kali MCP（nmap_scan/whatweb_scan/wafw00f_scan）→ 脚本 |
+| 登陆口 JS 专线 | Chrome MCP（复用 pentest §3 专线） | webdriver 消指纹链 → 静态拉 JS |
+| web 侧利用/认证后交互 | burpsuite/yakit MCP（会话态保真） | curl 带凭据（登记无拦截损失）→ POC 脚本 |
+| 内网段发现/存活 | **按监测姿态分叉**（下表） | — |
+| 内网横向/执行 | **kali MCP 重武器库**（netexec/impacket 全家/evil-winrm/responder） | 本机工具（附录 A-2）→ 脚本 → 诚实降级 |
+| 域攻 | kali MCP（bloodhound_collect → kerberoast 线 → impacket_secretsdump） | 本机 impacket 套件 → 手工协议 |
+| 隧道/枢纽 | chisel（kali MCP chisel_tunnel/本机） | socat_relay → proxychains → 脚本 |
+| 防御验证（detection gap） | 目标侧证据请求清单（用户确认制） | 日志/告警样本离线分析 |
+
+**内网能力 × 监测姿态分叉**（姿态卡见 §0.5）：
+
+| 能力 | 无监测（效率优先） | 有监测（OPSEC 优先） |
+|---|---|---|
+| 段发现/存活 | fscan 全速综合（先过 §0.5 三道闸） | netspy 被动段发现 → 跳板 ARP/DNS 观察 → 慢速分时段单段 |
+| 端口/服务 | fscan/nmap 快扫（常见端口带，§0） | nmap -T2 分时段+混入正常流量，只探高价值端口 |
+| 弱口令 | fscan 内置爆破（过锁定闸） | **禁在线爆破** → Kerberoast/AS-REP 离线 → 单点慢速验证 |
+| 横向移动 | impacket exec 线直接打 | 凭据使用型（PtH/Kerberos 票据）优于新登录；WMI/计划任务低日志通道 |
+| 凭据收集 | secretsdump 直取 | DCSync 单请求优于批量登录；LSASS 读取防 EDR |
+
+> 姿态分叉总则：**有监测时同能力从「扫描发现型」换「凭据使用型」**——不产生发现流量，只
+> 产生难区分正常性的认证行为；高噪声动作先过 op-traces 台账预登记再执行。
+
 ## 单机落点信息收集（横向前置 SOP）
 
 > 命令级展开见 `refs/zh-intranet/intranet-host-collect.md`（Windows W1~W21 / Linux L1~L14
@@ -160,6 +190,24 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 - **蜜罐/蜜饵识别（动手前筛）**：爆破、凭据复用、漏洞利用之前，先对目标做蜜罐甄别——
   全端口全服务开放、多服务共用一个 banner、admin/admin 过易命中、新入清单却"完美"的
   资产，均按疑似蜜罐处理（标记后跳过主动打点，只被动观察）；宁可放过不打，不给蓝队送警报。
+
+### 0.5 监测姿态判定（内网版防护画像，产出姿态卡）
+
+按「轻的先动、能被动不主动」判定目标内网监测姿态，产出**监测姿态卡**（无监测/低监测/
+高监测三档）登记黑板（assets.md），后续内网工具选择一律按姿态分叉（装备栏）：
+
+1. **纯被动（先做）**：任务书/用户确认的安防设备与日志平台（用户确认制）；已控跳板的
+   ARP 表/DNS 查询/广播流量观察；测绘与历史情报中的告警痕迹。
+2. **低主动（被动无果再做）**：蜜罐甄别特征（§0）；账户锁定策略探测（服务线前置）；
+   EDR/杀软存在性单点探测（Kerberos 错误码、SMB 签名协商、进程名单点）。
+3. **判定规则**：任一命中监测设施（态势感知/EDR/蜜罐/全面审计日志）→ 至少「低监测」；
+   两项及以上或确认 SOC 在线 → 「高监测」；全部无果且用户确认无 → 「无监测」（首个
+   动作仍按最保守假设执行，验证无告警再放开）。
+
+**fscan 三道闸**（无监测姿态启用 fscan 前全过）：①**姿态闸**——高监测禁用（全段高密度
+探测+多协议爆破指纹太明显）②**锁定闸**——锁定策略探测先行，防把目标打成锁定告警
+③**登记闸**——未登记资产不扫（防盲打）。**netspy 定位**=段发现被动优先（主动模式同样有
+ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
 
 ### 1 服务线：发现即打（弱口令优先）
 
@@ -441,14 +489,34 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 
 ### 工具使用策略（总纲）
 
-- **工具平面检测制（与其余模式同构）**：本手册不声称任何工具已装——
-  预设面向新环境分发，执行层工具（pentest/code-audit/binary-analysis 的工具卡）同样以
-  **开工检测为准**（`command -v` 探测并登记 tool-plane）；缺失走四级兜底。
+- **通道决策三原则**：①会话态保真优先（认证后交互/拦截改包给代理类通道）②输出可读性
+  优先（结构化 > 裸 stdout，长输出落盘再读摘要）③最小装载成本 + OPSEC（快速探测不起
+  重通道；**内网按监测姿态分叉**——装备栏 + §0.5 姿态卡）。
+- **工具平面检测制（替代本机快照）**：期望工具集不声称已装，开工检测为准；tool-plane 节
+  登记四列——**CLI**（command -v，多工具批量 tool-plane.sh/.ps1）/ **MCP**（自省
+  `mcp__<server>__<tool>` 注册面，mcp-studio 挂载时 tools.view()；来源标 mounted |
+  self-configured）/ **installed-by-agent**（收尾卸载对账清单）/ **install-failed**
+  （工具+方式+原因，防重试白费）；涉 VM/沙箱任务另含「虚拟化平面」行（虚拟化与沙箱公约）。
 - **探测合并（多工具时）**：批量跑 `shared/scripts/tool-plane.sh`（Windows 用 `tool-plane.ps1`；参数=本手册期望工具清单），单次紧凑表直接登记 tool-plane 节——替代逐条 `command -v` 回显。
-- **四级兜底（与其余模式同构）**：检测到的本机工具/bash
-  优先 → 已连接 MCP 兜底 → **脚本兜底（用户不让装时：python3 优先、shell 次之、
-  Windows 写 ps1/bat，落工作区 scripts/ 并登记 tool-plane「脚本代替 <工具>」，先自测再用）**
-  → 安装请求兜底（批准后装项目目录、任务结束提醒可卸载）。
+- **攻击机条款（kali 常驻 VM，按「虚拟化与沙箱公约」）**：开工检测虚拟化平面——
+  **已有运行中的 kali VM 直接启用**（配合 mcp-studio「Kali MCP」预设接工具面），并可
+  ask 用户是否自动化部署 kali MCP 服务端+连接（公约例外条款，往已有系统装小服务）→
+  无 kali 环境**不自动装系统**（kali 是系统不是小工具：询问用户自备/指路后再接）→
+  均无则本机工具 + 已挂 MCP 走通道阶梯、覆盖度如实登记。
+- **通道完整阶梯（与 pentest 同构，每级有出口有留痕）**：
+  ① **已挂直接用**——CLI/MCP 两列检测到即用；
+  ② **可自配 MCP 档**——白名单制（chrome-devtools 类无副作用 stdio MCP 自配+复测+用）；
+    burp/yakit/kali 等**需服务型不可自配**（本机装了宿主未启动时 ask_user 请用户开，
+    不自动启动 GUI/装扩展）；
+  ③ **安装阀门**——CLI 工具缺失（fscan/netspy/mimikatz 类）首次 ask 是否允许自动化配置
+    并调用；**批准=本会话预授权**（后续缺失默认装）；不批准=降级或遵用户建议。**失败
+    最多 3 次重试**判死登记 install-failed 后直接写脚本代替；**安装位置项目/工作区目录
+    优先**（venv/pip --target/工作区 tools/），仅用户指定或系统必须才装系统位；成功登记
+    installed-by-agent 列；
+  ④ **脚本兜底**——python3 → shell → ps1，落 scripts/ 登记后**先自测再用**；
+  ⑤ **诚实降级**——不可替能力（内网重武器全缺时）登记覆盖度台账、收窄结论，不虚构；
+  **收口卸载阀门**——报告产出后按 installed-by-agent 清单 ask 是否完全卸载（只卸 agent
+  装的），不批准则保留结束。
 - **跨平台（win/mac/linux）**：执行层命令按 pentest/code-audit/binary 手册 + 公约翻译；
   Windows 演练（域渗透/ad 系）用 PowerShell 系命令（BloodHound/Impacket 等有 Windows
   可用形态），证据与哈希按公约跨平台可对。
@@ -511,7 +579,7 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 ### 附录 A-2：内网攻防工具速查表（六要素卡）
 
 > 定位：执行层内网工具的结构化卡。**开工探测制**：不声称已装，先 `command -v`/`where` 探测并登记
-> tool-plane，缺失走四级兜底（本机工具 → MCP → python/shell 脚本兜底 → 安装请求）。每个工具六要素 =
+> tool-plane，缺失走通道完整阶梯（已挂 → 自配 → 问装 → 脚本 → 诚实降级）。每个工具六要素 =
 > 定位 / 安装 / 高频命令模板 / 输出解读 / 速率纪律 / 检测避让+证据留存。跨平台按 win/mac/linux 等价表
 > 翻译（域渗透工具多为 Linux(python) + Windows(二进制) 双形态）。深度命令另见 refs 正文。
 
@@ -626,10 +694,30 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 | Promptfoo | 评测编排与断言 | npm i -g promptfoo |
 | attack-navigator | ATT&CK 映射可视化 | 官方发行包 |
 
-### 附录 C：MCP 兜底清单（已连接时优先）
+### 附录 C：MCP 通道清单（按可自配性分两性）
 
-- kali MCP / burpsuite MCP / yakit MCP / chrome MCP / js-reverse MCP 等；
-  产出同样遵守证据标准与速率纪律；工具名与参数以实际注册为准（不虚构）。
+**需服务型**（宿主程序须运行/扩展须加载/远端须可达——不可自配；本机已装宿主未启动时
+ask_user 请用户开）：
+- **kali MCP**——本模式主推重武器库（netexec/impacket 全家/evil-winrm/responder/msf/
+  bloodhound_collect，kali VM 常驻，接 mcp-studio「Kali MCP」预设）；**burpsuite MCP**、
+  **yakit MCP**、**js-reverse MCP** 同性。
+**可自配型**（白名单制，无副作用本地 stdio MCP，自配+复测+用）：
+- **chrome-devtools-mcp**——登陆口 JS 专线/浏览器侧首选。
+- 产出同样遵守证据标准与速率纪律；工具名与参数以实际注册为准（不虚构）。
+
+### 附录 C-2：能力级降级链（跨阶段复用查询）
+
+| 能力 | 首选 | 降级 | 兜底 | 判定依据 |
+|---|---|---|---|---|
+| 外部测绘 | dsh-hunter | kali MCP（amass/theHarvester） | web_search/OSINT refs → 脚本 | 覆盖面 |
+| 外部探测/指纹 | 快速类（curl/httpx） | kali MCP（nmap/whatweb/wafw00f） | 脚本 | 装载成本 |
+| 登陆口 JS/浏览器侧 | Chrome MCP（自配档） | webdriver 消指纹链 | 静态拉 JS | 反指纹 |
+| web 利用/认证后交互 | 代理类（burp/yakit MCP） | curl 带凭据 | POC 脚本 | 会话态保真 |
+| 内网段发现/存活 | 姿态分叉：无监测 fscan／有监测 netspy 被动+慢速 | nmap -T2 分时段 | 脚本 | OPSEC |
+| 内网横向/执行 | kali MCP（netexec/impacket 线） | 本机工具（附录 A-2） | 脚本 → 诚实降级 | — |
+| 域攻 | kali MCP（bloodhound→kerberoast→secretsdump） | 本机 impacket 套件 | 手工协议 | — |
+| 凭据攻击 | 姿态分叉：无监测在线爆破（过锁定闸）／有监测 Kerberoast/AS-REP 离线 | hashcat/john 离线 | 字典脚本 | OPSEC |
+| 隧道/枢纽 | chisel（kali MCP/本机） | socat | proxychains → 脚本 | — |
 
 ### 附录 D：预设内参考案例库（refs/：随预设分发，无任何机器特定路径）
 

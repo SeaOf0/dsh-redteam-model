@@ -89,6 +89,8 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	ok("gate titles pulled from real GATES", env.includes("资产与环境基线"));
 	ok("refs pointer renders top-level README + labels", env.includes("读 refs/README.md 快速路由") && env.includes("web"));
 	ok("inferred disclaimer present", env.includes("推断"));
+	ok("phase channel line present when defined", env.includes("channel:"));
+	ok("channel line omitted for phases without channel", !buildEnvelope({ presetId: "pentest", mode: m, phase: m.phases.find((p) => p.id === "report"), refsHits: [], gates: GATES }).includes("channel:"));
 	const capped = buildEnvelope({ presetId: "pentest", mode: m, phase, refsHits: ["web"], gates: GATES, maxChars: 50 });
 	ok("maxChars cap applies", capped.length <= 50 && capped.endsWith("…"));
 	ok("includeRefs=false drops refs line", !buildEnvelope({ presetId: "pentest", mode: m, phase, refsHits: ["web"], gates: GATES, includeRefs: false }).includes("refs/"));

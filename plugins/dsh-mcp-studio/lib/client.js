@@ -611,6 +611,18 @@ function ServerCard(props) {
 // src/client/presets.ts
 var SERVER_PRESETS = [
   {
+    id: "chrome-devtools",
+    label: "Chrome DevTools",
+    description: "Chrome DevTools MCP\uFF1A\u9875\u9762\u5FEB\u7167\u3001\u70B9\u51FB\u3001\u586B\u8868\u3001\u7F51\u7EDC\u4E0E\u63A7\u5236\u53F0\uFF08\u9ED8\u8BA4\u5173\u95ED\uFF1B\u5F00\u542F\u5373\u7ECF npx \u62C9\u8D77\uFF09",
+    json: '{\n  "mcpServers": {\n    "chrome-devtools": {\n      "command": "npx",\n      "args": ["-y", "chrome-devtools-mcp@latest"],\n      "disabled": true\n    }\n  }\n}'
+  },
+  {
+    id: "kali",
+    label: "Kali MCP",
+    description: "\u8FDC\u7A0B Kali \u6B66\u5668\u5E93\uFF08nmap/nuclei/sqlmap/netexec/impacket/msf \u7B49 100+ \u5DE5\u5177\uFF09\u3002\u9ED8\u8BA4\u5173\u95ED\uFF1A\u5148\u628A <kali-ip> \u6362\u6210 Kali \u673A\u5730\u5740\uFF08\u670D\u52A1\u7AEF\u4EE5 streamable-http \u8FD0\u884C\u5728 8765\uFF09\uFF0C\u518D\u5F00\u542F\uFF1B\u957F\u626B\u63CF\u5DE5\u5177\u5EFA\u8BAE\u8C03\u5927\u5355\u6B21\u8C03\u7528\u8D85\u65F6",
+    json: '{\n  "mcpServers": {\n    "kali": {\n      "type": "http",\n      "url": "http://<kali-ip>:8765/mcp",\n      "disabled": true\n    }\n  }\n}'
+  },
+  {
     id: "everything",
     label: "Everything",
     description: "MCP \u5B98\u65B9\u6D4B\u8BD5\u670D\u52A1\u5668\uFF0C\u542B echo/add \u7B49\u5DE5\u5177\uFF0C\u9002\u5408\u9A8C\u8BC1\u94FE\u8DEF",
@@ -651,12 +663,6 @@ var SERVER_PRESETS = [
     label: "GitHub",
     description: "\u4ED3\u5E93/Issue/PR \u64CD\u4F5C\uFF0C\u9700\u8981 token",
     json: '{\n  "mcpServers": {\n    "github": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-github"],\n      "env": { "GITHUB_TOKEN": "ghp_xxx" }\n    }\n  }\n}'
-  },
-  {
-    id: "chrome-devtools",
-    label: "Chrome DevTools",
-    description: "Chrome DevTools MCP\uFF1A\u9875\u9762\u5FEB\u7167\u3001\u70B9\u51FB\u3001\u586B\u8868\u3001\u7F51\u7EDC\u4E0E\u63A7\u5236\u53F0\uFF08npx \u62C9\u8D77\uFF0C\u53EF\u6539\u672C\u5730\u8DEF\u5F84\uFF09",
-    json: '{\n  "mcpServers": {\n    "chrome-devtools": {\n      "command": "npx",\n      "args": ["-y", "chrome-devtools-mcp@latest"]\n    }\n  }\n}'
   },
   {
     id: "http-example",
