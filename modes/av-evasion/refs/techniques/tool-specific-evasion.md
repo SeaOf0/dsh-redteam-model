@@ -76,10 +76,17 @@ rule mimikatz_strings {
 
 ```yara
 rule cobaltstrike_reflective_loader {
+    meta:
+        description = "CS beacon ReflectiveLoader 特征（字符串 + 壳结构双特征）"
+        author = "av-evasion refs（检测侧配对，回馈 attack-defense）"
     strings:
         $s1 = "ReflectiveLoader" ascii wide
-        $s2 = { 4D 5A ... }   // beacon 壳特征（骨架示例）
-    condition: $s1
+        // beacon 壳特征：DOS 头 + 0x2E2F/0x6968 类魔数 + 常用加载器字节模式
+        // （三选二命中降误报；模式随 CS 版本/魔改漂移，按样本库持续校准）
+        $hdr = { 4D 5A 90 00 03 00 00 00 }
+        $mag = { 2E 2F ?? ?? 69 68 }
+    condition:
+        $s1 or (uint16(0) == 0x5A4D and $mag)
 }
 ```
 

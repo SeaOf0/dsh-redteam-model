@@ -11,12 +11,15 @@ for t in $TARGETS; do
   [ -z "$d" ] && continue
   mkdir -p "build/$t"
   case "$t" in
-    01) $CC -mwindows -o "build/$t/syscall-demo.exe" "$d/main.c" "$d/syscall.o" 2>/dev/null || { $CC -c -o "build/$t/syscall.o" "$d/syscall.asm" && $CC -mwindows -o "build/$t/syscall-demo.exe" "$d/main.c" "build/$t/syscall.o"; } ;;
+    01) $CC -mwindows -o "build/$t/syscall-demo.exe" "$d/main.c" "$d/syscall.o" 2>/dev/null || { $CC -c -x assembler -o "build/$t/syscall.o" "$d/syscall.asm" && $CC -mwindows -o "build/$t/syscall-demo.exe" "$d/main.c" "build/$t/syscall.o"; } ;;
     03) $CC -mwindows -o "build/$t/etw-patch.exe" "$d/etw_patch.c" ;;
     04) $CC -mwindows -o "build/$t/unhook.exe" "$d/unhook.c" ;;
     06) $CC -mwindows -o "build/$t/hwbp.exe" "$d/hwbp.c" ;;
+    11) cc -O2 -o "build/$t/gate" "$d/gate.c" ;;
+    12) cc -O2 -o "build/$t/gate_chain" "$d/gate_chain.c" -lpthread ;;
   esac
-  for f in build/$t/*.exe; do
+  for f in build/$t/*; do
+    case "$f" in *.o) continue;; esac
     [ -f "$f" ] && echo "$(shasum -a 256 "$f" | cut -d' ' -f1)  $f  $(date -u +%FT%TZ)" >> build/manifest.txt
   done
 done

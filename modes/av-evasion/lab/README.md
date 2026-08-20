@@ -18,10 +18,16 @@
 | 08 | 内存马四型（Tomcat Filter/Spring Controller/Java Agent attach/ASPX Module） | 无文件驻留 | 对应中间件 |
 | 09 | C2 流量行为定制（malleable profile 四件套） | NDR/WAF 流量侧 | — |
 | 10 | 通用连接器生态魔改（冰蝎密钥协商改造/哥斯拉协议骨架/蚁剑自定义编码器/菜刀基线/客户端三路线） | 流量设备+D盾+操作机 EDR | php/node/容器 |
+| 11 | 运行时密钥门禁（配置解密前纯内存密钥判定+静默退场） | 沙箱自动化/离线分析/内存取证 | cc（纯 C 跨平台） |
+| 12 | 组合前置链（时钟对表反沙箱→密钥门禁，先环境后身份+挂载点契约） | 快进沙箱+样本分析人员全链 | cc+pthread（跨平台） |
 
 ## 构建
 
-`./build.sh [编号]`（默认全部；产物落 build/<编号>/，哈希自动登记 build/manifest.txt）。
+`./build.sh [编号]`（单编号；缺省 = 01 03 04 06——mingw 覆盖项；产物落 build/<编号>/，
+哈希自动登记 build/manifest.txt）。mingw 覆盖项：01/03/04/06；纯 cc 项：11/12；
+02（PowerShell）无构建步骤；05 走 `python3 payload.py <shellcode.bin> [key]` 后
+`x86_64-w64-mingw32-gcc -mwindows -o loader.exe loader.c` 手链（需自备 shellcode 输入）；
+07-10 为 web/配置类无构建步骤。
 
 ## 判定与配对
 

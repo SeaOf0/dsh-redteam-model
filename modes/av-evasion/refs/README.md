@@ -49,6 +49,7 @@
 | 文件 | 内容 | 何时读 |
 |---|---|---|
 | loader-engineering.md | Loader 工程方法（225 行） | 载荷加载层研究 |
+| runtime-key-gate.md | 运行时密钥门禁（分析准入门禁：位置/输入源/失败语义/检测配对/变体谱系） | 配置解密前置门禁，配 lab/11 |
 | c2-source-evasion.md | C2 源码免杀（230 行：特征规避/编译选项） | C2 侧研究 |
 | tools-source-evasion.md | 工具源码免杀（277 行：改工具特征） | 工具改造研究 |
 | c2-custom-evasion.md | C2 定制规避（118 行） | 同上（速查） |

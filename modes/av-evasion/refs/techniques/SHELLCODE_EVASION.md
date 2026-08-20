@@ -57,16 +57,27 @@ void xor_crypt(BYTE* buf, SIZE_T len, BYTE* key, SIZE_T klen) {
 ### 2.2 RC4（流密码，实现简单）
 
 ```c
-// RC4 KSA + PRGA（骨架示例）
+// RC4 KSA + PRGA（完整实现；对称流密码——同钥二次调用即还原，加密回置请回拷密文）
+#define SWAP(a, b) do { BYTE t = (a); (a) = (b); (b) = t; } while (0)
+
 void rc4(BYTE* data, SIZE_T len, BYTE* key, SIZE_T klen) {
     BYTE S[256]; int j = 0;
-    for (int i = 0; i < 256; i++) S[i] = i;
+    for (int i = 0; i < 256; i++) S[i] = (BYTE)i;
     for (int i = 0; i < 256; i++) { j = (j + S[i] + key[i % klen]) & 0xFF; SWAP(S[i], S[j]); }
     int i = 0; j = 0;
     for (SIZE_T n = 0; n < len; n++) {
         i = (i + 1) & 0xFF; j = (j + S[i]) & 0xFF; SWAP(S[i], S[j]);
         data[n] ^= S[(S[i] + S[j]) & 0xFF];
     }
+}
+
+// 自检（打包侧）：rc4 两次调用必须还原原文——round-trip 校验通过才可交付
+void rc4_self_test(void) {
+    BYTE t[16] = "round-trip-test!";
+    BYTE k[4] = { 0x01, 0x02, 0x03, 0x04 };
+    BYTE orig[16]; memcpy(orig, t, 16);
+    rc4(t, 16, k, 4); rc4(t, 16, k, 4);
+    if (memcmp(t, orig, 16) != 0) abort();   // 不一致 = 实现有误，终止打包
 }
 ```
 

