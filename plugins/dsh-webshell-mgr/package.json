@@ -1,0 +1,44 @@
+{
+	"name": "@dsh-external/dsh-webshell-mgr",
+	"version": "1.0.0",
+	"description": "DSH webshell manager host plugin: session tab beside hunter with connection registry and protocol auto-detect (self-developed AES opcode channel, one-liner cmd/eval, modified-manager variants, stock manager compat), command exec / virtual terminal, file manager (binary-safe transfer, chmod, timestamp forge, remote fetch), database console (PDO native over eval-capable shells, CLI fallback), shell generator, declarative payload-plugin system discoverable by sessions, model tools for the five security presets, and a stdio MCP server sharing the same core.",
+	"keywords": [
+		"deepseek",
+		"deepseek-harness",
+		"dsh-plugin",
+		"dsh-bundle",
+		"webshell"
+	],
+	"type": "module",
+	"main": "./lib/index.js",
+	"exports": {
+		".": "./lib/index.js",
+		"./client": "./lib/client.js",
+		"./protocol": "./lib/protocol/registry.js",
+		"./store": "./lib/store.js",
+		"./package.json": "./package.json"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/dsh-tools": "*"
+	},
+	"license": "MIT",
+	"author": "SeaOf0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+	},
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		},
+		"client": {
+			"platform": "web",
+			"inject": [
+				"@deepseek-ai/dsh-client-connection",
+				"@deepseek-ai/dsh-client-runtime",
+				"@deepseek-ai/dsh-client-ui-settings"
+			]
+		}
+	},
+	"engines": { "node": ">=22" }
+}

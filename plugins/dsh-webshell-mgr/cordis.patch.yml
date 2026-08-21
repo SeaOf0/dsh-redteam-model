@@ -1,0 +1,7 @@
+# dsh-webshell-mgr「webshell 管理」：连接注册表 + 协议自动识别 + 命令执行/文件管理/
+# 数据库操作/生成器/载荷插件体系 + 五模式模型工具面 + 同核 stdio MCP 服务。
+# 宿主平面（UI 常驻全模式，工具执行时按五模式门禁）：会话标签页「webshell 管理」
+# （conversation.view slot，位于 hunter 狩猎右侧）+ /dsh-webshell-mgr RPC + 独立 SQLite。
+- insert:
+    - id: dsh-webshell-mgr
+      name: '@dsh-external/dsh-webshell-mgr'

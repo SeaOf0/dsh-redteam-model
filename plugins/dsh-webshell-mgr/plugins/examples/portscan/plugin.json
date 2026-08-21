@@ -1,0 +1,35 @@
+{
+  "name": "portscan",
+  "version": "1.0.0",
+  "type": "scan",
+  "langs": [
+    "php"
+  ],
+  "protocols": [
+    "cmd-eval",
+    "dsh-aes",
+    "behinder",
+    "godzilla"
+  ],
+  "params": [
+    {
+      "key": "host",
+      "label": "目标主机",
+      "type": "string",
+      "default": ""
+    },
+    {
+      "key": "ports",
+      "label": "端口列表（逗号分隔）",
+      "type": "string",
+      "default": "22,80,443,3306,3389,6379,8080"
+    },
+    {
+      "key": "timeout",
+      "label": "单口超时(秒)",
+      "type": "string",
+      "default": "1"
+    }
+  ],
+  "entry": "payload.php"
+}

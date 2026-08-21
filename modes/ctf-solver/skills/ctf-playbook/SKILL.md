@@ -94,6 +94,8 @@ reverse/crypto/forensics/misc/ai-ml/osint/malware + solve-challenge 分诊入口
   （**不破坏 checker 功能**——服务挂了同样扣分，patch 后本地 checker 验证再上）；
 - **应急反打线**：被拿 flag → 回溯 pcap 找对方 payload → 复用改造反打全场；自身轮换
   flag 的提交窗口纪律（平台限频）。
+- **立足点统一管理**：攻陷靶机后 webshell 立足点用 `webshell_*` 工具面统一管理
+  （connect 自动识别 → exec/file/db/plugin；操作入 op_log——轮换 patch 后重连即探活）。
 - 赛前准备清单：批量执行框架、patch 管理脚本、流量留存目录、checker 自检。
 
 ### 卡 3 King of the Hill / 渗透占点赛

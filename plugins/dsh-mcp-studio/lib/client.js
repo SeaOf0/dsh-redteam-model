@@ -623,6 +623,12 @@ var SERVER_PRESETS = [
     json: '{\n  "mcpServers": {\n    "kali": {\n      "type": "http",\n      "url": "http://<kali-ip>:8765/mcp",\n      "disabled": true\n    }\n  }\n}'
   },
   {
+    id: "webshell",
+    label: "Webshell MCP",
+    description: "webshell \u7BA1\u7406\u5668 MCP\uFF08\u8FDE\u63A5/\u547D\u4EE4\u6267\u884C/\u6587\u4EF6/\u6570\u636E\u5E93/\u8F7D\u8377\u63D2\u4EF6\uFF0C\u4E0E dsh-webshell-mgr \u540C\u6838\uFF09\u3002\u9ED8\u8BA4\u5173\u95ED\uFF1A\u628A <dsh-webshell-mgr-path> \u66FF\u6362\u4E3A dsh-webshell-mgr \u63D2\u4EF6\u76EE\u5F55\u7684\u7EDD\u5BF9\u8DEF\u5F84\u540E\u5F00\u542F\uFF1Bdsh \u4F1A\u8BDD\u5185\u4F18\u5148\u7528\u5BBF\u4E3B\u539F\u751F webshell_* \u6A21\u578B\u5DE5\u5177\uFF0C\u672C\u670D\u52A1\u9762\u5411\u5916\u90E8 harness",
+    json: '{\n  "mcpServers": {\n    "webshell": {\n      "command": "node",\n      "args": ["<dsh-webshell-mgr-path>/mcp/server.mjs"],\n      "disabled": true\n    }\n  }\n}'
+  },
+  {
     id: "everything",
     label: "Everything",
     description: "MCP \u5B98\u65B9\u6D4B\u8BD5\u670D\u52A1\u5668\uFF0C\u542B echo/add \u7B49\u5DE5\u5177\uFF0C\u9002\u5408\u9A8C\u8BC1\u94FE\u8DEF",

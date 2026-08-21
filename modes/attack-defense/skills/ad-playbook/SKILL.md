@@ -150,17 +150,38 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 - **再测 API 安全**：逐接口无凭证/低权限对照、越权、未授权、注入面；
 - 拿到会话/凭据 → 回提级序复用（凭据全服务喷）。
 
-### 2.5 webshell 立足点执行通道（打点产出 webshell 而非 ssh 时）
+### 2.5 webshell 立足点作战节（获取→连接→立足点作业；打点产出 webshell 而非 ssh 时）
 
-- **执行通道适配**：webshell 管理器类 MCP（经 mcp-studio 接入）可作统一执行通道——
-  命令执行/工具上传/文件读取/用后清痕四件工具面；未接 MCP 时用 webshell 自带终端等价。
+**获取与上传（标准序；兜底=用户直供 shell）**：
+- **免杀需求走免杀对抗模式生成**（加密马免杀变体，产物路径直接使用）；快速需求用
+  `webshell_generate`（默认 php-aes2：加密通道+eval 结构化能力，jsp/aspx 同型）。
+- 落盘经文件上传漏洞/任意写入原语；上传后 `webshell_file ls` 确认落位与权限（0644 起步，
+  需执行权限时 chmod）。
+- **兜底**：用户直接提供现成 shell（URL+口令/盐）——不问形态直接 `webshell_connect`
+  自动识别（自研加密/一句话/冰蝎/哥斯拉形态/魔改变体全兼容）；识别失败按返回的 attempts
+  逐项排查（口令/盐/参数名），再回报用户换通道。
+- **连接验证**：connect 自动回填协议/OS/基本信息 → 概览页确认用户、工作目录、禁用函数；
+  全程入 op_log 台账。外部 harness 场景经 mcp-studio 接 Webshell MCP 同核等价。
+
+**连上后标准动作（立足点作业）**：
+- **系统定锚**（`webshell_exec`）：whoami/id/uname/网络配置/进程清单/盘符——判定当前
+  权限与逃逸面，回填黑板。
+- **密码本收集**（命令式优先，`webshell_exec`/`webshell_file`）：浏览器保存凭据与历史、
+  ~/.ssh 密钥与 known_hosts、运维配置明文口令（web.config/wp-config.php/database.yml/
+  application.properties/redis.conf 等）——配置文件用 file read 拉回解析，凭据全部回
+  artifacts/creds.txt 并全服务复用（§3）；无 eval 通道时 ls/find 定位 + read 分段拉取。
+- **数据库配置收集→直连**：从应用配置提取连接串（host/port/user/pass）→ `webshell_db
+  profile.save` 建档案（目标机 PDO 原生出站，比上传工具更隐蔽更稳）→ dbs/tables/SELECT
+  验证连通与数据面；本机客户端（mysql.exe/redis-cli.exe/sqlcmd.exe）可作旁证同路线。
+- **C2 回连上传**：`webshell_file write` 上传载荷（自动分块，大文件先 hash 校验）→ 经
+  `webshell_exec` 拉起（通道限制适配：长任务 nohup/分离进程后台化，防阻塞单请求通道）→
+  上线确认后 shell 退居备份通道；载荷路径+删除计划进痕迹台账。
 - **通道限制适配**：命令经 webshell 受超时/编码/权限限制——长任务拆短命令、输出落文件
   再分段读、交互式命令改非交互等价（`net share` 类卡死命令换注册表读取同款纪律）。
-- **本机客户端优先**：发现数据库/中间件端口后优先用目标本机自带客户端验证
-  （mysql.exe/redis-cli.exe/sqlcmd.exe 直连），比上传工具更隐蔽更稳。
-- **工具上传纪律**：上传属环境改动——进操作痕迹台账（工具路径+删除计划），`file_delete`
-  类清痕动作用完即执行；敏感文件搜索优先命令式（W12/L6），全盘搜索工具是横向受阻时的
-  进阶手段。
+
+**清痕纪律**：上传/改动属环境改动——工具路径+删除计划进操作痕迹台账（插件每次操作已自动
+记 op_log，概览页可对账；**删其他马用 A 通道、自删留最后或换通道**——通道本体删除即断连）；
+用完即 `file_delete`；敏感文件搜索优先命令式（W12/L6），全盘搜索工具是横向受阻时的进阶手段。
 
 ### 3 打点到横向的衔接
 

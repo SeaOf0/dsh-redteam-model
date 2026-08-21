@@ -43,7 +43,8 @@ const PLUGINS = [
 	{ name: "dsh-redteam-results", hostPlane: true },
 	{ name: "dsh-hunter", hostPlane: true },
 	{ name: "dsh-mode-group", hostPlane: true },
-	{ name: "dsh-scanner-tools", hostPlane: false }
+	{ name: "dsh-scanner-tools", hostPlane: false },
+	{ name: "dsh-webshell-mgr", hostPlane: true }
 ];
 const MODE = process.argv[2] ?? "";
 
@@ -198,5 +199,5 @@ if (MODE === "--check") {
 	patchProfile();
 	install();
 	if (MODE === "--start") start();
-	else log("完成。启动：--start；校验：--check；打包：--bundle");
+	else log("完成。启动：--start；校验：--check（新环境须先跑本脚本 install 建立桥接后再 --check）；打包：--bundle");
 }

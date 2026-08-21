@@ -20,7 +20,7 @@
 
 每个模式自包含四层资产：**persona**（角色/认识论/边界/报告纪律）→ **playbook**（方法论与门禁文本契约）→ **skills**（可加载技能）→ **refs/**（外部知识库，原文索引化，零本机路径）。
 
-## 运行时插件（十个）
+## 运行时插件（十一个）
 
 | 插件 | 作用 | 挂载平面 |
 |---|---|---|
@@ -34,13 +34,14 @@
 | `dsh-hunter` | 会话标签页「hunter 狩猎」：FOFA / Hunter / Quake 三平台资产搜索（统一 DSL 自动转平台语法、分页与限额导出、API key 独立存储），代码审计成果页「实测」按钮一键验证（指纹搜索→存活探测→EXP 验证，仅授权资产执行） | 宿主（bundles） |
 | `dsh-mode-group` | 新建会话屏模式选择器两级化：内置模式与研究员模式留顶层，八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单（视口自适应翻转、触屏加大命中区） | 宿主（bundles） |
 | `dsh-scanner-tools` | `nuclei_scan`/`httpx_probe`/`ffuf_fuzz` 封装：保守限速默认、防盲打（须先登记资产）、产物自动落证据索引 | preset（仅 pentest / attack-defense） |
+| `dsh-webshell-mgr` | 会话标签页「webshell 管理」：webshell 生成器（PHP/JSP/ASPX 三语言 × 基础/加密/冰蝎/哥斯拉形态）→ 协议自动识别连接（七通道）→ 命令执行/文件管理（上传下载/权限/时间戳伪造/远程下载/文本编辑）/数据库操作（PDO 原生 MySQL/PostgreSQL/SQLite/MSSQL）/载荷插件体系（声明式扩展），操作台账审计；攻防评估模式立足点作战节方法论接线 | 宿主（bundles） |
 
 ## 安装
 
 前置：**Node.js >= 22**（DSH 本身要求）。无需预装 pnpm/dsh（经 npx 拉起）；bash/python 非必需。
 
 ```bash
-tar -xzf dsh-redteam-model-1.0.7.tar.gz && cd dsh-redteam-model/deploy
+tar -xzf dsh-redteam-model-1.0.9.tar.gz && cd dsh-redteam-model/deploy
 node deploy.mjs            # 安装：预设链接 + 插件挂载 + 依赖安装（幂等可重跑）
 node deploy.mjs --check    # 离线校验：九预设挂载 + 插件真实 loader 路径 + bundle 声明
 node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
@@ -110,11 +111,33 @@ dsh-redteam-model/
 │       ├── skills/           # playbook 等模式技能
 │       └── refs/             # 知识库（README.md 全量索引，零本机路径）
 ├── shared/skills/            # 九预设共享技能（生态协作/独立复核/治理/边界）
-├── plugins/                  # 十个运行时插件（各自含 lib/ 测试/README）
+├── plugins/                  # 十一个运行时插件（各自含 lib/ 测试/README）
 └── deploy/                   # 一键部署 CLI（deploy.mjs / verify-deployment.mjs / check-sources.mjs / DEPLOY.md）
 ```
 
+## 效果展示
+
+| 任务台视图（数据统计展示） | 攻防评估模式（数据统计展示） |
+|:---:|:---:|
+| ![任务台视图](功能展示/1.png) | ![攻防评估模式](功能展示/2.png) |
+
+| 代码审计模式（数据统计展示） | 二进制分析模式（数据统计展示） |
+|:---:|:---:|
+| ![代码审计模式](功能展示/3.png) | ![二进制分析模式](功能展示/4.png) |
+
+| hunter 狩猎 | webshell 管理 |
+|:---:|:---:|
+| ![hunter 狩猎](功能展示/5.png) | ![webshell 管理](功能展示/6.png) |
+
+| MCP 配置 |
+|:---:|
+| ![MCP 配置](功能展示/7.png) |
+
 ## 版本变更
+
+### v1.0.9（2026-08-21）
+
+- 内置webshell管理调用以及方法论优化
 
 ### v1.0.8（2026-08-20）
 
