@@ -17,6 +17,7 @@
 - 变体登记：Listener 型（ServletRequestListener 不占 Filter 链位置）；Servlet 型；Valve 型
   （管道更深处、绕 Filter 链审计）；Connector 型（HTTP 协议层）；addFilter+filterStart 简化
   路线（仅容器启动早期可用）；大输出双线程并发读（防管道满死锁）。
+- 连接管理：本型内存马（X-C 头触发）可由 dsh-webshell-mgr 的 dsh-mem 通道直连（URL 任意存活路径）；冰蝎协议型走 behinder-java 通道（生成器 jsp-mem-filter 产引导器）。
 - 检测侧配对：
   1. RASP/容器遥测：运行态动态 Filter 注册（addFilterDef/addFilterMap 调用点）；
   2. 差集审计：StandardContext.filterConfigs 与 web.xml 声明差集（运行态新出现 = 告警）；

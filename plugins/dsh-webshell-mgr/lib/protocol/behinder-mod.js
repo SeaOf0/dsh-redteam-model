@@ -19,7 +19,9 @@ const DEFAULT_SALT = "x9k2";
 const CHUNK = 256;
 const SENTINEL = "__WSMEND__";
 
-const scopeOf = (conn) => conn.__scope ?? conn.id ?? conn.url;
+// 会话作用域必须绑定目标 URL——同协议探测不同马时，前一会话凭据（nonce/通行证）
+// 不得串扰后一目标（曾致跨马协商失败与解密垃圾）
+const scopeOf = (conn) => (conn.__scope ?? conn.id ?? conn.url) + "@" + String(conn.url ?? "");
 
 function ctr(key, iv, data, encrypt) {
 	const buf = encrypt
@@ -121,8 +123,8 @@ export async function runCommand(conn, command, os) {
 const probeToken = () => "WSMP" + Math.random().toString(36).slice(2, 10).toUpperCase();
 
 export async function probe(conn) {
-	// 协商态易受瞬时超时影响：失败清 cookie（弃 nonce）重试一次
-	for (let i = 0; i < 2; i++) {
+	// 协商态易受瞬时超时影响：失败清 cookie（弃 nonce）重试（退避递增）
+	for (let i = 0; i < 3; i++) {
 		try {
 			const token = probeToken();
 			const raw = await execCommand({ ...conn, timeoutMs: Math.min(conn.timeoutMs, 9000) }, "echo " + token);
@@ -131,6 +133,7 @@ export async function probe(conn) {
 		} catch {
 			clearCookies(scopeOf(conn));
 		}
+		await new Promise((r) => setTimeout(r, 60 * (i + 1)));
 	}
 	return null;
 }

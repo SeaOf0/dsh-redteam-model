@@ -158,8 +158,13 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 - 落盘经文件上传漏洞/任意写入原语；上传后 `webshell_file ls` 确认落位与权限（0644 起步，
   需执行权限时 chmod）。
 - **兜底**：用户直接提供现成 shell（URL+口令/盐）——不问形态直接 `webshell_connect`
-  自动识别（自研加密/一句话/冰蝎/哥斯拉形态/魔改变体全兼容）；识别失败按返回的 attempts
-  逐项排查（口令/盐/参数名），再回报用户换通道。
+  自动识别（自研加密/一句话/冰蝎 PHP·JSP/哥斯拉/魔改变体/内存马 X-C 全兼容）；识别失败按
+  返回的 attempts 逐项排查（口令/盐/参数名），再回报用户换通道。
+- **Java 系内存马路线**（免杀对抗模式注入器产物或 `webshell_generate jsp-mem-filter`
+  引导器：上传→访问一次（回显 MEMSHELL-OK）→删引导文件（先备份，trash 不 rm）→以
+  behinder-java 通道+内存马形态连接**任意存活路径**（Filter 全站劫持；删引导文件后连接仍在）；
+  X-C 触发型内存马（Filter/Controller/Module）用 dsh-mem 通道连接。内存马登记制：注入即登记
+  residue（过滤器名/触发头/口令），作业结束按残留清单处置。
 - **连接验证**：connect 自动回填协议/OS/基本信息 → 概览页确认用户、工作目录、禁用函数；
   全程入 op_log 台账。外部 harness 场景经 mcp-studio 接 Webshell MCP 同核等价。
 

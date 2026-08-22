@@ -14,6 +14,7 @@
   4. 执行异常静默（业务链路不中断）。
 - 变体登记：PreApplicationStartMethod 反射驻留；managed module 换 native module
   （IIS C++ 模块）；Global.asax 事件直挂（无需模块注册）。
+- 连接管理：本型内存马可由 dsh-webshell-mgr 的 dsh-mem 通道直连（X-C 头触发，stderr 段原文兼容）。
 - 检测侧配对：
   1. 差集审计：运行态 _moduleCollection 与 web.config 声明差集（新模块 = 告警）；
   2. 钩子链枚举：BeginRequest 事件委托链比对基线（IIS ETW/遥测可列委托）；
