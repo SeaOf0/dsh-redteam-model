@@ -491,7 +491,9 @@ if (phpAvailable()) {
 					const r = await detectProtocol({ url: U("bmod.php"), password: "sess-abc", secretKey: "x9k2" });
 					if (!r.hit || r.protocol !== "behinder-mod") throw new Error(JSON.stringify(r).slice(0, 400));
 					const conn = mkConn({ url: U("bmod.php"), protocol: "behinder-mod", password: "sess-abc", secret_key: "x9k2", id: "t-bmod-" + attempt });
-					const out = await cap.runCommand(conn, "echo BMODOK");
+					let out;
+					try { out = await cap.runCommand(conn, "echo BMODOK"); }
+					catch (e) { last = "attempt" + attempt + " threw: " + e.message; console.error("[bmod-diag]", last); continue; }
 					if (out.includes("BMODOK")) return;
 					last = String(out).slice(0, 200);
 				}
