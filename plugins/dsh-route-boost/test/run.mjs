@@ -1,8 +1,11 @@
+import assert from "node:assert/strict";
 // Offline unit tests for dsh-route-boost. No host, no session — pure data and
 // rendering, plus contract checks against dsh-stage-gate's real GATES and the
 // presets' top-level refs README indexes.
 import { MODES, inferPhase, inferRefs, inferEvidence, buildEnvelope, buildEnvelopeDetailed, wrapEnvelope, isEnvelopeText, envelopeRev, appendAccounting, isHumanUser, matchKeyword, escapePromptBraces, hasNegation, buildAuditRow, Config } from "../lib/index.js";
 import { scanSkillDeps, checkTool } from "../lib/skilltools.mjs";
+import { detectScope } from "../lib/scope.mjs";
+import { TAXONOMIES } from "../../dsh-attack-atlas/lib/taxonomy.js";
 import os from "node:os";
 import { FALLBACK_GATES } from "../lib/routes.mjs";
 import { GATES } from "../../dsh-stage-gate/lib/index.js";
@@ -313,6 +316,52 @@ console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pas
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rb-acc-"));
 	const tmp = path.join(tmpDir, "injections.jsonl");
 	ok("appendAccounting writes JSONL line", appendAccounting(tmp, { ts: "t", mode: "pentest", rev: 1, dropped: ["refs"] }) === true && JSON.parse(fs.readFileSync(tmp, "utf8").trim()).rev === 1);
+}
+
+// 18. 任务口径：用户指定优先（定向只做指定项并点亮），未指定走全流程
+{
+	const targeted = detectScope("pentest", "帮我测试这个目标的SQL注入漏洞、XSS漏洞");
+	ok("定向判定：图谱类目命中 SQL 注入与 xss", targeted.directed === true && targeted.hits.some((h) => h.includes("SQL")) && targeted.hits.some((h) => h.toLowerCase().includes("xss")));
+	ok("全流程委托不误判", detectScope("pentest", "对 example.com 做全面渗透测试，其他你看着办").directed === false);
+	ok("显式定向措辞命中", detectScope("pentest", "只测上传漏洞就好").directed === true);
+	ok("泛类词+动作词命中", detectScope("pentest", "查一下这个站的越权").directed === true);
+	ok("空文本不定向", detectScope("pentest", "").directed === false);
+	ok("判定确定性", JSON.stringify(detectScope("pentest", "测 SQL 注入")) === JSON.stringify(detectScope("pentest", "测 SQL 注入")));
+	const m = MODES.pentest, phase = inferPhase(m, "帮我测试这个目标的SQL注入漏洞、XSS漏洞");
+	const dEnv = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase, refsHits: [], gates: GATES, scope: detectScope("pentest", "帮我测试这个目标的SQL注入漏洞、XSS漏洞") });
+	ok("定向信封：用户指定优先+只做指定项+点亮+不欠账", dEnv.text.includes("scope: 定向——用户指定优先") && dEnv.text.includes("SQL 注入") && dEnv.text.includes("只执行用户指定项") && dEnv.text.includes("redteam_coverage_mark 点亮") && dEnv.text.includes("不补测不欠账"));
+	const fEnv = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase: m.phases[0], refsHits: [], gates: GATES, scope: { directed: false, hits: [] } });
+	ok("全流程信封：按矩阵推进", fEnv.text.includes("scope: 未指定具体项——按本模式全流程矩阵推进"));
+	const rtEnv = buildEnvelopeDetailed({ presetId: "redteam", mode: MODES.redteam, phase: MODES.redteam.phases[0], refsHits: [], gates: GATES, scope: { directed: false, hits: [] } });
+	ok("redteam 口径走路由/台账措辞", rtEnv.text.includes("按路由手册受理") && !rtEnv.text.includes("redteam_coverage_mark"));
+	const rtDir = buildEnvelopeDetailed({ presetId: "redteam", mode: MODES.redteam, phase: MODES.redteam.phases[0], refsHits: [], gates: GATES, scope: { directed: true, hits: [] } });
+	ok("redteam 定向走台账终态措辞", rtDir.text.includes("台账终态登记") && rtDir.text.includes("转全流程须用户明示"));
+}
+
+// 19. 任务口径全局矩阵：八专业模式用本模式真实类目构造定向样本必命中；全流程委托不误判
+{
+	const norm = (x) => String(x).toLowerCase().replace(/[\s　]/g, "");
+	for (const [presetId, fullText] of [
+		["pentest", "这个渗透任务整体交给你了，全面执行，最后出报告"],
+		["attack-defense", "攻防演练全链路整体推进，全面执行到底，出报告收口"],
+		["code-audit", "整份源码全面审计一遍，出报告"],
+		["binary-analysis", "这个样本整体分析到底，全面执行，出报告"],
+		["av-evasion", "整套载荷研究交给你全面执行，出对照报告"],
+		["incident-response", "这台主机应急响应全流程走完，出报告"],
+		["cloud-security", "这个云环境整体评估一遍，全面执行，出报告"],
+		["ctf-solver", "这场比赛全部题目整体推进，出复盘"]
+	]) {
+		const tax = TAXONOMIES[presetId];
+		assert.ok(tax, presetId);
+		const labels = tax.categories.flatMap((c) => c.items).slice(0, 6).map((i) => i.label);
+		const head = labels.map((l) => l.split(/（|\(|·|\/|、/)[0]).find((h) => norm(h).length >= 3) || labels[0];
+		const dir = detectScope(presetId, `帮我测试一下「${head}」这个点，其他不用动`);
+		ok(`${presetId}: 定向命中本模式类目（${head}）`, dir.directed === true && dir.hits.length > 0);
+		const full = detectScope(presetId, fullText);
+		ok(`${presetId}: 全流程委托不误判`, full.directed === false, JSON.stringify(full));
+	}
+	ok("redteam 定向走显式措辞（无矩阵类目）", detectScope("redteam", "只测这个站的注入，其他不路由").directed === true);
+	ok("redteam 全流程委托不误判", detectScope("redteam", "三个任务并行处理，最后全局总结").directed === false);
 }
 
 process.exit(fail ? 1 : 0);

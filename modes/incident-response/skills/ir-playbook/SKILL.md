@@ -294,6 +294,7 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 ### 覆盖台账
 
 - **AttackAtlas 图谱联动（覆盖台账的 UI 面）**：「AttackAtlas」标签页按本手册结构展示——五战场分区（保全排查/场景作战卡/溯源还原/取证深线/处置交付）× 22 战术列 × 六阶段带 × 三形态（Windows/Linux/云上）。
+- **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
   覆盖台账与阶段终态落盘时同步调 `redteam_coverage_mark`（查实有证据=tested-found、已查未命中=tested-clear、不适用附原因=na、未查让位=budget-stop），阶段推进调 `redteam_coverage_stage`（s1 保全…s6 报告）；
   调查对象（受害主机/网段/云环境）调 `redteam_atlas_target` 登记，多对象终态带 target 参数逐对象回写。
 - **链路拓扑图（攻击链/感染链还原的可视面）**：演习攻击者链路与蠕虫感染链逐节点登记 `redteam_atlas_chain`（节点型：attacker 攻击者/infra C2·基础设施/entry 失陷入口/host 失陷主机/cred 滥用凭据/pivot 跳板·横向/exfil 外传·扩散；重大成果节点 major=true；边 label 写动作：利用/爆破/凭据复用/扩散/外传）。时间线逐节点闭合时同步登记——拓扑即攻击链还原的图形化交付物，多入口/多感染源按实际画不虚构。

@@ -136,6 +136,7 @@ environment-restore.md（含手动排除步骤），不自动清理（与 C6 同
 | 快照战果 | 任意 RDS/EBS 读权限 | 快照复制/共享→授权账号自建恢复→数据落袋（云特有数据线）；refs vendors/<厂商>/数据库篇 |
 
 ## AttackAtlas 图谱联动
+- **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
 
 - 「AttackAtlas」标签页按本手册结构展示——四分区（入口与凭证/战果扩大引擎/云原生战场/收口与检测）× 18 战术列 × 七阶段带（C1-C7）× 六入口形态（元数据 SSRF/泄露 AK·SK/容器/CI-CD/K8s/快照）。
 - 攻击路径与覆盖台账落盘时同步调 `redteam_coverage_mark`（走通有战果=tested-found、执行未走通附原因=tested-clear、不适用=na、未尝试让位=budget-stop），阶段推进调 `redteam_coverage_stage`（s1 测绘…s7 报告）；云目标（账号/租户/集群）调 `redteam_atlas_target` 登记，多账号终态带 target 参数逐账号回写。

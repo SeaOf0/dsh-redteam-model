@@ -19,6 +19,8 @@ import path from "node:path";
 import z from "@deepseek-ai/schemastery";
 import { MODES, FALLBACK_GATES, NEGATION_TOKENS } from "./routes.mjs";
 import { toolsStatus } from "./skilltools.mjs";
+import { detectScope } from "./scope.mjs";
+export { detectScope };
 
 const name = "dsh-route-boost";
 const inject = ["systemPrompt", "agentPresets"];
@@ -153,7 +155,7 @@ export function escapePromptBraces(text) {
  *  （mode 行与 operation 恢复行在顶部受保护）；单行仍超才截断加省略号——整行粒度保证
  *  每一行的语义完整性。
  *  buildEnvelopeDetailed 额外带回 dropped 记账（供注入量审计）；buildEnvelope 保持纯文本返回。 */
-export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1200, includeRefs = true, negated = false, tools }) {
+export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1200, includeRefs = true, negated = false, tools, scope }) {
 	const gateTable = gates?.[presetId] ?? {};
 	const gateLines = phase.gates
 		.map((id) => gateTable[id] ? `${id} ${gateTable[id].title}` : `${id}`)
@@ -167,6 +169,13 @@ export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidenc
 		`review: ${mode.review ?? "关键 finding 双签 = DSH 独立复核 + subagent_claude_code 复核一致；仅确认/挑战二选一"}`,
 		`evidence: ${evidence}（confirmed=按已验证引用；partial/unknown=下结论前先补证据）`
 	];
+	if (scope) {
+		const mark = presetId === "redteam" ? "台账终态登记" : "redteam_coverage_mark 点亮";
+		const line = scope.directed
+			? `scope: 定向——用户指定优先${scope.hits && scope.hits.length > 0 ? `：${scope.hits.slice(0, 5).join("、")}` : ""}；只执行用户指定项，完成即逐项 ${mark}，未指定项不补测不欠账；转全流程须用户明示`
+			: `scope: 未指定具体项——${presetId === "redteam" ? "按路由手册受理（多任务走台账）" : "按本模式全流程矩阵推进"}`;
+		lines.splice(1, 0, line);
+	}
 	if (phase.channel) {
 		lines.splice(2, 0, `channel: ${phase.channel}（本阶段默认通道；缺失按工具手册·通道完整阶梯降级）`);
 	}
@@ -314,12 +323,13 @@ async function apply(ctx, config) {
 			const operation = readOperationSummary(agent?.session?.header?.cwd);
 			if (state?.phaseId !== phase.id) auditRoute(agent, presetId, phase.id, text);
 			const tools = toolsStatus(presetId);
-			const detailed = buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence, gates, operation, maxChars: config.maxChars, includeRefs: config.includeRefs, negated, tools });
+			const scope = detectScope(presetId, text);
+			const detailed = buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence, gates, operation, maxChars: config.maxChars, includeRefs: config.includeRefs, negated, tools, scope });
 			let rev = state?.rev ?? 0;
 			if (state?.lastBody !== detailed.text) {
 				rev += 1;
 				agentState.set(agent.id, { text, phaseId: phase.id, rev, lastBody: detailed.text });
-				appendAccounting(logFile, { ts: new Date().toISOString(), agent: agent.id, mode: presetId, phase: phase.id, rev, chars: detailed.text.length, dropped: detailed.dropped, refs: refsHits, evidence, tools: tools ? { ok: tools.ok, total: tools.total, missing: tools.missing } : undefined });
+				appendAccounting(logFile, { ts: new Date().toISOString(), agent: agent.id, mode: presetId, phase: phase.id, rev, chars: detailed.text.length, dropped: detailed.dropped, refs: refsHits, evidence, scope: scope.directed ? "directed" : "full", scopeHits: scope.hits.slice(0, 5), tools: tools ? { ok: tools.ok, total: tools.total, missing: tools.missing } : undefined });
 			} else {
 				agentState.set(agent.id, { text, phaseId: phase.id, rev, lastBody: detailed.text });
 			}
