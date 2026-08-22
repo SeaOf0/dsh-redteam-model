@@ -1,0 +1,45 @@
+{
+	"name": "@dsh-external/dsh-attack-atlas",
+	"version": "1.1.0",
+	"description": "AttackAtlas tab for the eight specialist security presets: per-mode architecture matrix (battle zones x tactics x items with per-mode terminal-state semantics), four-state coverage light-up backed by playbook coverage ledgers, target anchoring, dispatch-on-double-click into the current session, and attack-chain topology for attack-defense / incident-response / cloud-security.",
+	"keywords": [
+		"deepseek",
+		"deepseek-harness",
+		"dsh-plugin",
+		"dsh-bundle",
+		"attack-atlas",
+		"coverage-matrix",
+		"session-scoped"
+	],
+	"type": "module",
+	"main": "./lib/index.js",
+	"exports": {
+		".": "./lib/index.js",
+		"./client": "./lib/client.js",
+		"./package.json": "./package.json",
+		"./store": "./lib/store.js",
+		"./taxonomy": "./lib/taxonomy.js"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/dsh-tools": "*"
+	},
+	"license": "MIT",
+	"author": "SeaOf0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+	},
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		},
+		"client": {
+			"platform": "web",
+			"inject": [
+				"@deepseek-ai/dsh-client-connection",
+				"@deepseek-ai/dsh-client-runtime",
+				"@deepseek-ai/dsh-client-ui-settings"
+			]
+		}
+	}
+}

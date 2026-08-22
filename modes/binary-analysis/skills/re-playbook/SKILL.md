@@ -374,6 +374,11 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 | IOC 提取员 | spawn | 已验证结论 → IOCs + YARA/Sigma 初稿 | 置信度标注（静态推断/动态确认） |
 | 复核员 | 独立 spawn（independent-review） | 原始反汇编段/trace → 确认/挑战 | 字节/指令级证据重读；跨 harness 复核列为建议项（用户触发） |
 
+### AttackAtlas 图谱联动
+
+- 「AttackAtlas」标签页按本手册结构展示——五分区（分诊与登记/分析维度/形态与还原/场景作战卡/交付与收口）× 18 战术列 × 六阶段带（登记分诊→静态→动态→还原破解→假设循环覆盖→IOC 报告）× 五样本形态（Windows/Linux/macOS/移动/固件硬件）。
+- **分析维度覆盖的 UI 面**：analysis-coverage.md 每维度落终态时同步调 `redteam_coverage_mark`（已分析有结论=tested-found、已分析未见异常=tested-clear、不适用附原因=na、未分析收窄=budget-stop）；假设台账终态同规则；阶段推进调 `redteam_coverage_stage`（s1…s6）。样本（sha256/形态）调 `redteam_atlas_target` 登记，多样本批次逐样本 target 参数回写。
+
 ### 分析维度覆盖规则（防「看了字符串就交卷」）
 
 - **分析维度清单固定**（来源 refs F 域手册分类）：静态三视角（汇编/伪代码/调用图+字符串）、

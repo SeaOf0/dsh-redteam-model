@@ -1,0 +1,6 @@
+# dsh-attack-atlas：AttackAtlas（八专业模式架构体系 + 覆盖点亮）。
+# 宿主平面：模型经 redteam_coverage_mark / redteam_coverage_stage / redteam_coverage_list
+# 回写覆盖终态；Web 会话标签页「攻击面图谱」读体系/读终态/双击派单进当前会话。
+- insert:
+    - id: dsh-attack-atlas
+      name: '@dsh-external/dsh-attack-atlas'

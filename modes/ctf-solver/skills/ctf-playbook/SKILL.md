@@ -67,6 +67,11 @@ reverse/crypto/forensics/misc/ai-ml/osint/malware + solve-challenge 分诊入口
 
 全量索引与篇数见 `refs/README.md`；模块内先 SKILL.md 路由再读深度篇。
 
+## AttackAtlas 图谱联动
+
+- 「AttackAtlas」标签页按本手册结构展示——三分区（题型模块/赛制作战卡/纪律与台账）× 9 战术列 × 四阶段带（题面登记→模块路由解题→flag 验证台账→复盘报告）× 三赛制形态（Jeopardy/AWD/KotH）。
+- 题目格与赛制线落终态时同步调 `redteam_coverage_mark`（已解 flag 验证=tested-found、已试卡点附原因=tested-clear、不适用无此类题=na、未开让位=budget-stop）；阶段推进调 `redteam_coverage_stage`（s1…s4）；题目/赛局调 `redteam_atlas_target` 登记，多题逐题 target 参数回写。
+
 ## 解题纪律
 
 - 沙盒内解题：题目环境=授权解题对象；不攻击平台本身、不碰其他队伍资产、不出题面攻击面。

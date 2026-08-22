@@ -1,14 +1,13 @@
-# 高对抗组合经验参考开源来源说明
+# 高对抗组合·生态工具对照
 
-本文件用于记录高对抗组合经验参考的外部开源参考来源。
-这些来源只用于校准策略和补充证据视角，不直接替代 task-local 证据。
+本文件记录高对抗组合涉及的生态工具与实现要点对照，用于校准策略与补充证据视角，不替代 task-local 证据。
 
 ## 组合卡对应关系
 
 ### `exp-android-shell-jni-multiprocess-pinning-chain-first`
 
 - `hluwa/frida-dexdump`
-  - 强调内存中 dex dump、`spawn` 模式和延时等待，对动态 Dex/壳场景有直接参考价值。
+  - 强调内存中 dex dump、`spawn` 模式和延时等待，直接适用动态 Dex/壳场景。
 - `hanbinglengyue/FART`
   - 强调从 app 实际运行过程中主动触发 dump，适合“壳 + 动态加载”场景的时机判断。
 - `chame1eon/jnitrace`
@@ -30,7 +29,7 @@
 - `lico-n/ZygiskFrida`
   - 强调避免 `ptrace`、保持 APK 完整性/签名通过、控制注入时机和 child gating。
 - `sensepost/objection`
-  - 适合在需要 gadget 注入但仍要保持最小 patch 因果时作为替代注入路径参考。
+  - 适合在需要 gadget 注入但仍要保持最小 patch 因果时作为替代注入路径。
 
 ### `exp-android-native-pinning-plaintext-cert-first`
 
@@ -63,7 +62,7 @@
 - `bmax121/APatch`
   - 提供设备上的 APatch App（KPM 管理 + su），是部署 stealth-hook 的前置依赖（设备能力四件套之一）。
 - `Ylarod/Florida`
-  - 魔改 Frida 分支，可作 stealth-hook 共存型方案的对照参考（PTE+DBI 升级前的用户态基线）。
+  - 魔改 Frida 分支，可作 stealth-hook 共存型方案的对照（PTE+DBI 升级前的用户态基线）。
 
 ## 使用建议
 
