@@ -56,6 +56,10 @@ code-audit、检测侧移交 attack-defense/av-evasion；云侧发现失陷迹�
   ③ 实例元数据（SSRF→IMDS 链，端点对照 refs 附录 A）；④ 前端 bundle/小程序（AKIA/ASIA/
   LTAI/AKID 指纹表在各 vendors 篇）；⑤ 客户端配置（`~/.aws/credentials` 类、kubeconfig、
   服务账号 JWT、云 CLI 配置）；⑥ 对象桶内备份与配置文件。
+- **web 页面硬编码凭据优先利用（通则）**：目标 web 页面/前端 JS 中的硬编码凭据
+  （尤其 AK/SK——AKIA/ASIA/LTAI/AKID 指纹命中即取）→ **优先直接用凭据连云 API 验证**：
+  身份识别（GetCallerIdentity 类）→ 权限枚举 → 按 §1 全流程展开；凭据失效或穷尽后才
+  续其他入口面测试；凭据与权限范围登记 creds-cloud.txt；
 - **测绘平台补盲**：组织主域关联资产用「hunter 狩猎」测绘侧补齐影子云资产与已暴露服务面
   （统一 DSL `domain=` 检索），与云 API 枚举双源合并回填 cloud-assets。
 - 发现即登记：每个凭证记来源与**指纹**（前缀/账号 ID），入凭证池 `artifacts/creds-cloud.txt`。
