@@ -491,7 +491,9 @@ if (phpAvailable()) {
 					const r = await detectProtocol({ url: U("bmod.php"), password: "sess-abc", secretKey: "x9k2" });
 					if (!r.hit || r.protocol !== "behinder-mod") throw new Error(JSON.stringify(r).slice(0, 400));
 					const conn = mkConn({ url: U("bmod.php"), protocol: "behinder-mod", password: "sess-abc", secret_key: "x9k2", id: "t-bmod-" + attempt });
-					const out = await cap.runCommand(conn, "echo BMODOK");
+					let out;
+					try { out = await cap.runCommand(conn, "echo BMODOK"); }
+					catch (e) { last = "attempt" + attempt + ": " + e.message; continue; } // 协商会话错乱——弃会话重来
 					if (out.includes("BMODOK")) return;
 					last = String(out).slice(0, 200);
 				}
@@ -507,7 +509,9 @@ if (phpAvailable()) {
 					const r = await detectProtocol({ url: U("gmod.php"), password: "xg-123", secretKey: "g7#m" });
 					if (!r.hit || r.protocol !== "godzilla-mod") throw new Error(JSON.stringify(r).slice(0, 400));
 					const conn = mkConn({ url: U("gmod.php"), protocol: "godzilla-mod", password: "xg-123", secret_key: "g7#m", id: "t-gmod-" + attempt });
-					const out = await cap.runCommand(conn, "echo GMODOK");
+					let out;
+					try { out = await cap.runCommand(conn, "echo GMODOK"); }
+					catch (e) { last = "attempt" + attempt + ": " + e.message; continue; }
 					if (out.includes("GMODOK")) return;
 					last = String(out).slice(0, 200);
 				}
