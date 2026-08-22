@@ -38,6 +38,7 @@ const PLUGINS = [
 	{ name: "dsh-mcp-studio", hostPlane: true },
 	{ name: "dsh-product-subagents", hostPlane: true },
 	{ name: "dsh-route-boost", hostPlane: true },
+	{ name: "dsh-campaign-memory", hostPlane: true },
 	{ name: "dsh-refusal-guard", hostPlane: true },
 	{ name: "dsh-sec-enforce", hostPlane: true },
 	{ name: "dsh-redteam-results", hostPlane: true },

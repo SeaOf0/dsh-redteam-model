@@ -1,6 +1,7 @@
 ---
 name: re-playbook
 description: 二进制分析模式作战手册：样本登记与活体处置 SOP、壳/混淆识别与脱壳、多视角分析、frida 插桩 SOP、angr 符号执行分工、IOC 与检测规则输出、时间线/残留/敏感数据三件套、报告模板。结论必须有字节/指令级证据引用、家族指纹快筛路由与多样本批次聚类（代表深析+变体外推）、IAT 修复三情形分诊（保留/TRACE 重建/hook wrapper）、逆向破解决策（授权模型四分类路径+keygen 验证闭环）、固件与硬件作战卡（binwalk 提取/敏感面/diff/物理接口）、pwn/exploit 需求路由、ioc.txt 机器可读工件、内存镜像产物衔接。
+tools: jadx, frida
 ---
 
 # 二进制分析作战手册

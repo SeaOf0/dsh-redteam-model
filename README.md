@@ -20,18 +20,19 @@
 
 每个模式自包含四层资产：**persona**（角色/认识论/边界/报告纪律）→ **playbook**（方法论与门禁文本契约）→ **skills**（可加载技能）→ **refs/**（外部知识库，原文索引化，零本机路径）。
 
-## 运行时插件（十二个）
+## 运行时插件（十三个）
 
 | 插件 | 作用 | 挂载平面 |
 |---|---|---|
 | `dsh-stage-gate` | `stage_gate`/`gates_list` 工具：八模式 32 道阶段门的结构校验（文件/标记/表格/哈希登记），判定写入 `gate-log.md`；`operation_goal`/`operation_progress` 目标契约与进度收口（`operation-state.json` 驱动中断恢复） | 宿主（全模式可见） |
-| `dsh-route-boost` | 逐轮治理信封：阶段推断（带粘滞记忆）+ 门禁清单 + 模式边界 + 证据等级预判 + refs 指针 + operation 恢复行（中断续作），变化才投递 | 宿主 |
+| `dsh-route-boost` | 逐轮治理信封：阶段推断（带粘滞记忆）+ 门禁清单 + 模式边界 + 证据等级预判 + refs 指针 + 技能依赖工具面就绪行（缺件提前显形走三级兜底）+ operation 恢复行（中断续作），结构化标记块注入（压缩后可识别）、整行粒度预算、变化才投递并落注入量记账 | 宿主 |
 | `dsh-sec-enforce` | 确定性工具拦截（guard 四连）：报告门（gate-log 无 PASS 或目标准则未全 met 不许写 reports/）、写边界（不出任务工作区）、高危命令先问后做、裸奔扫描限速 | 宿主 |
 | `dsh-refusal-guard` | 拒答检测与一次性临近性再注入（强/弱两级检测、工具轮豁免、3 轮冷却） | 宿主 |
 | `dsh-product-subagents` | `subagent_claude_code`/`subagent_codex` provider：无头 spawn 本机 claude/codex CLI，跨 harness 复核按建议项由用户触发 | 宿主 |
 | `dsh-mcp-studio` | MCP 加载工作台：通用类 MCP（burpsuite/yakit/chrome-dev-mcp 等）的接入、状态与诊断 | 宿主 |
 | `dsh-redteam-results` | 会话标签页「redteam 成果」：任务台账作战大屏 + 五板式成果页（发现/资产/台账/时间线/云攻击路径），九模式**跨会话**聚合与时间范围筛选（验证/删除回原始会话执行），SQLite 行级持久 | 宿主（bundles） |
 | `dsh-hunter` | 会话标签页「hunter 狩猎」：FOFA / Hunter / Quake 三平台资产搜索（统一 DSL 自动转平台语法、分页与限额导出、API key 独立存储），代码审计成果页「实测」按钮一键验证（指纹搜索→存活探测→EXP 验证，仅授权资产执行） | 宿主（bundles） |
+| `dsh-campaign-memory` | 会话标签页「战役记忆」：跨会话打法沉淀（战术/指纹/工具/教训/检测指纹，原文存储、凭据走独立凭据库只写指位），检索即记账、按工作区隔离召回（新工作区干净开局，跨区显式检索带来源标注），检测指纹类自动过期；模型侧 write/search/get/list/remove 工具 + 装配期高频记忆注入 | 宿主（bundles） |
 | `dsh-mode-group` | 新建会话屏模式选择器两级化：内置模式与研究员模式留顶层，八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单（视口自适应翻转、触屏加大命中区） | 宿主（bundles） |
 | `dsh-attack-atlas` | 会话标签页「AttackAtlas 攻击面图谱」：八专业模式架构矩阵（战场分区 × 战术列 × 子项）四态点亮与阶段带、目标锚定、双击派单；自定义工作方法论（五类模块编排、闭环五查询问、分层运行信封）；工具 / MCP / 自定义工具模块（安装批准协议）；能力库（自定义主类 / 子类并入图谱与方法论） | 宿主（bundles） |
 | `dsh-scanner-tools` | `nuclei_scan`/`httpx_probe`/`ffuf_fuzz` 封装：保守限速默认、防盲打（须先登记资产）、产物自动落证据索引 | preset（仅 pentest / attack-defense） |
@@ -42,7 +43,7 @@
 前置：**Node.js >= 22**（DSH 本身要求）。无需预装 pnpm/dsh（经 npx 拉起）；bash/python 非必需。
 
 ```bash
-tar -xzf dsh-redteam-model-1.1.1.tar.gz && cd dsh-redteam-model/deploy
+tar -xzf dsh-redteam-model-1.1.2.tar.gz && cd dsh-redteam-model/deploy
 node deploy.mjs            # 安装：预设链接 + 插件挂载 + 依赖安装（幂等可重跑）
 node deploy.mjs --check    # 离线校验：九预设挂载 + 插件真实 loader 路径 + bundle 声明
 node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
@@ -114,7 +115,7 @@ dsh-redteam-model/
 │       ├── skills/           # playbook 等模式技能
 │       └── refs/             # 知识库（README.md 全量索引，零本机路径）
 ├── shared/skills/            # 九预设共享技能（生态协作/独立复核/治理/边界）
-├── plugins/                  # 十二个运行时插件（各自含 lib/ 测试/README）
+├── plugins/                  # 十三个运行时插件（各自含 lib/ 测试/README）
 └── deploy/                   # 一键部署 CLI（deploy.mjs / verify-deployment.mjs / check-sources.mjs / DEPLOY.md）
 ```
 
@@ -138,10 +139,11 @@ dsh-redteam-model/
 
 ## 版本变更
 
-### v1.1.1（2026-08-22）
+### v1.1.2（2026-08-22）
 
 - 新增AttackAtlas专业模式的矩阵化攻击盘点
 - 让AttackAtla增加自定义能力，微调属于你的方法论
+- 新增记忆系统
 
 ### v1.0.9（2026-08-21）
 

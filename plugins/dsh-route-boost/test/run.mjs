@@ -1,7 +1,9 @@
 // Offline unit tests for dsh-route-boost. No host, no session — pure data and
 // rendering, plus contract checks against dsh-stage-gate's real GATES and the
 // presets' top-level refs README indexes.
-import { MODES, inferPhase, inferRefs, inferEvidence, buildEnvelope, isHumanUser, matchKeyword, escapePromptBraces, hasNegation, buildAuditRow, Config } from "../lib/index.js";
+import { MODES, inferPhase, inferRefs, inferEvidence, buildEnvelope, buildEnvelopeDetailed, wrapEnvelope, isEnvelopeText, envelopeRev, appendAccounting, isHumanUser, matchKeyword, escapePromptBraces, hasNegation, buildAuditRow, Config } from "../lib/index.js";
+import { scanSkillDeps, checkTool } from "../lib/skilltools.mjs";
+import os from "node:os";
 import { FALLBACK_GATES } from "../lib/routes.mjs";
 import { GATES } from "../../dsh-stage-gate/lib/index.js";
 import fs from "node:fs";
@@ -283,6 +285,34 @@ console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pas
 	const without = buildEnvelope({ presetId: "pentest", mode, phase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES });
 	ok("envelope omits recovery line without operation", !without.includes("operation 恢复"));
 	ok("recovery line truncates long goal", buildEnvelope({ presetId: "pentest", mode, phase, refsHits: [], gates: FALLBACK_GATES, operation: { ...op, goal: "x".repeat(200) } }).includes("x".repeat(80)));
+}
+
+// 17. 信封标记化（压缩存活性）+ 注入量记账 + 装配期工具面
+{
+	const m = MODES.pentest;
+	const phase = inferPhase(m, "验证 sqli");
+	const body = buildEnvelope({ presetId: "pentest", mode: m, phase, refsHits: ["web"], gates: GATES });
+	const wrapped = wrapEnvelope(body, { rev: 3, presetId: "pentest", phaseId: phase.id });
+	ok("wrapEnvelope tags well-formed with attrs", wrapped.startsWith(`<dsh-route-boost rev="3" mode="pentest" phase="${phase.id}">`) && wrapped.endsWith("</dsh-route-boost>"));
+	ok("isEnvelopeText recognizes wrapped block only", isEnvelopeText(wrapped) && !isEnvelopeText(body) && !isEnvelopeText("random text"));
+	ok("envelopeRev parses rev attr", envelopeRev(wrapped) === 3 && envelopeRev(body) === undefined);
+	ok("wrapped body preserved verbatim", wrapped.includes("mode=pentest") && wrapped.includes(body.slice(0, 40)));
+	const tight = wrapEnvelope(buildEnvelope({ presetId: "pentest", mode: m, phase, refsHits: ["web"], gates: GATES, maxChars: 50 }), { rev: 1, presetId: "pentest", phaseId: phase.id });
+	ok("truncated body still wrapped recognizably", isEnvelopeText(tight));
+	const det = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase, refsHits: ["web"], gates: GATES, maxChars: 50 });
+	ok("detailed reports dropped sections (refs first)", det.dropped.includes("refs") && det.text.length <= 50);
+	const detTools = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase, refsHits: [], gates: GATES, tools: { total: 5, ok: 3, missing: ["ffuf", "sqlmap"] } });
+	ok("tools line renders missing + fallback chain", detTools.text.includes("tools: 技能依赖 3/5 就绪") && detTools.text.includes("缺 ffuf、sqlmap") && detTools.text.includes("已装同类 → MCP"));
+	ok("full-ready tools line carries no missing list", buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase, refsHits: [], gates: GATES, tools: { total: 5, ok: 5, missing: [] } }).text.includes("tools: 技能依赖 5/5 就绪"));
+	ok("no tools line when status undefined", !buildEnvelope({ presetId: "redteam", mode: MODES.redteam, phase: MODES.redteam.phases[0], refsHits: [], gates: GATES }).includes("tools:"));
+	const overTools = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase, refsHits: ["web"], gates: GATES, maxChars: 200, negated: true, tools: { total: 5, ok: 3, missing: ["a", "b"] } });
+	ok("budget drops tools line before tail lines when tight", overTools.dropped.includes("tools") && overTools.text.length <= 200);
+	const deps = scanSkillDeps("pentest");
+	ok("scanSkillDeps reads playbook tools frontmatter", deps.has("nmap") && deps.has("sqlmap") && deps.size === 5);
+	ok("checkTool: universal binary true, bogus false", checkTool("ls") === true && checkTool("definitely-not-a-real-tool-xyz") === false);
+	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rb-acc-"));
+	const tmp = path.join(tmpDir, "injections.jsonl");
+	ok("appendAccounting writes JSONL line", appendAccounting(tmp, { ts: "t", mode: "pentest", rev: 1, dropped: ["refs"] }) === true && JSON.parse(fs.readFileSync(tmp, "utf8").trim()).rev === 1);
 }
 
 process.exit(fail ? 1 : 0);

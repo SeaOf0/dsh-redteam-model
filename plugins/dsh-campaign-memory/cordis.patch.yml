@@ -1,0 +1,8 @@
+# One installable bundle row: cross-session campaign memory for the nine
+# security presets. Host plane — writes and recalls per-mode tactic /
+# fingerprint / tooling / lesson / detection memories; the context contribution
+# injects a marker-tagged recall block at assembly time; model tools and the
+# web tab share the same SQLite store.
+- insert:
+    - id: dsh-campaign-memory
+      name: '@dsh-external/dsh-campaign-memory'

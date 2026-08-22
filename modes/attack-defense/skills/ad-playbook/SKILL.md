@@ -1,6 +1,7 @@
 ---
 name: ad-playbook
 description: 攻防评估模式作战手册：Agentic Red Teaming 定位（AEV 持续验证）、阶段编排（侦察/突破/横向/持久化/报告+复测闭环）、外网打点作战流程（hunter 测绘联动/入口面价值提级序/登陆口 JS 专线）、内网攻防作战流程（常见端口侦察+蜜罐甄别/服务线弱口令+锁定策略探测/被动凭据线（同广播域投毒中继）/SSH·Windows·SMB·数据库落点线/框架 EXP/DevOps 与邮件·OA·VPN 高价值线/隔离突破 C 段→B 段/域攻纵深分级（BloodHound→Roasting→ADCS→委派→DCSync）/堡垒机与安防设备优先/横向痕迹管理（目标侧定向清痕+本地台账留痕双轨）/穷尽终止+机器可读黑板与操作痕迹台账）、防御验证（detection gap）、AI 应用红队（Garak/PyRIT/Promptfoo 工具矩阵）、验证与评分、MITRE ATT&CK 映射、证据收集规范与报告模板。
+tools: nmap, fscan, nuclei
 ---
 
 # 攻防评估作战手册

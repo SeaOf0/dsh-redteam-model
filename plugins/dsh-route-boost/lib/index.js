@@ -14,9 +14,11 @@
 // re-trigger it. Unknown presets (non-security modes) render empty text.
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import z from "@deepseek-ai/schemastery";
 import { MODES, FALLBACK_GATES, NEGATION_TOKENS } from "./routes.mjs";
+import { toolsStatus } from "./skilltools.mjs";
 
 const name = "dsh-route-boost";
 const inject = ["systemPrompt", "agentPresets"];
@@ -145,11 +147,13 @@ export function escapePromptBraces(text) {
 	return text.includes("{{") ? text.replace(/\{(?=\{)/gu, "{\u2060") : text;
 }
 
-/** Render the envelope. Deterministic in (mode, phase, refsHits, operation) — identical
- * inputs must produce deterministic text or RuntimeContextProjection re-snapshots.
- * 预算控制：超长时 refs/知识提示行最先丢，其次语境行，仍超才尾部截断——
- * mode 行与 operation 恢复行在顶部最后受影响（boundary 次之，已置于 review/evidence 之前）。 */
-export function buildEnvelope({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1200, includeRefs = true, negated = false }) {
+/** Render the envelope. Deterministic in (mode, phase, refsHits, operation, tools) — identical
+ *  inputs must produce deterministic text or RuntimeContextProjection re-snapshots.
+ *  预算控制：超长时 refs/知识提示行最先丢，其次语境行，再次 tools 行，然后从尾部整行丢
+ *  （mode 行与 operation 恢复行在顶部受保护）；单行仍超才截断加省略号——整行粒度保证
+ *  每一行的语义完整性。
+ *  buildEnvelopeDetailed 额外带回 dropped 记账（供注入量审计）；buildEnvelope 保持纯文本返回。 */
+export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1200, includeRefs = true, negated = false, tools }) {
 	const gateTable = gates?.[presetId] ?? {};
 	const gateLines = phase.gates
 		.map((id) => gateTable[id] ? `${id} ${gateTable[id].title}` : `${id}`)
@@ -165,6 +169,9 @@ export function buildEnvelope({ presetId, mode, phase, refsHits, evidence = "unk
 	];
 	if (phase.channel) {
 		lines.splice(2, 0, `channel: ${phase.channel}（本阶段默认通道；缺失按工具手册·通道完整阶梯降级）`);
+	}
+	if (tools && tools.total > 0) {
+		lines.splice(2, 0, `tools: 技能依赖 ${tools.ok}/${tools.total} 就绪${tools.missing.length > 0 ? `——缺 ${tools.missing.join("、")}（先走兜底：已装同类 → MCP → 询问批准后安装）` : ""}`);
 	}
 	if (operation) {
 		const op = operation;
@@ -184,17 +191,60 @@ export function buildEnvelope({ presetId, mode, phase, refsHits, evidence = "unk
 			lines.push("知识: 无 refs 命中——浅做按 router-playbook；深度知识加载对应专业 playbook，勿凭记忆自答");
 		}
 	}
+	const dropped = [];
 	let text = lines.join("\n");
 	if (text.length > maxChars) {
-		const drop = (pred) => { const i = lines.findIndex(pred); if (i >= 0) lines.splice(i, 1); };
-		drop((l) => l.startsWith("refs:") || l.startsWith("知识:"));
+		const drop = (pred, tag) => { const i = lines.findIndex(pred); if (i >= 0) { lines.splice(i, 1); dropped.push(tag); } };
+		drop((l) => l.startsWith("refs:") || l.startsWith("知识:"), "refs");
 		text = lines.join("\n");
 	}
 	if (text.length > maxChars) {
 		const i = lines.findIndex((l) => l.startsWith("语境:"));
-		if (i >= 0) { lines.splice(i, 1); text = lines.join("\n"); }
+		if (i >= 0) { lines.splice(i, 1); dropped.push("语境"); text = lines.join("\n"); }
 	}
-	return text.length > maxChars ? text.slice(0, maxChars - 1) + "…" : text;
+	if (text.length > maxChars) {
+		const i = lines.findIndex((l) => l.startsWith("tools:"));
+		if (i > 0) { lines.splice(i, 1); dropped.push("tools"); text = lines.join("\n"); }
+	}
+	while (text.length > maxChars && lines.length > 1) {
+		lines.pop();
+		dropped.push("tail");
+		text = lines.join("\n");
+	}
+	return { text: text.length > maxChars ? text.slice(0, maxChars - 1) + "…" : text, dropped };
+}
+
+export function buildEnvelope(opts) {
+	return buildEnvelopeDetailed(opts).text;
+}
+
+/** 信封块标记：结构化起止标签让历史快照在上下文压缩后仍可被识别（多块共存以 rev 最大者为准），
+ *  也让压缩/抽取等下游消费方能定位治理注入块。 */
+export const ENVELOPE_TAG = "dsh-route-boost";
+export function wrapEnvelope(body, { rev, presetId, phaseId }) {
+	return `<${ENVELOPE_TAG} rev="${rev}" mode="${presetId}" phase="${phaseId}">\n${body}\n</${ENVELOPE_TAG}>`;
+}
+export function isEnvelopeText(text) {
+	const t = String(text ?? "").trim();
+	return t.startsWith(`<${ENVELOPE_TAG} `) && t.endsWith(`</${ENVELOPE_TAG}>`);
+}
+export function envelopeRev(text) {
+	const m = /rev="(\d+)"/.exec(String(text ?? ""));
+	return m ? Number(m[1]) : undefined;
+}
+
+/** 注入量记账（JSONL，一行一次快照投递）：模式/相位/rev/字符数/被丢节/refs 命中——
+ *  refs 按节读取与信封预算调参的数据面。路径固定在 ~/.dsh/route-boost/。 */
+export function accountingPath(home = os.homedir()) {
+	return path.join(home, ".dsh", "route-boost", "injections.jsonl");
+}
+export function appendAccounting(file, record) {
+	try {
+		fs.mkdirSync(path.dirname(file), { recursive: true });
+		fs.appendFileSync(file, JSON.stringify(record) + "\n");
+		return true;
+	} catch { /* 记账失败不阻塞装配 */ }
+	return false;
 }
 
 /** 路由决策审计行：相位变化时落一行
@@ -245,6 +295,7 @@ async function apply(ctx, config) {
 			}
 		} catch { /* 审计失败不阻塞 */ }
 	};
+	const logFile = accountingPath();
 	ctx.systemPrompt.context({
 		name: "route-boost",
 		order: 500,
@@ -262,8 +313,17 @@ async function apply(ctx, config) {
 			const evidence = inferEvidence(text);
 			const operation = readOperationSummary(agent?.session?.header?.cwd);
 			if (state?.phaseId !== phase.id) auditRoute(agent, presetId, phase.id, text);
-			agentState.set(agent.id, { text, phaseId: phase.id });
-			return escapePromptBraces(buildEnvelope({ presetId, mode, phase, refsHits, evidence, gates, operation, maxChars: config.maxChars, includeRefs: config.includeRefs, negated }));
+			const tools = toolsStatus(presetId);
+			const detailed = buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence, gates, operation, maxChars: config.maxChars, includeRefs: config.includeRefs, negated, tools });
+			let rev = state?.rev ?? 0;
+			if (state?.lastBody !== detailed.text) {
+				rev += 1;
+				agentState.set(agent.id, { text, phaseId: phase.id, rev, lastBody: detailed.text });
+				appendAccounting(logFile, { ts: new Date().toISOString(), agent: agent.id, mode: presetId, phase: phase.id, rev, chars: detailed.text.length, dropped: detailed.dropped, refs: refsHits, evidence, tools: tools ? { ok: tools.ok, total: tools.total, missing: tools.missing } : undefined });
+			} else {
+				agentState.set(agent.id, { text, phaseId: phase.id, rev, lastBody: detailed.text });
+			}
+			return wrapEnvelope(escapePromptBraces(detailed.text), { rev, presetId, phaseId: phase.id });
 		}
 	});
 }
