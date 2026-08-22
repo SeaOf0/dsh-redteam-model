@@ -20,7 +20,7 @@
 
 每个模式自包含四层资产：**persona**（角色/认识论/边界/报告纪律）→ **playbook**（方法论与门禁文本契约）→ **skills**（可加载技能）→ **refs/**（外部知识库，原文索引化，零本机路径）。
 
-## 运行时插件（十一个）
+## 运行时插件（十二个）
 
 | 插件 | 作用 | 挂载平面 |
 |---|---|---|
@@ -33,6 +33,7 @@
 | `dsh-redteam-results` | 会话标签页「redteam 成果」：任务台账作战大屏 + 五板式成果页（发现/资产/台账/时间线/云攻击路径），九模式**跨会话**聚合与时间范围筛选（验证/删除回原始会话执行），SQLite 行级持久 | 宿主（bundles） |
 | `dsh-hunter` | 会话标签页「hunter 狩猎」：FOFA / Hunter / Quake 三平台资产搜索（统一 DSL 自动转平台语法、分页与限额导出、API key 独立存储），代码审计成果页「实测」按钮一键验证（指纹搜索→存活探测→EXP 验证，仅授权资产执行） | 宿主（bundles） |
 | `dsh-mode-group` | 新建会话屏模式选择器两级化：内置模式与研究员模式留顶层，八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单（视口自适应翻转、触屏加大命中区） | 宿主（bundles） |
+| `dsh-attack-atlas` | 会话标签页「AttackAtlas 攻击面图谱」：八专业模式架构矩阵（战场分区 × 战术列 × 子项）四态点亮与阶段带、目标锚定、双击派单；自定义工作方法论（五类模块编排、闭环五查询问、分层运行信封）；工具 / MCP / 自定义工具模块（安装批准协议）；能力库（自定义主类 / 子类并入图谱与方法论） | 宿主（bundles） |
 | `dsh-scanner-tools` | `nuclei_scan`/`httpx_probe`/`ffuf_fuzz` 封装：保守限速默认、防盲打（须先登记资产）、产物自动落证据索引 | preset（仅 pentest / attack-defense） |
 | `dsh-webshell-mgr` | 会话标签页「webshell 管理」：webshell 生成器（PHP/JSP/ASPX 三语言 × 基础/加密/冰蝎/哥斯拉形态）→ 协议自动识别连接（七通道）→ 命令执行/文件管理（上传下载/权限/时间戳伪造/远程下载/文本编辑）/数据库操作（PDO 原生 MySQL/PostgreSQL/SQLite/MSSQL）/载荷插件体系（声明式扩展），操作台账审计；攻防评估模式立足点作战节方法论接线 | 宿主（bundles） |
 
@@ -113,7 +114,7 @@ dsh-redteam-model/
 │       ├── skills/           # playbook 等模式技能
 │       └── refs/             # 知识库（README.md 全量索引，零本机路径）
 ├── shared/skills/            # 九预设共享技能（生态协作/独立复核/治理/边界）
-├── plugins/                  # 十一个运行时插件（各自含 lib/ 测试/README）
+├── plugins/                  # 十二个运行时插件（各自含 lib/ 测试/README）
 └── deploy/                   # 一键部署 CLI（deploy.mjs / verify-deployment.mjs / check-sources.mjs / DEPLOY.md）
 ```
 
