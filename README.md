@@ -41,7 +41,7 @@
 前置：**Node.js >= 22**（DSH 本身要求）。无需预装 pnpm/dsh（经 npx 拉起）；bash/python 非必需。
 
 ```bash
-tar -xzf dsh-redteam-model-1.0.9.tar.gz && cd dsh-redteam-model/deploy
+tar -xzf dsh-redteam-model-1.1.1.tar.gz && cd dsh-redteam-model/deploy
 node deploy.mjs            # 安装：预设链接 + 插件挂载 + 依赖安装（幂等可重跑）
 node deploy.mjs --check    # 离线校验：九预设挂载 + 插件真实 loader 路径 + bundle 声明
 node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
@@ -51,7 +51,7 @@ node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
 
 部署后 2 分钟人工验证：
 
-1. 打开 http://127.0.0.1:3080，roster 列出九个模式（redteam 安全研究员 + 八个专业模式）；
+1. 打开 [http://127.0.0.1:3080](http://127.0.0.1:3080)，roster 列出九个模式（redteam 安全研究员 + 八个专业模式）；
 2. 任一会话让模型调 `gates_list`，返回专业模式门禁 schema；
 3. pentest/attack-defense 会话可见 `nuclei_scan` 等扫描工具（其余模式不可见 = preset 平面正确）；
 4. 发起任务后出现 `[route-boost] mode=... phase=...` 运行时信封快照；
@@ -82,6 +82,7 @@ flowchart TB
         SA[dsh-product-subagents 双签 provider]
         MS[dsh-mcp-studio MCP 工作台]
         HU[dsh-hunter 资产狩猎+实测]
+        AA[dsh-attack-atlas 攻击面图谱]
     end
 
     SC[dsh-scanner-tools 扫描工具 preset 平面]
@@ -92,6 +93,7 @@ flowchart TB
     PS -->|write/bash| SE
     PS -->|复核委托| SA
     PS -->|审计实测| HU
+    PS -->|矩阵覆盖与自定义方法论| AA
     PS -->|pentest/ad 专用| SC
     SG -->|判定| GL[(gate-log.md)]
     SE -->|拒绝留痕| EL[(enforce-log.md)]
@@ -135,9 +137,10 @@ dsh-redteam-model/
 
 ## 版本变更
 
-### v1.1.0（2026-08-22）
+### v1.1.1（2026-08-22）
 
 - 新增AttackAtlas专业模式的矩阵化攻击盘点
+- 让AttackAtla增加自定义能力，微调属于你的方法论
 
 ### v1.0.9（2026-08-21）
 

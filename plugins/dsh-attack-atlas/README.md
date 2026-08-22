@@ -8,7 +8,10 @@ AttackAtlas——八专业模式的架构体系面板，置于「redteam 成果�
 - 攻防 / 应急 / 云三模式带链路拓扑图：攻击链与感染链节点登记后自动成图，重大成果金框标记，支持多入口与「从会话生成（模型登记）」
 - 双击子项 / 主类 / 阶段 = 派单进当前会话（自动携带目标锚定与 refs 知识手册）
 - 单键子项 = 详情浮层（状态 / 原因 / 关联 finding / 目标溯源 + 人工回写兜底）
+- 自定义工作方法论：主类 / 子项 / 工具 / MCP / 自定义工具模块在画布自由编排衔接，闭环五查（孤立 / 无起点 / 无终点 / 断裂 / 循环）以询问式确认，运行按分层派单进会话并逐项点亮矩阵；模板可编辑 / 复制 / 导入导出，编排草稿自动保存
+- 工具模块协议：自定义工具不存在时先询问用户是否安装，批准才装，拒绝降级同类工具或写脚本等效实现；MCP 未加载先询问启用
+- 能力库：各模式自定义主类 / 子类（挂内置主类标「用」、自定义主类标「自」），带打法模板与结构骨架，保存即共享进方法论模块库；删除自定义主类级联其子类
 
-模型侧工具：`redteam_coverage_mark`（格子 / 主类终态，多目标带 target 溯源）、`redteam_coverage_stage`（阶段推进）、`redteam_coverage_list`（终态全读）、`redteam_atlas_target`（作战目标登记）、`redteam_atlas_chain`（链路拓扑登记）。存储 `~/.dsh/attack-atlas/atlas.db`，(session, mode) 双键隔离。
+模型侧工具：`redteam_coverage_mark`（格子 / 主类终态，多目标带 target 溯源）、`redteam_coverage_stage`（阶段推进）、`redteam_coverage_list`（终态全读）、`redteam_atlas_target`（作战目标登记）、`redteam_atlas_chain`（链路拓扑登记）。存储 `~/.dsh/attack-atlas/atlas.db`，(session, mode) 双键隔离；方法论模板与自定义能力为跨会话长期资产。
 
 测试：`node test/run.mjs`

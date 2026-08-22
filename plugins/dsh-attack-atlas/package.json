@@ -1,7 +1,7 @@
 {
 	"name": "@dsh-external/dsh-attack-atlas",
-	"version": "1.1.0",
-	"description": "AttackAtlas tab for the eight specialist security presets: per-mode architecture matrix (battle zones x tactics x items with per-mode terminal-state semantics), four-state coverage light-up backed by playbook coverage ledgers, target anchoring, dispatch-on-double-click into the current session, and attack-chain topology for attack-defense / incident-response / cloud-security.",
+	"version": "1.1.1",
+	"description": "AttackAtlas tab for the eight specialist security presets: per-mode architecture matrix (battle zones x tactics x items with per-mode terminal-state semantics), four-state coverage light-up, target anchoring, dispatch-on-double-click, attack-chain topology, custom work-methodology composer (layered run envelope, closure inquiry), tool/MCP/custom-tool modules with install-approval protocol, and a capability library of user-defined categories and items shared into the composer.",
 	"keywords": [
 		"deepseek",
 		"deepseek-harness",

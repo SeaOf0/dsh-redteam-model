@@ -1,7 +1,7 @@
 // dsh-attack-atlas 离线单测：类目体系完整性（key 唯一/形态合法）+ SQLite 覆盖态
 // （终态白名单/N-A 必附原因/会话×模式隔离/清除）+ 通道纯逻辑（端点分发/派单文案/信任栅栏）。
 import assert from "node:assert/strict";
-import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS } from "../lib/store.js";
+import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods } from "../lib/store.js";
 import { TAXONOMIES, ATLAS_MODES, locate, itemsInForm, validateTaxonomy, refPaths } from "../lib/taxonomy.js";
 import fs2 from "node:fs";
 import path2 from "node:path";
@@ -451,5 +451,323 @@ await ok("派单 refHint：pentest: 前缀与 pb 章节两条路径", () => {
 });
 
 //#endregion
+
+//#region 自定义工作方法论
+
+import { validateMethod, layerMethod, methodRunMessage, inferTargetKind } from "../lib/method.js";
+
+const G = (nodes, edges) => ({ nodes, edges });
+const N = (id, ref, extra = {}) => Object.assign({ id, ref, label: ref, note: "", x: 0, y: 0 }, extra);
+
+await ok("validateMethod：结构错误拒绝（缺名/空画布/坏边/自环/重复边/坏引用）", () => {
+	const tax = TAXONOMIES.pentest;
+	assert.ok(validateMethod("", G([N("n1", "injection")], []), tax).errors.some((e) => e.includes("名称")));
+	assert.ok(validateMethod("x", G([], []), tax).errors.some((e) => e.includes("画布为空")));
+	assert.ok(validateMethod("x", G([N("n1", "injection")], [{ src: "n1", dst: "ghost" }]), tax).errors.some((e) => e.includes("不存在")));
+	assert.ok(validateMethod("x", G([N("n1", "injection")], [{ src: "n1", dst: "n1" }]), tax).errors.some((e) => e.includes("自身")));
+	assert.ok(validateMethod("x", G([N("n1", "injection"), N("n2", "access")], [{ src: "n1", dst: "n2" }, { src: "n1", dst: "n2" }]), tax).errors.some((e) => e.includes("重复")));
+	assert.ok(validateMethod("x", G([N("n1", "Bad Ref")], []), tax).errors.some((e) => e.includes("格式非法")));
+});
+
+await ok("validateMethod：闭环五查 + 战区覆盖建议（无起点时不重复报断裂）", () => {
+	const tax = TAXONOMIES.pentest;
+	const wkind = (g) => validateMethod("x", g, tax).warnings.map((w) => w.kind).sort();
+	assert.deepEqual(wkind(G([N("n1", "injection"), N("n2", "access"), N("n3", "auth")], [{ src: "n1", dst: "n2" }])), ["isolated"]);
+	assert.deepEqual(wkind(G([N("a", "injection"), N("b", "access")], [{ src: "a", dst: "b" }, { src: "b", dst: "a" }])), ["cycle", "noend", "nostart"]);
+	assert.deepEqual(wkind(G([N("a", "injection"), N("b", "access"), N("c", "auth"), N("d", "config")], [{ src: "a", dst: "b" }, { src: "c", dst: "d" }, { src: "d", dst: "c" }])), ["cycle", "unreachable"]);
+	// 攻防模式：只选外网+内网战场 → 收尾战场提示
+	const vad = validateMethod("x", G([N("n1", "recon"), N("n2", "host-collect")], [{ src: "n1", dst: "n2" }]), TAXONOMIES["attack-defense"]);
+	assert.deepEqual(vad.errors, []);
+	assert.deepEqual(vad.warnings, []);
+	assert.ok(vad.hints.some((h) => h.includes("未覆盖战场")), vad.hints.join(";"));
+});
+
+await ok("layerMethod：菱形分层正确；环归循环段", () => {
+	const lg = layerMethod(G([N("a", "injection"), N("b", "access"), N("c", "auth"), N("d", "config")], [{ src: "a", dst: "b" }, { src: "a", dst: "c" }, { src: "b", dst: "d" }, { src: "c", dst: "d" }]));
+	assert.deepEqual(lg.layers, [["a"], ["b", "c"], ["d"]]);
+	assert.deepEqual(lg.cycle, []);
+	const lc = layerMethod(G([N("a", "injection"), N("b", "access")], [{ src: "a", dst: "b" }, { src: "b", dst: "a" }]));
+	assert.deepEqual(lc.layers, []);
+	assert.deepEqual(lc.cycle, ["a", "b"]);
+});
+
+await ok("methodRunMessage：主类展开/子项知识锚/失配降级/备注/层级序/循环段", () => {
+	const m = { name: "凭据优先速攻", graph: G(
+		[N("n1", "hardcoded/cloud-creds", { note: "先扫前端与仓库" }), N("n2", "injection"), N("n3", "ghost/ghost"), N("n4", "access/unauth")],
+		[{ src: "n1", dst: "n2" }, { src: "n1", dst: "n4" }]
+	) };
+	const msg = methodRunMessage(TAXONOMIES.pentest, m, { anchor: "目标锚定：无", notes: "只打 Web 面" });
+	assert.ok(msg.includes("自定义方法论运行"));
+	assert.ok(msg.includes("「凭据优先速攻」（渗透测试模式）"));
+	assert.ok(msg.includes("辅助需求：只打 Web 面"));
+	assert.ok(msg.includes("子项「云凭据（AK/SK）泄露」｜key: hardcoded/cloud-creds"));
+	assert.ok(msg.includes("知识手册：refs/components/cloud-postexploitation.md"));
+	assert.ok(msg.includes("重点：先扫前端与仓库"));
+	assert.ok(msg.includes("主类「注入」整组开测｜key: injection"));
+	assert.ok(msg.includes("已不存在，按标签意图执行"));
+	assert.ok(msg.includes("第 1 层（起点）"));
+	assert.ok(msg.includes("第 2 层"));
+	assert.ok(!msg.includes("循环段"));
+	const msgc = methodRunMessage(TAXONOMIES.pentest, { name: "环", graph: G([N("a", "injection"), N("b", "access")], [{ src: "a", dst: "b" }, { src: "b", dst: "a" }]) }, { anchor: "x", notes: "" });
+	assert.ok(msgc.includes("循环段（存在循环衔接，按列出顺序执行一轮）"));
+	assert.ok(msgc.includes("辅助需求：（无）"));
+	assert.equal(inferTargetKind("https://a.com"), "web");
+	assert.equal(inferTargetKind("10.0.0.5:8080"), "ip");
+	assert.equal(inferTargetKind("example.com"), "domain");
+	assert.equal(inferTargetKind("内部oa系统"), "other");
+});
+
+await ok("模板存储：保存/列表/读取/复制/删除；upsert 保 id 不增行", () => {
+	const st = openStore(":memory:");
+	const g = G([N("n1", "injection"), N("n2", "access")], [{ src: "n1", dst: "n2" }]);
+	const s1 = saveMethod(st, { mode: "pentest", name: "速攻", target: "a.com", notes: "n", graph: g });
+	assert.ok(s1.created);
+	saveMethod(st, { id: s1.id, mode: "pentest", name: "速攻2", target: "a.com", notes: "n", graph: g });
+	const list = listMethods(st, "pentest");
+	assert.equal(list.length, 1);
+	assert.equal(list[0].name, "速攻2");
+	assert.equal(list[0].nodeCount, 2);
+	assert.equal(getMethod(st, s1.id).graph.nodes.length, 2);
+	const c = copyMethod(st, s1.id);
+	assert.equal(listMethods(st, "pentest").length, 2);
+	assert.equal(getMethod(st, c.id).name, "速攻2 副本");
+	removeMethod(st, s1.id);
+	assert.equal(listMethods(st, "pentest").length, 1);
+	assert.throws(() => removeMethod(st, s1.id), /不存在/);
+	assert.equal(listMethods(st, "code-audit").length, 0);
+	st.close();
+});
+
+await ok("methods.* 端点：validate/save/list/get/copy/remove 往返；结构错误拒绝保存", async () => {
+	const st = openStore(":memory:");
+	const graph = G([N("n1", "injection"), N("n2", "access/unauth")], [{ src: "n1", dst: "n2" }]);
+	const bad = await dispatch(null, st, "methods.save", { mode: "pentest", name: "坏", graph: { nodes: [], edges: [] } });
+	assert.equal(bad.ok, false);
+	assert.ok(bad.error.includes("画布为空"));
+	const v = await dispatch(null, st, "methods.validate", { mode: "pentest", name: "速攻", graph });
+	assert.deepEqual(v.errors, []);
+	assert.deepEqual(v.warnings, []);
+	const s = await dispatch(null, st, "methods.save", { mode: "pentest", name: "速攻", target: "a.com", notes: "只打 Web", graph });
+	assert.equal(s.ok, true);
+	assert.deepEqual(s.warnings, []);
+	assert.equal((await dispatch(null, st, "methods.list", { mode: "pentest" })).methods.length, 1);
+	const got = await dispatch(null, st, "methods.get", { id: s.id });
+	assert.equal(got.method.graph.nodes.length, 2);
+	const cp = await dispatch(null, st, "methods.copy", { id: s.id });
+	assert.equal((await dispatch(null, st, "methods.list", { mode: "pentest" })).methods.length, 2);
+	await dispatch(null, st, "methods.remove", { id: cp.id });
+	assert.equal((await dispatch(null, st, "methods.list", { mode: "pentest" })).methods.length, 1);
+	await assert.rejects(() => dispatch(null, st, "methods.list", {}), /mode required/);
+	st.close();
+});
+
+await ok("methods.run：信封注入 + 目标自动登记不重复 + 模式不符拒绝 + 环模板循环段", async () => {
+	const st = openStore(":memory:");
+	const graph = G([N("n1", "hardcoded/cloud-creds"), N("n2", "injection"), N("n3", "auth/jwt")], [{ src: "n1", dst: "n2" }, { src: "n2", dst: "n3" }]);
+	const s = await dispatch(null, st, "methods.save", { mode: "pentest", name: "凭据链", graph });
+	const sent = [];
+	const fakeCtx = { get: () => ({ get: () => ({ followup: (m) => sent.push(m) }) }) };
+	const badMode = await dispatch(fakeCtx, st, "methods.run", { id: s.id, sessionId: SID, mode: "code-audit" });
+	assert.equal(badMode.ok, false);
+	assert.ok(badMode.error.includes("不符"));
+	await assert.rejects(() => dispatch(null, st, "methods.run", { id: "m-nope", sessionId: SID, mode: "pentest" }), /模板不存在/);
+	const r = await dispatch(fakeCtx, st, "methods.run", { id: s.id, sessionId: SID, mode: "pentest", target: "example.com", notes: "重点登录口" });
+	assert.equal(r.ok, true);
+	assert.equal(sent.length, 1);
+	const text = sent[0].content[0].text;
+	assert.ok(text.includes("「凭据链」"));
+	assert.ok(text.includes("第 1 层（起点）"));
+	assert.ok(text.includes("「example.com」域名"), "会话无目标时按运行输入自动登记");
+	assert.ok(text.includes("重点登录口"));
+	assert.equal((await dispatch(null, st, "targets.list", { sessionId: SID, mode: "pentest" })).targets.length, 1);
+	await dispatch(fakeCtx, st, "methods.run", { id: s.id, sessionId: SID, mode: "pentest" });
+	assert.equal(sent.length, 2);
+	assert.ok(sent[1].content[0].text.includes("「example.com」域名"));
+	assert.equal((await dispatch(null, st, "targets.list", { sessionId: SID, mode: "pentest" })).targets.length, 1, "已有目标不重复登记");
+	const cyc = G([N("a", "injection"), N("b", "access")], [{ src: "a", dst: "b" }, { src: "b", dst: "a" }]);
+	const s2 = await dispatch(null, st, "methods.save", { mode: "pentest", name: "环", graph: cyc });
+	assert.ok(s2.warnings.some((w) => w.kind === "cycle"), "存环模板允许但带警告");
+	await dispatch(fakeCtx, st, "methods.run", { id: s2.id, sessionId: SID, mode: "pentest" });
+	assert.equal(sent.length, 3);
+	assert.ok(sent[2].content[0].text.includes("循环段"));
+	st.close();
+});
+
+await ok("模板导入导出：导出→删除→导入复原；坏行跳过并说明原因", async () => {
+	const st = openStore(":memory:");
+	const graph = G([N("n1", "injection")], []);
+	await dispatch(null, st, "methods.save", { mode: "pentest", name: "A", graph });
+	await dispatch(null, st, "methods.save", { mode: "code-audit", name: "B", graph: G([N("n1", "rce-main")], []) });
+	const ex = await dispatch(null, st, "methods.export", {});
+	assert.equal(ex.format, "attack-atlas-methods");
+	assert.equal(ex.methods.length, 2);
+	assert.equal((await dispatch(null, st, "methods.export", { mode: "pentest" })).methods.length, 1);
+	for (const t of (await dispatch(null, st, "methods.list", { mode: "pentest" })).methods) await dispatch(null, st, "methods.remove", { id: t.id });
+	const imp = await dispatch(null, st, "methods.import", { methods: ex.methods.concat([{ mode: "redteam", name: "X", graph }], [{ mode: "pentest", name: "空图", graph: { nodes: [], edges: [] } }]) });
+	assert.equal(imp.imported.length, 2);
+	assert.equal(imp.skipped.length, 2);
+	assert.ok(imp.skipped.some((x) => x.reason.includes("未知模式")));
+	assert.ok(imp.skipped.some((x) => x.reason.includes("图数据")));
+	assert.equal((await dispatch(null, st, "methods.list", { mode: "pentest" })).methods.length, 1);
+	st.close();
+});
+
+//#endregion
+
+await ok("自定义方法论全模式矩阵：八模式 校验/存/取/信封/复制/删 全通；zones 模式出覆盖建议", async () => {
+	const st = openStore(":memory:");
+	const sent = [];
+	const fakeCtx = { get: () => ({ get: () => ({ followup: (m) => sent.push(m) }) }) };
+	for (const mode of ATLAS_MODES) {
+		const tax = TAXONOMIES[mode];
+		const cat = tax.categories[0];
+		const item = cat.items[0];
+		const cat2 = tax.categories[tax.categories.length - 1];
+		const graph = { nodes: [
+			{ id: "n1", ref: cat.id, label: cat.label, note: "", x: 0, y: 0 },
+			{ id: "n2", ref: cat.id + "/" + item.id, label: item.label, note: "重点", x: 230, y: 0 },
+			{ id: "n3", ref: cat2.id, label: cat2.label, note: "", x: 460, y: 0 }
+		], edges: [{ src: "n1", dst: "n2" }, { src: "n2", dst: "n3" }] };
+		const v = await dispatch(null, st, "methods.validate", { mode, name: "全模式-" + mode, graph });
+		assert.deepEqual(v.errors, [], `${mode} 应零结构错：${v.errors.join("/")}`);
+		assert.deepEqual(v.warnings, [], `${mode} 应零闭环警告：${v.warnings.map((w) => w.kind).join("/")}`);
+		const s = await dispatch(null, st, "methods.save", { mode, name: "全模式-" + mode, graph });
+		assert.equal(s.ok, true, mode);
+		const g = await dispatch(null, st, "methods.get", { id: s.id });
+		assert.equal(g.method.graph.nodes.length, 3, mode);
+		const r = await dispatch(fakeCtx, st, "methods.run", { id: s.id, sessionId: "s-" + mode, mode });
+		assert.equal(r.ok, true, mode);
+		const text = sent[sent.length - 1].content[0].text;
+		assert.ok(text.includes("（" + tax.label + "模式）"), `${mode} 信封应带模式名`);
+		assert.ok(text.includes("key: " + cat.id + "/" + item.id), `${mode} 信封应带格子 key`);
+		assert.ok(text.includes("第 1 层（起点）") && text.includes("第 3 层"), `${mode} 信封应分层`);
+		assert.ok(text.includes("redteam_coverage_mark"), `${mode} 信封应带回写指令`);
+		if (tax.chain) assert.ok(text.includes("redteam_atlas_chain"), `${mode} 链路模式应带链路登记`);
+		else assert.ok(!text.includes("redteam_atlas_chain"), `${mode} 无链路模式不应提链路登记`);
+		const cp = await dispatch(null, st, "methods.copy", { id: s.id });
+		assert.equal(cp.ok, true, mode);
+		await dispatch(null, st, "methods.remove", { id: cp.id });
+		await dispatch(null, st, "methods.remove", { id: s.id });
+		assert.equal((await dispatch(null, st, "methods.list", { mode })).methods.length, 0, `${mode} 删后应空`);
+	}
+	// ad 跨模式 pentest: 前缀 ref 在运行信封中展开
+	const ad = TAXONOMIES["attack-defense"];
+	const crossCat = ad.categories.find((c) => c.items.some((i) => i.ref && i.ref.startsWith("pentest:")));
+	const crossItem = crossCat.items.find((i) => i.ref && i.ref.startsWith("pentest:"));
+	const sc = await dispatch(null, st, "methods.save", { mode: "attack-defense", name: "跨模式ref", graph: { nodes: [{ id: "n1", ref: crossCat.id + "/" + crossItem.id, label: crossItem.label, note: "", x: 0, y: 0 }], edges: [] } });
+	await dispatch(fakeCtx, st, "methods.run", { id: sc.id, sessionId: "s-ad", mode: "attack-defense" });
+	assert.ok(sent[sent.length - 1].content[0].text.includes("pentest refs/"), "信封应展开 pentest: 前缀");
+	// zones 模式：部分战场覆盖 → 覆盖建议；渗透无 zones 不触发放分支
+	for (const mode of ATLAS_MODES) {
+		const tax = TAXONOMIES[mode];
+		if (!tax.zones) continue;
+		const z0 = tax.zones[0].id;
+		const cats = tax.categories.filter((c) => c.zone === z0).slice(0, 2);
+		if (cats.length < 2) continue;
+		const v = validateMethod("x", { nodes: [{ id: "a", ref: cats[0].id, label: cats[0].label, note: "", x: 0, y: 0 }, { id: "b", ref: cats[1].id, label: cats[1].label, note: "", x: 0, y: 0 }], edges: [{ src: "a", dst: "b" }] }, tax);
+		assert.deepEqual(v.warnings, [], `${mode} 单战场链应零警告`);
+		assert.ok(v.hints.some((h) => h.includes("未覆盖战场")), `${mode} 应给战场覆盖建议`);
+	}
+	st.close();
+});
+
+await ok("工具/MCP/自定义模块：类型校验 + 信封安装批准协议 + 混合链端到端", async () => {
+	const st = openStore(":memory:");
+	const tax = TAXONOMIES.pentest;
+	let v = validateMethod("x", { nodes: [{ id: "n1", nt: "alien", tool: "t" }], edges: [] }, tax);
+	assert.ok(v.errors.some((e) => e.includes("非法模块类型")));
+	v = validateMethod("x", { nodes: [{ id: "n1", nt: "custom", tool: "" }], edges: [] }, tax);
+	assert.ok(v.errors.some((e) => e.includes("自定义工具名非法")));
+	v = validateMethod("x", { nodes: [{ id: "n1", nt: "tool", tool: "bad name!" }], edges: [] }, tax);
+	assert.ok(v.errors.some((e) => e.includes("工具名非法")));
+	const graph = { nodes: [
+		{ id: "n1", ref: "hardcoded/cloud-creds", label: "云凭据（AK/SK）泄露", note: "", x: 0, y: 0 },
+		{ id: "n2", nt: "tool", tool: "nmap", spec: "端口与服务探测", label: "", note: "", x: 0, y: 0 },
+		{ id: "n3", nt: "mcp", tool: "kali", spec: "Kali 工具面", label: "", note: "", x: 0, y: 0 },
+		{ id: "n4", nt: "custom", tool: "ja3-eye", spec: "JA3 指纹查询", label: "", note: "", x: 0, y: 0 }
+	], edges: [{ src: "n1", dst: "n2" }, { src: "n2", dst: "n3" }, { src: "n3", dst: "n4" }] };
+	v = validateMethod("混合链", graph, tax);
+	assert.deepEqual(v.errors, [], v.errors.join("/"));
+	assert.deepEqual(v.warnings, []);
+	const msg = methodRunMessage(tax, { name: "混合链", graph }, { anchor: "目标锚定：无", notes: "" });
+	assert.ok(msg.includes("工具「nmap」｜用途：端口与服务探测"));
+	assert.ok(msg.includes("MCP「kali」｜用途：Kali 工具面"));
+	assert.ok(msg.includes("自定义工具「ja3-eye」｜要求：JA3 指纹查询"));
+	assert.ok(msg.includes("先询问用户是否安装"), "信封须含安装询问协议");
+	assert.ok(msg.includes("严禁未经用户批准自行安装"), "信封须含禁自装铁则");
+	assert.ok(msg.includes("写脚本等效实现"), "信封须含脚本降级路径");
+	assert.ok(msg.includes("第 1 层（起点）") && msg.includes("第 4 层"), "混合链分层正确");
+	const pure = methodRunMessage(tax, { name: "纯链", graph: { nodes: [{ id: "n1", ref: "injection" }], edges: [] } }, { anchor: "a", notes: "" });
+	assert.ok(!pure.includes("严禁未经用户批准"), "无工具模块不出协议行");
+	const sent = [];
+	const fakeCtx = { get: () => ({ get: () => ({ followup: (m) => sent.push(m) }) }) };
+	const s = await dispatch(null, st, "methods.save", { mode: "pentest", name: "混合链", graph });
+	assert.equal(s.ok, true);
+	await dispatch(fakeCtx, st, "methods.run", { id: s.id, sessionId: SID, mode: "pentest" });
+	assert.ok(sent[0].content[0].text.includes("自定义工具「ja3-eye」"));
+	await dispatch(null, st, "methods.remove", { id: s.id });
+	assert.equal((await dispatch(null, st, "methods.list", { mode: "pentest" })).methods.length, 0);
+	st.close();
+});
+
+await ok("能力库：自定义主类/子类 CRUD+级联删；并入方法论（校验/信封模板内联/删后降级）+导入导出", async () => {
+	const st = openStore(":memory:");
+	const c1 = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "category", label: "业务专属面", desc: "行业特有" });
+	assert.equal(c1.ok, true);
+	assert.ok(c1.cat.startsWith("u-"), "自定义主类 key 应 u- 前缀");
+	const i1 = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "item", cat: c1.cat, label: "积分系统双花", template: "# 验证姿势\n1. 并发下单观察余额" });
+	assert.ok(i1.item.startsWith("u-"));
+	const i2 = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "item", cat: "injection", label: "Mongo 注入", desc: "NoSQL" });
+	assert.equal(i2.ok, true);
+	await assert.rejects(() => dispatch(null, st, "caps.save", { mode: "pentest", kind: "item", cat: "ghost-cat", label: "x" }), /所属主类不存在/);
+	const lst = await dispatch(null, st, "caps.list", { mode: "pentest" });
+	assert.equal(lst.caps.length, 3);
+	// 方法论引用自定义模块：合并类目后校验干净
+	const graph = { nodes: [
+		{ id: "n1", ref: "injection", label: "注入" },
+		{ id: "n2", ref: "injection/" + i2.item, label: "Mongo 注入" },
+		{ id: "n3", ref: c1.cat, label: "业务专属面" },
+		{ id: "n4", ref: c1.cat + "/" + i1.item, label: "积分系统双花" }
+	], edges: [{ src: "n1", dst: "n2" }, { src: "n2", dst: "n3" }, { src: "n3", dst: "n4" }] };
+	const v = await dispatch(null, st, "methods.validate", { mode: "pentest", name: "自定义能力链", graph });
+	assert.deepEqual(v.errors, [], v.errors.join("/"));
+	assert.deepEqual(v.warnings, []);
+	const s = await dispatch(null, st, "methods.save", { mode: "pentest", name: "自定义能力链", graph });
+	assert.equal(s.ok, true);
+	const sent = [];
+	const fakeCtx = { get: () => ({ get: () => ({ followup: (m) => sent.push(m) }) }) };
+	await dispatch(fakeCtx, st, "methods.run", { id: s.id, sessionId: SID, mode: "pentest" });
+	const text = sent[0].content[0].text;
+	assert.ok(text.includes("key: injection/" + i2.item + "（用户自定义）"), "内置主类下自定义子类带标记");
+	assert.ok(text.includes("Mongo 注入"));
+	assert.ok(text.includes("未附模板"), "无模板子类走回退提示");
+	assert.ok(text.includes("用户自定义主类"), "自定义主类整组带标记");
+	assert.ok(text.includes("业务专属面"));
+	assert.ok(text.includes("积分系统双花"));
+	assert.ok(text.includes("并发下单观察余额"), "子类模板内联进信封");
+	// 删除自定义主类 → 级联；方法论引用降级
+	const rm = await dispatch(null, st, "caps.remove", { id: c1.id });
+	assert.equal(rm.cascaded, 1);
+	assert.equal((await dispatch(null, st, "caps.list", { mode: "pentest" })).caps.length, 1);
+	await dispatch(fakeCtx, st, "methods.run", { id: s.id, sessionId: SID, mode: "pentest" });
+	assert.ok(sent[1].content[0].text.includes("已不存在，按标签意图执行"), "能力删除后方法论步骤降级");
+	// 导入导出往返 + 悬挂检查 + 重复去重
+	const ex = await dispatch(null, st, "caps.export", { mode: "pentest" });
+	assert.equal(ex.capabilities.length, 1);
+	assert.equal(ex.capabilities[0].cat, "injection", "导出保留体系 key");
+	await dispatch(null, st, "caps.remove", { id: i2.id });
+	assert.equal((await dispatch(null, st, "caps.list", { mode: "pentest" })).caps.length, 0);
+	const imp = await dispatch(null, st, "caps.import", { capabilities: ex.capabilities.concat([{ mode: "pentest", kind: "item", cat: "ghost", item: "u-x", label: "悬挂" }]) });
+	assert.equal(imp.imported.length, 1);
+	assert.equal(imp.skipped.length, 1);
+	assert.ok(imp.skipped[0].reason.includes("所属主类不存在"));
+	const imp2 = await dispatch(null, st, "caps.import", { capabilities: ex.capabilities });
+	assert.equal(imp2.imported.length, 0);
+	assert.equal(imp2.skipped.length, 1, "重复导入同 key 去重");
+	// 导回的子类在方法论里依旧可用（key 保留）
+	const back = (await dispatch(null, st, "caps.list", { mode: "pentest" })).caps[0];
+	assert.equal(back.cat, "injection");
+	st.close();
+});
 
 console.log(`\n${passed} passed`);

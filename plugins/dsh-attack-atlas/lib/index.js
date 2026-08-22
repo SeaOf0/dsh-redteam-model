@@ -1,7 +1,7 @@
 // dsh-attack-atlas — 攻击面图谱宿主插件。
 //
 // 三件事：
-//   1) 类目体系：lib/taxonomy.js 纯数据（八专业模式全量，结构=战场分区×战术列×形态×阶段）；
+//   1) 类目体系：lib/taxonomy.js 纯数据（渗透模式首发 13 主类 × 9 形态 × 7 阶段）；
 //   2) 覆盖态：模型侧 redteam_coverage_mark / redteam_coverage_stage / redteam_coverage_list
 //      回写终态（会话 × 模式隔离），SQLite 落 ~/.dsh/attack-atlas/atlas.db；
 //   3) Web 通道：webServer 自注册 /dsh-attack-atlas 前缀路由 + 同源信任栅栏；
@@ -13,8 +13,9 @@
 import path from "node:path";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel } from "./store.js";
+import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, removeCap, exportCaps, importCaps } from "./store.js";
 import { TAXONOMIES, ATLAS_MODES, locate } from "./taxonomy.js";
+import { validateMethod, methodRunMessage, inferTargetKind, METHOD_LIMITS } from "./method.js";
 
 const name = "dsh-attack-atlas";
 const inject = ["tools", "webServer", "webRuntime", "agentPresets"];
@@ -104,6 +105,24 @@ function resolveAgents(ctx) {
 	try { return ctx.get("agents"); } catch { /* 该 fiber 未声明 agents */ }
 	try { return ctx.agents; } catch { /* 同上 */ }
 	return undefined;
+}
+
+/** 合并类目：内置 taxonomy 副本 + 本模式自定义主类/子类（key 同构；_cap 携带自定义元数据）。
+ *  方法论的校验/定位/信封全部走合并版——自定义模块自动被认得。 */
+function taxonomyWithCaps(st, taxonomy, mode) {
+	const caps = listCaps(st, mode);
+	const itemsByCat = {};
+	for (const c of caps) if (c.kind === "item") (itemsByCat[c.cat] = itemsByCat[c.cat] || []).push(c);
+	const capItemNode = (i) => ({ id: i.item, label: i.label, ref: i.ref || undefined, pb: i.pb || undefined, _cap: i });
+	const categories = taxonomy.categories.map((c) => {
+		const extra = (itemsByCat[c.id] || []).map(capItemNode);
+		return extra.length ? { ...c, items: c.items.concat(extra) } : c;
+	});
+	for (const c of caps) {
+		if (c.kind !== "category") continue;
+		categories.push({ id: c.cat, label: c.label, desc: c.descr, _cap: c, items: (itemsByCat[c.cat] || []).map(capItemNode) });
+	}
+	return { ...taxonomy, categories };
 }
 
 //#endregion
@@ -234,6 +253,130 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
 		return { ok: true, ...clearChain(st, sessionId, String(p.mode ?? "pentest")) };
+	}
+	if (endpoint === "caps.list") {
+		const mode = String(p.mode ?? "");
+		if (!mode) throw new Error("mode required");
+		return { caps: listCaps(st, mode) };
+	}
+	if (endpoint === "caps.save") {
+		const mode = String(p.mode ?? "");
+		const base = TAXONOMIES[mode];
+		if (!base || base.pending) throw new Error(`模式 ${mode} 的体系编排中`);
+		if (String(p.kind) === "item") {
+			const cat = String(p.cat ?? "");
+			const okBuiltin = base.categories.some((c) => c.id === cat);
+			const okCustom = listCaps(st, mode).some((c) => c.kind === "category" && c.cat === cat);
+			if (!okBuiltin && !okCustom) throw new Error(`所属主类不存在：${cat || "(空)"}（内置与自定义主类均无，先添加主类或选内置主类）`);
+		}
+		const cap = saveCap(st, { id: p.id, mode, kind: p.kind, cat: p.cat, label: p.label, desc: p.desc, template: p.template, ref: p.ref, pb: p.pb, forms: p.forms });
+		return { ok: true, ...cap };
+	}
+	if (endpoint === "caps.remove") {
+		return { ok: true, ...removeCap(st, String(p.id ?? "")) };
+	}
+	if (endpoint === "caps.export") {
+		return { format: "attack-atlas-caps", version: 1, capabilities: exportCaps(st, p.mode ? String(p.mode) : undefined) };
+	}
+	if (endpoint === "caps.import") {
+		if (!Array.isArray(p.capabilities)) throw new Error("capabilities 数组必填");
+		if (p.capabilities.length > 200) throw new Error("单次导入上限 200 条");
+		// 悬挂检查：item 行的所属主类须为内置或本次导入/库内自定义主类
+		const batchCats = new Map();
+		for (const row of p.capabilities) {
+			const m = String(row?.mode ?? "");
+			if (String(row?.kind) !== "category") continue;
+			const key = String(row?.cat ?? "");
+			if (TAXONOMIES[m] && !TAXONOMIES[m].pending && /^[a-z0-9][a-z0-9-]{0,39}$/.test(key)) {
+				if (!batchCats.has(m)) batchCats.set(m, new Set());
+				batchCats.get(m).add(key);
+			}
+		}
+		for (const [m] of batchCats) for (const c of listCaps(st, m)) if (c.kind === "category") batchCats.get(m).add(c.cat);
+		const checked = [];
+		const skippedPre = [];
+		for (const row of p.capabilities) {
+			const m = String(row?.mode ?? "");
+			const base = TAXONOMIES[m];
+			if (base && !base.pending && String(row?.kind) === "item") {
+				const cat = String(row?.cat ?? "");
+				const okBuiltin = base.categories.some((c) => c.id === cat);
+				const okCustom = (batchCats.get(m) || new Set()).has(cat);
+				if (!okBuiltin && !okCustom) { skippedPre.push({ name: String(row?.label ?? "(无名)"), reason: `所属主类不存在：${cat}` }); continue; }
+			}
+			checked.push(row);
+		}
+		const r = importCaps(st, checked, ATLAS_MODES);
+		return { ok: true, imported: r.imported, skipped: skippedPre.concat(r.skipped) };
+	}
+	if (endpoint === "methods.list") {
+		const mode = String(p.mode ?? "");
+		if (!mode) throw new Error("mode required");
+		return { methods: listMethods(st, mode) };
+	}
+	if (endpoint === "methods.get") {
+		const m = getMethod(st, String(p.id ?? ""));
+		if (!m) throw new Error(`模板不存在：${p.id}`);
+		return { method: m };
+	}
+	if (endpoint === "methods.validate") {
+		const mode = String(p.mode ?? "");
+		const base = TAXONOMIES[mode];
+		if (!base || base.pending) throw new Error(`模式 ${mode} 的体系编排中`);
+		const taxonomy = taxonomyWithCaps(st, base, mode);
+		const v = validateMethod(p.name, p.graph, taxonomy);
+		return { ok: true, errors: v.errors, warnings: v.warnings, hints: v.hints, graph: v.graph };
+	}
+	if (endpoint === "methods.save") {
+		const mode = String(p.mode ?? "");
+		const base = TAXONOMIES[mode];
+		if (!base || base.pending) throw new Error(`模式 ${mode} 的体系编排中`);
+		const taxonomy = taxonomyWithCaps(st, base, mode);
+		const v = validateMethod(p.name, p.graph, taxonomy);
+		if (v.errors.length) return { ok: false, error: `结构问题（修正后才能保存）：\n- ${v.errors.join("\n- ")}` };
+		const saved = saveMethod(st, { id: p.id ? String(p.id) : undefined, mode, name: v.name, target: p.target, notes: p.notes, graph: v.graph });
+		return { ok: true, id: saved.id, created: saved.created, warnings: v.warnings, hints: v.hints };
+	}
+	if (endpoint === "methods.remove") {
+		return { ok: true, ...removeMethod(st, String(p.id ?? "")) };
+	}
+	if (endpoint === "methods.copy") {
+		return { ok: true, ...copyMethod(st, String(p.id ?? "")) };
+	}
+	if (endpoint === "methods.export") {
+		return { format: "attack-atlas-methods", version: 1, methods: exportMethods(st, p.mode ? String(p.mode) : undefined) };
+	}
+	if (endpoint === "methods.import") {
+		if (!Array.isArray(p.methods)) throw new Error("methods 数组必填");
+		if (p.methods.length > METHOD_LIMITS.importBatch) throw new Error(`单次导入上限 ${METHOD_LIMITS.importBatch} 条`);
+		return { ok: true, ...importMethods(st, p.methods, ATLAS_MODES) };
+	}
+	if (endpoint === "methods.run") {
+		const sessionId = String(p.sessionId ?? "");
+		if (!sessionId) throw new Error("sessionId required");
+		const m = getMethod(st, String(p.id ?? ""));
+		if (!m) throw new Error(`模板不存在：${p.id}`);
+		const mode = m.mode;
+		if (p.mode && String(p.mode) !== mode) return { ok: false, error: `模板属于 ${MODE_LABELS[mode] || mode}，与当前会话模式不符` };
+		const base = TAXONOMIES[mode];
+		if (!base || base.pending) return { ok: false, error: `模式 ${mode} 的体系编排中` };
+		const taxonomy = taxonomyWithCaps(st, base, mode);
+		const agents = resolveAgents(ctx);
+		const agent = agents?.get?.(sessionId);
+		if (!agent || typeof agent.followup !== "function") return { ok: false, unreachable: true, error: "会话不可达（会话可能已删除或代理未运行）" };
+		let targets = listTargets(st, sessionId, mode);
+		const runTarget = String(p.target ?? m.target ?? "").trim().slice(0, METHOD_LIMITS.target);
+		if (targets.length === 0 && runTarget) {
+			addTarget(st, sessionId, mode, { label: runTarget, kind: inferTargetKind(runTarget) });
+			targets = listTargets(st, sessionId, mode);
+		}
+		const notes = String(p.notes ?? m.notes ?? "").trim().slice(0, METHOD_LIMITS.notes);
+		agent.followup({
+			id: `atlas-method-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+			content: [{ type: "text", text: methodRunMessage(taxonomy, m, { anchor: anchorLines(targets), notes }) }],
+			source: { kind: "user" }
+		});
+		return { ok: true };
 	}
 	if (endpoint === "atlas.trigger") {
 		const sessionId = String(p.sessionId ?? "");

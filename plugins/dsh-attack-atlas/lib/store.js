@@ -63,6 +63,35 @@ CREATE TABLE IF NOT EXISTS targets (
 	created_at TEXT NOT NULL,
 	PRIMARY KEY (session_id, mode, seq)
 );
+CREATE TABLE IF NOT EXISTS methods (
+	id         TEXT NOT NULL,
+	mode       TEXT NOT NULL,
+	name       TEXT NOT NULL,
+	target     TEXT NOT NULL DEFAULT '',
+	notes      TEXT NOT NULL DEFAULT '',
+	graph      TEXT NOT NULL,
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS methods_mode ON methods(mode);
+CREATE TABLE IF NOT EXISTS capabilities (
+	id         TEXT NOT NULL,
+	mode       TEXT NOT NULL,
+	kind       TEXT NOT NULL,
+	cat        TEXT NOT NULL,
+	item       TEXT NOT NULL DEFAULT '',
+	label      TEXT NOT NULL,
+	descr      TEXT NOT NULL DEFAULT '',
+	template   TEXT NOT NULL DEFAULT '',
+	ref        TEXT NOT NULL DEFAULT '',
+	pb         TEXT NOT NULL DEFAULT '',
+	forms      TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL,
+	updated_at TEXT NOT NULL,
+	PRIMARY KEY (id)
+);
+CREATE INDEX IF NOT EXISTS caps_mode ON capabilities(mode);
 `;
 
 export const TARGET_KINDS = ["domain", "web", "ip", "api", "miniprogram", "android", "ios", "desktop", "component", "cloud", "ai", "other"];
@@ -214,3 +243,210 @@ export function clearCoverage(st, sessionId, mode, key) {
 }
 
 export { CELL_STATES, STAGE_STATES };
+
+//#region 自定义工作方法论模板（跨会话长期资产，模式作用域）
+
+const METHOD_ID_RE = /^m-[a-z0-9]+$/;
+const METHOD_PER_MODE = 50;
+
+function newMethodId() {
+	return `m-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+/** 模板保存（upsert）。graph 为对象；体积/数量硬上限在存储层兜底强制。 */
+export function saveMethod(st, { id, mode, name, target = "", notes = "", graph }) {
+	const m = String(mode ?? "");
+	const nm = clean(name, 40);
+	if (!m) throw new Error("mode required");
+	if (!nm) throw new Error("name required");
+	const gObj = typeof graph === "string" ? JSON.parse(graph) : graph;
+	const text = JSON.stringify(gObj);
+	if (text.length > 64 * 1024) throw new Error("图数据超体积上限");
+	let nodeId = clean(id, 40);
+	if (nodeId && !METHOD_ID_RE.test(nodeId)) throw new Error(`非法模板 id：${nodeId}`);
+	const existing = nodeId ? st.db.prepare("SELECT id FROM methods WHERE id = ?").get(nodeId) : undefined;
+	if (!existing) nodeId = newMethodId();
+	st.db.prepare(
+		"INSERT INTO methods (id, mode, name, target, notes, graph, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n" +
+		"ON CONFLICT(id) DO UPDATE SET name = excluded.name, target = excluded.target, notes = excluded.notes, graph = excluded.graph, updated_at = excluded.updated_at"
+	).run(nodeId, m, nm, clean(target, 120), clean(notes, 2000), text, now(), now());
+	return { id: nodeId, created: !existing };
+}
+
+function parseGraphSafe(text) {
+	try {
+		const g = JSON.parse(text);
+		return { nodes: Array.isArray(g.nodes) ? g.nodes.length : 0 };
+	} catch { return { nodes: 0, broken: true }; }
+}
+
+export function listMethods(st, mode) {
+	const rows = st.db.prepare("SELECT id, mode, name, target, notes, graph, updated_at AS updatedAt FROM methods WHERE mode = ? ORDER BY updated_at DESC").all(String(mode));
+	return rows.map((r) => ({ id: r.id, mode: r.mode, name: r.name, target: r.target, notes: r.notes, graph: (() => { try { return JSON.parse(r.graph); } catch { return { nodes: [], edges: [] }; } })(), updatedAt: r.updatedAt, nodeCount: parseGraphSafe(r.graph).nodes }));
+}
+
+export function getMethod(st, id) {
+	const r = st.db.prepare("SELECT id, mode, name, target, notes, graph, updated_at AS updatedAt FROM methods WHERE id = ?").get(String(id ?? ""));
+	if (!r) return undefined;
+	return { id: r.id, mode: r.mode, name: r.name, target: r.target, notes: r.notes, graph: (() => { try { return JSON.parse(r.graph); } catch { return { nodes: [], edges: [] }; } })(), updatedAt: r.updatedAt };
+}
+
+export function removeMethod(st, id) {
+	const r = st.db.prepare("DELETE FROM methods WHERE id = ?").run(String(id ?? ""));
+	if (r.changes === 0) throw new Error(`模板不存在：${id}`);
+	return { removed: String(id) };
+}
+
+export function copyMethod(st, id) {
+	const src = getMethod(st, id);
+	if (!src) throw new Error(`模板不存在：${id}`);
+	return saveMethod(st, { mode: src.mode, name: `${src.name} 副本`, target: src.target, notes: src.notes, graph: src.graph });
+}
+
+/** 导出（可按模式）：不含 id/时间戳，graph 展开为对象——跨机器通用格式。 */
+export function exportMethods(st, mode) {
+	const rows = mode
+		? st.db.prepare("SELECT mode, name, target, notes, graph FROM methods WHERE mode = ? ORDER BY updated_at").all(String(mode))
+		: st.db.prepare("SELECT mode, name, target, notes, graph FROM methods ORDER BY mode, updated_at").all();
+	return rows.map((r) => ({ mode: r.mode, name: r.name, target: r.target, notes: r.notes, graph: (() => { try { return JSON.parse(r.graph); } catch { return { nodes: [], edges: [] }; } })() }));
+}
+
+/** 导入：逐行校验（mode 白名单/graph 形状/数量上限），坏行跳过并说明原因；id 一律重新生成。 */
+export function importMethods(st, rows, validModes) {
+	const imported = [];
+	const skipped = [];
+	const list = Array.isArray(rows) ? rows.slice(0, 100) : [];
+	for (const row of list) {
+		const nm = clean(row?.name, 40);
+		const m = clean(row?.mode, 40);
+		if (!nm || !m) { skipped.push({ name: nm || "(无名)", reason: "缺名称或模式" }); continue; }
+		if (!validModes.includes(m)) { skipped.push({ name: nm, reason: `未知模式 ${m}` }); continue; }
+		let g = row?.graph ?? { nodes: [], edges: [] };
+		if (typeof g === "string") { try { g = JSON.parse(g); } catch { g = null; } }
+		if (!g || !Array.isArray(g.nodes) || g.nodes.length === 0) { skipped.push({ name: nm, reason: "图数据缺失或为空" }); continue; }
+		if (g.nodes.length > 60) { skipped.push({ name: nm, reason: "模块数超上限" }); continue; }
+		const count = st.db.prepare("SELECT COUNT(*) AS n FROM methods WHERE mode = ?").get(m).n;
+		if (count >= METHOD_PER_MODE) { skipped.push({ name: nm, reason: `模式 ${m} 模板数已达上限 ${METHOD_PER_MODE}` }); continue; }
+		const saved = saveMethod(st, { mode: m, name: nm, target: clean(row?.target, 120), notes: clean(row?.notes, 2000), graph: g });
+		imported.push({ id: saved.id, name: nm, mode: m });
+	}
+	return { imported, skipped };
+}
+
+//#endregion
+
+//#region 能力库（自定义主类/子类，跨会话长期资产，模式作用域；key 与覆盖格子同构）
+
+const CAP_KINDS = ["category", "item"];
+const CAP_KEY_RE = /^[a-z0-9][a-z0-9-]{0,39}$/;
+const CAPS_LIMIT = { categories: 20, items: 100 };
+
+function capKey() {
+	return "u-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
+/** 保存能力（upsert）。category 行：cat=自身体系 key（新建自动 u- 前缀）；item 行：cat=所属主类 key、item=子类短 key。 */
+export function saveCap(st, { id, mode, kind, cat, item, label, desc = "", template = "", ref = "", pb = "", forms = "" }) {
+	const m = String(mode ?? "");
+	const k = String(kind ?? "");
+	if (!m) throw new Error("mode required");
+	if (!CAP_KINDS.includes(k)) throw new Error(`kind 必须是 ${CAP_KINDS.join("/")}`);
+	const l = clean(label, 60);
+	if (!l) throw new Error("label required");
+	const rowId = clean(id, 40);
+	const existing = rowId ? st.db.prepare("SELECT id, kind FROM capabilities WHERE id = ?").get(rowId) : undefined;
+	if (rowId && !existing) throw new Error(`能力不存在：${rowId}`);
+	let catKey = "", itemKey = "";
+	if (k === "category") {
+		if (existing) {
+			if (existing.kind !== "category") throw new Error("类型不可变更");
+			catKey = st.db.prepare("SELECT cat FROM capabilities WHERE id = ?").get(rowId).cat;
+		} else {
+			const n = st.db.prepare("SELECT COUNT(*) AS n FROM capabilities WHERE mode = ? AND kind = 'category'").get(m).n;
+			if (n >= CAPS_LIMIT.categories) throw new Error(`自定义主类已达上限 ${CAPS_LIMIT.categories}`);
+			catKey = capKey();
+		}
+	} else {
+		const c = clean(cat, 60);
+		if (!CAP_KEY_RE.test(c)) throw new Error(`所属主类 key 非法：${c || "(空)"}`);
+		if (existing) {
+			if (existing.kind !== "item") throw new Error("类型不可变更");
+			itemKey = st.db.prepare("SELECT item FROM capabilities WHERE id = ?").get(rowId).item;
+		} else {
+			const n = st.db.prepare("SELECT COUNT(*) AS n FROM capabilities WHERE mode = ? AND kind = 'item'").get(m).n;
+			if (n >= CAPS_LIMIT.items) throw new Error(`自定义子类已达上限 ${CAPS_LIMIT.items}`);
+			itemKey = capKey();
+		}
+		catKey = c;
+	}
+	const rid = rowId || ("c-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
+	st.db.prepare(
+		"INSERT INTO capabilities (id, mode, kind, cat, item, label, descr, template, ref, pb, forms, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" +
+		"ON CONFLICT(id) DO UPDATE SET cat = excluded.cat, label = excluded.label, descr = excluded.descr, template = excluded.template, ref = excluded.ref, pb = excluded.pb, forms = excluded.forms, updated_at = excluded.updated_at"
+	).run(rid, m, k, catKey, itemKey, l, clean(desc, 300), clean(template, 2000), clean(ref, 120), clean(pb, 120), clean(forms, 120), now(), now());
+	return { id: rid, kind: k, cat: catKey, item: itemKey };
+}
+
+export function listCaps(st, mode) {
+	return st.db.prepare(
+		"SELECT id, mode, kind, cat, item, label, descr, template, ref, pb, forms, updated_at AS updatedAt FROM capabilities WHERE mode = ? " +
+		"ORDER BY CASE kind WHEN 'category' THEN 0 ELSE 1 END, created_at, id"
+	).all(String(mode));
+}
+
+/** 删除：自定义主类级联删除其全部自定义子类；返回级联数。 */
+export function removeCap(st, id) {
+	const row = st.db.prepare("SELECT id, mode, kind, cat FROM capabilities WHERE id = ?").get(String(id ?? ""));
+	if (!row) throw new Error(`能力不存在：${id}`);
+	let cascaded = 0;
+	if (row.kind === "category") {
+		const r = st.db.prepare("DELETE FROM capabilities WHERE mode = ? AND kind = 'item' AND cat = ?").run(row.mode, row.cat);
+		cascaded = r.changes;
+	}
+	st.db.prepare("DELETE FROM capabilities WHERE id = ?").run(row.id);
+	return { removed: row.id, cascaded };
+}
+
+/** 导出（可按模式）：保留 cat/item 体系 key（跨机器方法论模板引用可续）；行 id/时间戳不入包。 */
+export function exportCaps(st, mode) {
+	const rows = mode
+		? st.db.prepare("SELECT mode, kind, cat, item, label, descr, template, ref, pb, forms FROM capabilities WHERE mode = ? ORDER BY kind, created_at").all(String(mode))
+		: st.db.prepare("SELECT mode, kind, cat, item, label, descr, template, ref, pb, forms FROM capabilities ORDER BY mode, kind, created_at").all();
+	return rows.map((r) => ({ mode: r.mode, kind: r.kind, cat: r.cat, item: r.item, label: r.label, desc: r.descr, template: r.template, ref: r.ref, pb: r.pb, forms: r.forms }));
+}
+
+/** 导入：格式/数量/同 key 去重检查，坏行跳过说明原因；体系 key 尽量保留，非法时新生成。 */
+export function importCaps(st, rows, validModes) {
+	const imported = [];
+	const skipped = [];
+	const list = Array.isArray(rows) ? rows.slice(0, 200) : [];
+	for (const row of list) {
+		const m = clean(row?.mode, 40), k = clean(row?.kind, 10), l = clean(row?.label, 60);
+		if (!l) { skipped.push({ name: "(无名)", reason: "缺名称" }); continue; }
+		if (!m || !validModes.includes(m)) { skipped.push({ name: l, reason: `未知模式 ${m || "(空)"}` }); continue; }
+		if (!CAP_KINDS.includes(k)) { skipped.push({ name: l, reason: "kind 非法" }); continue; }
+		if (k === "category") {
+			const key = CAP_KEY_RE.test(clean(row?.cat, 60)) ? clean(row?.cat, 60) : capKey();
+			if (st.db.prepare("SELECT id FROM capabilities WHERE mode = ? AND kind = 'category' AND cat = ?").get(m, key)) { skipped.push({ name: l, reason: "同名主类标识已存在（重复导入）" }); continue; }
+			const n = st.db.prepare("SELECT COUNT(*) AS n FROM capabilities WHERE mode = ? AND kind = 'category'").get(m).n;
+			if (n >= CAPS_LIMIT.categories) { skipped.push({ name: l, reason: `模式 ${m} 自定义主类已达上限` }); continue; }
+			const rid = "c-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+			st.db.prepare("INSERT INTO capabilities (id, mode, kind, cat, item, label, descr, template, ref, pb, forms, created_at, updated_at) VALUES (?, ?, 'category', ?, '', ?, ?, ?, ?, ?, ?, ?, ?)")
+				.run(rid, m, key, l, clean(row?.desc, 300), clean(row?.template, 2000), clean(row?.ref, 120), clean(row?.pb, 120), clean(row?.forms, 120), now(), now());
+			imported.push({ id: rid, name: l, mode: m });
+		} else {
+			const ck = clean(row?.cat, 60), ik = clean(row?.item, 60);
+			if (!CAP_KEY_RE.test(ck) || !CAP_KEY_RE.test(ik)) { skipped.push({ name: l, reason: "所属主类或子类 key 非法" }); continue; }
+			if (st.db.prepare("SELECT id FROM capabilities WHERE mode = ? AND kind = 'item' AND cat = ? AND item = ?").get(m, ck, ik)) { skipped.push({ name: l, reason: "同 key 子类已存在（重复导入）" }); continue; }
+			const n = st.db.prepare("SELECT COUNT(*) AS n FROM capabilities WHERE mode = ? AND kind = 'item'").get(m).n;
+			if (n >= CAPS_LIMIT.items) { skipped.push({ name: l, reason: `模式 ${m} 自定义子类已达上限` }); continue; }
+			const rid = "c-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+			st.db.prepare("INSERT INTO capabilities (id, mode, kind, cat, item, label, descr, template, ref, pb, forms, created_at, updated_at) VALUES (?, ?, 'item', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+				.run(rid, m, ck, ik, l, clean(row?.desc, 300), clean(row?.template, 2000), clean(row?.ref, 120), clean(row?.pb, 120), clean(row?.forms, 120), now(), now());
+			imported.push({ id: rid, name: l, mode: m });
+		}
+	}
+	return { imported, skipped };
+}
+
+//#endregion
