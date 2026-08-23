@@ -18,6 +18,16 @@ jobs:
           node-version: 22
       - name: install plugin deps
         run: npm install --no-save @deepseek-ai/dsh-tools@0.1.0-rc.7 @deepseek-ai/schemastery@3.18.1
+      - name: bridge cross-plugin packages
+        run: |
+          mkdir -p plugins/node_modules/@dsh-external
+          for p in plugins/*/; do
+            [ -f "${p}package.json" ] || continue
+            name=$(node -p "require('./${p}package.json').name")
+            case "$name" in
+              @dsh-external/*) ln -sfn "../../$(basename "$p")" "plugins/node_modules/$name" ;;
+            esac
+          done
       - name: plugin test suites
         run: |
           status=0
