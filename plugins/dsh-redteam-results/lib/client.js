@@ -1286,7 +1286,7 @@ function ModePage(props) {
 		}).finally(function () {
 			if (token === stale.current) setLoading(false);
 		});
-	}, [sessionId, mode, page[0], severity[0], status[0], q[0]]);
+	}, [sessionId, mode, page[0], severity[0], status[0], q[0], range[0], customFrom[0], customTo[0]]);
 
 	var fetchGroups = useCallback(function () {
 		var token = ++stale.current;
@@ -1302,7 +1302,7 @@ function ModePage(props) {
 			})
 			.catch(function (e) { if (token === stale.current) setNotice("分组读取失败：" + (e && e.message ? e.message : e)); })
 			.finally(function () { if (token === stale.current) setLoading(false); });
-	}, [sessionId, mode, severity[0], status[0], q[0]]);
+	}, [sessionId, mode, severity[0], status[0], q[0], range[0], customFrom[0], customTo[0]]);
 
 	useEffect(function () {
 		setPage(1); setExpanded(""); setSelected({}); setConfirmDel("");
