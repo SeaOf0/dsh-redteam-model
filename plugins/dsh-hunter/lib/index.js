@@ -202,6 +202,7 @@ async function runVerify(ctx, p) {
 		if (agent && typeof agent.followup === "function") {
 			agent.followup({
 				id: `hunter-${Date.now()}-${finding.seq}`,
+				role: "user",
 				content: [{ type: "text", text: `[hunter 实测] finding #${finding.seq}「${finding.title}」：${result.summary}\n细节：${JSON.stringify(result.detail)}\n建议：${result.suggestions.join("；")}` }],
 				source: { kind: "user" }
 			});

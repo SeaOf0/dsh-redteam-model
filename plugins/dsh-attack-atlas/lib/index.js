@@ -688,6 +688,7 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		const notes = String(p.notes ?? m.notes ?? "").trim().slice(0, METHOD_LIMITS.notes);
 		agent.followup({
 			id: `atlas-method-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+			role: "user",
 			content: [{ type: "text", text: methodRunMessage(taxonomy, m, { anchor: anchorLines(taxonomy, targets), notes }) }],
 			source: { kind: "user" }
 		});
@@ -704,6 +705,7 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		if (!agent || typeof agent.followup !== "function") return { ok: false, unreachable: true, error: "会话不可达（会话可能已删除或代理未运行）" };
 		agent.followup({
 			id: `atlas-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+			role: "user",
 			content: [{ type: "text", text: triggerMessage(taxonomy, { ...p, targets: listTargets(st, sessionId, mode) }) }],
 			source: { kind: "user" }
 		});
@@ -800,6 +802,7 @@ function nudgeUndetermined(ctx, sessionId, mode, taxonomy, doneKeys, markedCats,
 		const names = undetermined.slice(0, 8).map((it) => it.label).join("、") + (undetermined.length > 8 ? " 等" : "");
 		const message = {
 			id: `atlas-nudge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+			role: "user",
 			content: [{ type: "text", text: `[AttackAtlas·覆盖提醒] finding 已自动点亮「${cat.label}」内关联格子。该主类仍有 ${undetermined.length} 格未终态：${names}——收口时逐格终态三选一，或用 redteam_coverage_sync 整表批量回写（key/终态均可写中文标签）。` }],
 			source: { kind: "user" }
 		};

@@ -197,7 +197,7 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		const agents = resolveAgents(ctx);
 		const agent = agents?.get?.(sessionId);
 		if (!agent || typeof agent.followup !== "function") return { ok: false, unreachable: true, error: "原会话不可达（会话可能已删除或代理未运行）——可人工复核后使用「标记验证结果」兜底" };
-		agent.followup({ id: `rtr-${Date.now()}-${finding.seq}`, content: [{ type: "text", text: verifyMessage(finding) }], source: { kind: "user" } });
+		agent.followup({ id: `rtr-${Date.now()}-${finding.seq}`, role: "user", content: [{ type: "text", text: verifyMessage(finding) }], source: { kind: "user" } });
 		return { ok: true };
 	}
 	if (endpoint === "finding.mark") {

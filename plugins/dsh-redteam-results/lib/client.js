@@ -183,7 +183,7 @@ function mdReport(f, mode) {
 			"- 任务：" + f.title,
 			"- " + M.kindLabel + "：" + (f.type || "未分类"),
 			"- " + M.locLabel + "：" + (f.target || "（未填写）"),
-			"- 状态：" + ((mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL)[f.status] || f.status) + " ｜ 优先级：" + (SEVERITY_LABEL[f.severity] || f.severity) + " ｜ 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel),
+			"- 状态：" + ((mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL)[f.status] || f.status) + (mode === "ctf-solver" ? " ｜ 难度：" + (f.type || "-") : " ｜ 优先级：" + (SEVERITY_LABEL[f.severity] || f.severity)) + " ｜ 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel),
 			"- 登记时间：" + fmtTime(f.createdAt) + (f.verifiedAt ? " ｜ 收口时间：" + fmtTime(f.verifiedAt) : ""),
 			"",
 			"## " + M.descLabel,
@@ -306,7 +306,7 @@ function mdReport(f, mode) {
 			"- 样本：" + (f.target || "（未填写）") + (f.sampleHash ? "（SHA256: " + f.sampleHash + "）" : ""),
 			"- 家族/变种：" + (f.family || "未知/未定"),
 			"- 壳/保护：" + (f.packer || "未识别"),
-			"- 风险等级：" + (SEVERITY_LABEL[f.severity] || f.severity),
+			"- 判定/形态：" + (f.type || "未标注") + " ｜ 分析结论：" + (BIN_STATUS_LABEL[f.status] || f.status),
 			"- 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel) + " ｜ 状态：" + (STATUS_LABEL[f.status] || f.status),
 			"",
 			"## 定性依据（结论摘要）",
@@ -492,8 +492,8 @@ function mdOverview(meta, stats, rows, mode) {
 		"",
 		"- 对象/范围：" + (meta.targetLabel || "（未填写）"),
 		"- 版本：" + (meta.version || "（未填写）") + " ｜ scope：" + (meta.scope || "（未填写）"),
-		"- 成果总数：" + stats.total + "（严重 " + (stats.bySeverity.critical || 0) + " / 高危 " + (stats.bySeverity.high || 0) + " / 中危 " + (stats.bySeverity.medium || 0) + " / 低危 " + (stats.bySeverity.low || 0) + "）",
-		"- 状态分布：" + Object.keys(STATUS_LABEL).map(function (s) { return STATUS_LABEL[s] + " " + (stats.byStatus[s] || 0); }).join(" / "),
+		LABEL_BY_TYPE_MODES[mode] ? "- 成果总数：" + stats.total : "- 成果总数：" + stats.total + "（严重 " + (stats.bySeverity.critical || 0) + " / 高危 " + (stats.bySeverity.high || 0) + " / 中危 " + (stats.bySeverity.medium || 0) + " / 低危 " + (stats.bySeverity.low || 0) + "）",
+		"- 状态分布：" + Object.keys(LABEL_BY_TYPE_MODES[mode] ? (mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : CTF_STATUS_LABEL) : STATUS_LABEL).map(function (s) { var set = LABEL_BY_TYPE_MODES[mode] ? (mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : CTF_STATUS_LABEL) : STATUS_LABEL; return (set[s] || s) + " " + (stats.byStatus[s] || 0); }).join(" / "),
 		"",
 		"## 总体结论",
 		"",
@@ -503,13 +503,13 @@ function mdOverview(meta, stats, rows, mode) {
 		""
 	];
 	if (top3.length === 0) lines.push("（无）");
-	top3.forEach(function (f) { lines.push("- [" + (SEVERITY_LABEL[f.severity] || f.severity) + "] " + f.title + "（" + (f.target || "无地址") + "）" + (f.summary ? "—" + f.summary : "")); });
+	top3.forEach(function (f) { lines.push("- [" + (LABEL_BY_TYPE_MODES[mode] ? (f.type || "未标注") : (SEVERITY_LABEL[f.severity] || f.severity)) + "] " + f.title + "（" + (f.target || "无地址") + "）" + (f.summary ? "—" + f.summary : "")); });
 	lines.push("");
 	lines.push("## 修复路线图（优先级从高到低）");
 	lines.push("");
 	if (rows.length === 0) lines.push("（无）");
 	sorted.forEach(function (f, i) {
-		lines.push((i + 1) + ". [" + (SEVERITY_LABEL[f.severity] || f.severity) + "] " + f.title + (f.fix ? "——" + f.fix.slice(0, 80) : ""));
+		lines.push((i + 1) + ". [" + (LABEL_BY_TYPE_MODES[mode] ? (f.type || "未标注") : (SEVERITY_LABEL[f.severity] || f.severity)) + "] " + f.title + (f.fix ? "——" + f.fix.slice(0, 80) : ""));
 	});
 	lines.push("");
 	return lines.join("\n");
@@ -540,7 +540,7 @@ function mdTable(rows, title, mode) {
 			: isTimeline
 			? [f.seq, f.timelineAt || "unknown", f.title, f.type || "-", f.target || "-", SEVERITY_LABEL[f.severity] || f.severity, (f.evidence || "-").replace(/\|/g, "/").slice(0, 40), (f.summary || "-").replace(/\|/g, "/").slice(0, 50)]
 			: isLedger
-			? [f.seq, f.title, f.type || "-", f.target || "-", (mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL)[f.status] || f.status, SEVERITY_LABEL[f.severity] || f.severity, EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel, (f.summary || "-").replace(/\|/g, "/").slice(0, 50), (f.poc || "-").replace(/\|/g, "/").slice(0, 50)]
+			? [f.seq, f.title, f.type || "-", f.target || "-", (mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL)[f.status] || f.status, mode === "ctf-solver" ? (f.type || "-") : (SEVERITY_LABEL[f.severity] || f.severity), EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel, (f.summary || "-").replace(/\|/g, "/").slice(0, 50), (f.poc || "-").replace(/\|/g, "/").slice(0, 50)]
 			: isAsset
 			? [f.seq, f.title, f.type || "-", (f.target || "-") + (f.sampleHash ? " (" + f.sampleHash.slice(0, 8) + ")" : ""), ASSET_STATUS_LABEL[f.status] || f.status, (f.summary || f.description || "-").replace(/\|/g, "/").slice(0, 60)]
 			: audit
@@ -894,7 +894,11 @@ function installStyles() {
 
 //#endregion
 
-function Chip(props) { return React.createElement("span", { className: "dsh-rtr-sev dsh-rtr-sev-" + props.severity }, SEVERITY_LABEL[props.severity] || props.severity); }
+var LABEL_BY_TYPE_MODES = { "av-evasion": 1, "ctf-solver": 1, "binary-analysis": 1 };
+function Chip(props) {
+	if (props.typeLabel) return React.createElement("span", { className: "dsh-rtr-typechip is-static" }, props.typeLabel);
+	return React.createElement("span", { className: "dsh-rtr-sev dsh-rtr-sev-" + props.severity }, SEVERITY_LABEL[props.severity] || props.severity);
+}
 function StatusChip(props) { return React.createElement("span", { className: "dsh-rtr-st dsh-rtr-st-" + props.status }, (props.binary ? ASSET_STATUS_LABEL : STATUS_LABEL)[props.status] || props.status); }
 function Btn(props) {
 	return React.createElement("button", {
@@ -1434,7 +1438,7 @@ function ModePage(props) {
 					onChange: function (e) { var next = Object.assign({}, selected[0]); next[f.id] = e.target.checked; setSelected(next); }
 				}),
 				React.createElement("span", { className: "dsh-rtr-seq" }, "#" + f.seq),
-				React.createElement(Chip, { severity: f.severity }),
+				React.createElement(Chip, { severity: f.severity, typeLabel: LABEL_BY_TYPE_MODES[mode] ? (f.type || "未标注") : null }),
 				React.createElement("span", { className: "dsh-rtr-st dsh-rtr-st-" + f.status }, statusTextFor(f, mode, stLabelSet)),
 				mode === "code-audit" && f.auditMode ? React.createElement("span", { className: "dsh-rtr-am dsh-rtr-am-" + f.auditMode }, AUDIT_MODE_LABEL[f.auditMode] || f.auditMode) : null,
 				React.createElement("span", { className: "dsh-rtr-title" }, f.title),
@@ -1465,7 +1469,7 @@ function ModePage(props) {
 						}),
 						React.createElement("span", { className: "dsh-rtr-seq" }, "#" + f.seq),
 						React.createElement("span", { className: "dsh-rtr-typechip is-static" }, f.type || "未分类"),
-						React.createElement(Chip, { severity: f.severity }),
+						React.createElement(Chip, { severity: f.severity, typeLabel: LABEL_BY_TYPE_MODES[mode] ? (f.type || "未标注") : null }),
 						React.createElement("span", { className: "dsh-rtr-st dsh-rtr-st-" + f.status }, stSet[f.status] || f.status),
 						React.createElement("span", { className: "dsh-rtr-title" }, f.title),
 						React.createElement("span", { className: "dsh-rtr-rowactions", onClick: function (e) { e.stopPropagation(); } },
@@ -1496,7 +1500,7 @@ function ModePage(props) {
 					}),
 					React.createElement("span", { className: "dsh-rtr-seq" }, "#" + f.seq),
 					React.createElement("span", { className: "dsh-rtr-typechip is-static" }, f.type || "未分类"),
-					React.createElement(Chip, { severity: f.severity }),
+					React.createElement(Chip, { severity: f.severity, typeLabel: LABEL_BY_TYPE_MODES[mode] ? (f.type || "未标注") : null }),
 					React.createElement("span", { className: "dsh-rtr-st dsh-rtr-st-" + f.status }, stSet[f.status] || f.status),
 					React.createElement("span", { className: "dsh-rtr-title" }, f.title),
 					React.createElement("span", { className: "dsh-rtr-rowactions", onClick: function (e) { e.stopPropagation(); } },
@@ -1738,7 +1742,7 @@ function BigScreen(props) {
 											React.createElement("td", null, f.title),
 											React.createElement("td", null, f.type || "-"),
 											React.createElement("td", { title: f.sessionId }, f.sessionId ? String(f.sessionId).replace(/^session-/, "").slice(0, 8) : "-"),
-											React.createElement("td", null, React.createElement("span", { className: "dsh-scr-sev dsh-scr-sev-" + f.severity }, SEVERITY_LABEL[f.severity] || f.severity)));
+											React.createElement("td", null, LABEL_BY_TYPE_MODES[f.mode] ? React.createElement("span", { className: "dsh-scr-sev" }, f.type || "未标注") : React.createElement("span", { className: "dsh-scr-sev dsh-scr-sev-" + f.severity }, SEVERITY_LABEL[f.severity] || f.severity)));
 									}))),
 								pgMax > 0 ? React.createElement("div", { className: "dsh-rtr-pager", style: { justifyContent: "center" } },
 									React.createElement(Btn, { disabled: pgCur <= 0, onClick: function () { setScrPg(pgCur - 1); } }, "上一页"),
