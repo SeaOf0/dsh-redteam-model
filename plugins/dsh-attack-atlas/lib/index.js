@@ -169,7 +169,7 @@ function taxonomyWithCaps(st, taxonomy, mode) {
 const LABEL_STRIP = /[\s·•,，、。.；;：:！!？?（）()\[\]【】「」『』/／\-—_~*"'`|｜\\#]/g;
 const FUZZY_MIN = 0.45;    // bigram Dice 最低分：低于不认（宁拒勿猜）
 const FUZZY_MARGIN = 1.25; // 最佳与次佳须拉开倍率（防歧义误亮）
-const FUZZY_INCOV = 0.6;   // 输入侧 bigram 覆盖率：垃圾串只零星命中即拒
+const FUZZY_INCOV = 0.6;   // 输入侧 bigram 覆盖率：垃圾串只零星命中即拒（ghost-cat 类假阳性）
 
 function normLabel(s) {
 	return String(s ?? "").toLowerCase().normalize("NFKC").replace(LABEL_STRIP, "");
@@ -217,7 +217,7 @@ function bestOf(cands, norm) {
 
 /** 解析覆盖 key：canonical id（含 cat/中文子项混合形）→ 标签全等 → 包含 → Dice 模糊。
  *  返回 { key, catId, itemId? }（解析成功）/ { ambiguous: [...] } / { missingItem: {...} } / null。
- *  解析示例：「任意上传RCE」→ rce-main/upload-rce（模糊）；「深度反序列化」→ rce-main/deep-deser（全等）。 */
+ *  实测锚点：「任意上传RCE」→ rce-main/upload-rce（Dice）；「深度反序列化」→ rce-main/deep-deser（全等）。 */
 export function resolveKey(taxonomy, input) {
 	const raw = String(input ?? "").trim();
 	if (!raw) return null;
@@ -269,7 +269,7 @@ export function canonicalKey(taxonomy, input) {
 }
 
 /** 覆盖 key 对合并体系的存在性校验：拼错即拒（否则终态落库但矩阵永不渲染——静默丢失）。
- *  key 形如 cat（主类整组）或 cat/item；亦接受主类/子类中文标签；报错必带合法候选。 */
+ *  key 形如 cat（主类整组）或 cat/item；亦接受主类/子类中文标签；报错必带合法候选（R2）。 */
 export function validateCoverageRef(taxonomy, key) {
 	const raw = String(key ?? "").trim();
 	if (!raw) return "key 不能为空（形如 cat/item 或 cat，也接受主类/格子中文标签）";
@@ -305,7 +305,7 @@ export function validateStageRef(taxonomy, stage) {
 
 //#endregion
 
-//#region 终态标签等价 + 覆盖表批量同步
+//#region 终态标签等价 + 覆盖表批量同步（P2）
 
 const STATE_ALIASES = [
 	["tested-found", ["已测有发现", "已审有finding", "有finding", "走通", "有战果", "发现", "过检"]],
@@ -378,7 +378,7 @@ export function parseCoverageTable(text) {
 }
 
 /** 批量落终态（sync 工具与测试共用核心）：逐行解析（key/终态均走标签归一）→ markCell；
- *  坏行跳过并附行号说明，好行照常落库。 */
+ *  坏行跳过并附行号说明，好行照常落库（先例：methods.import 坏行不阻整体）。 */
 export function applyCoverageRows(st, taxonomy, sessionId, mode, rows) {
 	const applied = [];
 	const failed = [];
@@ -488,8 +488,9 @@ export async function dispatch(ctx, st, endpoint, payload) {
 			if (bad) throw new Error(bad);
 			key = canonicalKey(tax, key) ?? key;
 		}
+		const state = resolveStateLabel(p.state) || String(p.state ?? "");
 		const cell = markCell(st, sessionId, mode, key, {
-			state: String(p.state ?? ""), reason: p.reason, findingRefs: p.findingRefs, target: p.target
+			state, reason: p.reason, findingRefs: p.findingRefs, target: p.target
 		});
 		return { ok: true, cell };
 	}
@@ -809,7 +810,7 @@ function nudgeUndetermined(ctx, sessionId, mode, taxonomy, doneKeys, markedCats,
 }
 
 /** finding 登记成功 → 类型/CWE/标题走 resolveKey 解析格子 → 仅对无终态格子落 tested-found
- *  （人工终态永不被自动覆盖）；关联主类若有剩余未终态格，注入一次覆盖提醒。
+ *  （人工终态永不被自动覆盖）；关联主类若有剩余未终态格，注入一次覆盖提醒（P3）。
  *  deps 供测试注入：{ mode, findFindingId, followup }。 */
 export async function autoLightFromFinding(ctx, st, sessionId, findingArgs, deps = {}) {
 	const mode = deps.mode ?? modeOfSession(ctx, sessionId);
@@ -876,7 +877,7 @@ function apply(ctx) {
 					if (bad) return Promise.resolve({ ok: false, error: bad });
 					key = canonicalKey(tax, key) ?? key;
 				}
-				const cell = markCell(theStore(), session.id, session.mode, key, { state: args.state, reason: args.reason, findingRefs: args.findingRefs, target: args.target });
+				const cell = markCell(theStore(), session.id, session.mode, key, { state: resolveStateLabel(args.state) || args.state, reason: args.reason, findingRefs: args.findingRefs, target: args.target });
 				return Promise.resolve({ ok: true, key: cell.key, state: cell.state });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
@@ -919,7 +920,7 @@ function apply(ctx) {
 		name: "redteam_coverage_sync",
 		description: "批量回写覆盖终态（覆盖对账/收口用）：一次调用替代逐格 redteam_coverage_mark。入口二选一——rows=[{key,state,reason,findingRefs,target}] 数组，或 path=覆盖矩阵 markdown 文件（表头须含「格子」「终态」列名，兼容 原因/finding/目标 列，分隔行自动跳过）。key 与终态均接受中文标签（自动归一到体系 key 与四态）；坏行跳过并在结果逐行说明原因，好行照常落库。",
 		parameters: {
-			rows: { type: "array", items: { type: "object" }, description: "终态行数组（与 path 二选一）：{key, state, reason, findingRefs, target}" },
+			rows: { type: "array", items: { type: "object", additionalProperties: true }, description: "终态行数组（与 path 二选一）：{key, state, reason, findingRefs, target}" },
 			path: { type: "string", description: "覆盖矩阵文件路径（与 rows 二选一；工作区相对或绝对路径）" }
 		},
 		output: {

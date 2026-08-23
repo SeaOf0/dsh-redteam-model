@@ -864,7 +864,7 @@ await ok("标签归一：常用中文标签全部自愈（code-audit）", () => 
 	for (const [label, key] of Object.entries(cases)) assert.equal(resolveKey(CA, label)?.key, key, `${label} 应归一到 ${key}`);
 });
 
-await ok("八模式标签直查抽查 + 同长歧义保守拒", () => {
+await ok("R3·八模式标签直查抽查 + 同长歧义保守拒", () => {
 	for (const mode of ["pentest", "binary-analysis", "av-evasion", "cloud-security", "ctf-solver", "incident-response", "attack-defense"]) {
 		const t = TAXONOMIES[mode];
 		if (!t || t.pending) continue;
@@ -875,7 +875,7 @@ await ok("八模式标签直查抽查 + 同长歧义保守拒", () => {
 	assert.ok(resolveKey(fake, "苹果")?.ambiguous, "同长双命中须判歧义而非硬选");
 });
 
-await ok("错值报错必带合法候选清单", () => {
+await ok("R2·错值报错必带合法候选清单", () => {
 	const e1 = validateCoverageRef(CA, "不存在的主类");
 	assert.match(e1, /合法主类：/, "主类清单在场");
 	assert.match(e1, /审计形态判定\(audit-shape\)/, "清单含 id 对");
@@ -886,7 +886,7 @@ await ok("错值报错必带合法候选清单", () => {
 	assert.match(e3, /合法阶段：s1 /, "阶段清单在场");
 });
 
-await ok("阶段中文标签归一 + 垃圾串拒收", () => {
+await ok("R3·阶段中文标签归一 + 垃圾串拒收（ghost-cat 假阳性防回归）", () => {
 	assert.equal(resolveStageId(CA, "静态审计"), "s2");
 	assert.equal(resolveStageId(CA, "覆盖与对账"), "s5");
 	assert.equal(resolveKey(TAXONOMIES["pentest"], "ghost-cat"), null, "垃圾串不得模糊命中");
@@ -894,7 +894,7 @@ await ok("阶段中文标签归一 + 垃圾串拒收", () => {
 	assert.equal(typo?.key, "injection/sqli", "高置信 typo 自愈");
 });
 
-await ok("终态中文标签归一（两套 UI 词表 + canonical）", () => {
+await ok("R3·终态中文标签归一（两套 UI 词表 + canonical）", () => {
 	assert.equal(resolveStateLabel("tested-found"), "tested-found");
 	assert.equal(resolveStateLabel("已测·有发现"), "tested-found");
 	assert.equal(resolveStateLabel("已审·有 finding"), "tested-found");
@@ -905,7 +905,7 @@ await ok("终态中文标签归一（两套 UI 词表 + canonical）", () => {
 	assert.equal(resolveStateLabel("瞎写的态"), "");
 });
 
-// ===== 矩阵批量同步 =====
+// ===== P2 矩阵批量同步 =====
 await ok("parseCoverageTable：表头定位/分隔行跳过/列映射/乱序容错", () => {
 	const md = [
 		"# 覆盖矩阵", "",
@@ -946,7 +946,7 @@ await ok("applyCoverageRows：中文 key/终态批量落库 + 坏行跳过带行
 	st.close();
 });
 
-// ===== finding 自动亮与覆盖提醒 =====
+// ===== P1 finding 自动亮 + P3 覆盖提醒 =====
 await ok("autoLight：type/CWE 线索点亮 + finding ref 回填 + 不覆盖已有终态", async () => {
 	const st = openStore(":memory:");
 	const nudges = [];
@@ -976,7 +976,7 @@ await ok("autoLight：type/CWE 线索点亮 + finding ref 回填 + 不覆盖已�
 	st.close();
 });
 
-await ok("覆盖提醒：每主类一次限流、文案带剩余格与 sync 指引", async () => {
+await ok("autoLight·P3 覆盖提醒：每主类一次限流、文案带剩余格与 sync 指引", async () => {
 	const st = openStore(":memory:");
 	const nudges = [];
 	const deps = { mode: "code-audit", findFindingId: async () => "", followup: (m) => nudges.push(m) };
@@ -1032,6 +1032,13 @@ await ok("isGatePassText：仅本门 PASS 前缀命中，FAIL/他门不误触", 
 	assert.equal(isGatePassText("", "code-audit", "A2"), false);
 });
 
+
+// ===== 工具 schema 宿主编译防回归（defineTool 同一编译器；items.object 必须显式 additionalProperties）=====
+import { defineTool } from "@deepseek-ai/dsh-tools";
+await ok("sync 工具 schema 可过宿主编译器（runtime boot 防崩溃）", () => {
+	const params = { rows: { type: "array", items: { type: "object", additionalProperties: true }, description: "x" }, path: { type: "string" } };
+	defineTool({ name: "_schema_probe_sync", description: "x", parameters: params, output: { schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean" } } } }, execute: () => Promise.resolve({ ok: true }) });
+});
 
 // ===== 分模式锚定与目标词表 =====
 await ok("锚定分模式：七模式各自对象/基线/纪律词，pentest 原文不变", () => {
