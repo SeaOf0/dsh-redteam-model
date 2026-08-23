@@ -360,3 +360,32 @@ ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
 	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "X" } }, "T"), false);
 	assert.equal(checkCsrf({}, "T"), false);
 });
+
+// ===== 分模式状态子集（产物型本体词 / 漏洞型五态不变）=====
+{
+	const st = openStore(":memory:");
+	ok("分模式状态：av=在验/过检/被检出（detected 合法、fixed 回落不变）+ severity 可省默认", () => {
+		const r = registerFinding(st, "s-av", "av-evasion", { title: "jsp 冰蝎马", target: "exp/1.jsp", summary: "交付物", type: "jsp" });
+		assert.equal(r.severity, "medium", "severity 省略走默认（产物型不展示）");
+		assert.equal(r.type, "jsp");
+		const u1 = updateFinding(st, "s-av", "av-evasion", r.id, { status: "detected" });
+		assert.equal(u1.status, "detected", "被检出 合法");
+		const u2 = updateFinding(st, "s-av", "av-evasion", r.id, { status: "fixed" });
+		assert.equal(u2.status, "detected", "fixed 不在 av 子集——回落保持原状态");
+	});
+	ok("分模式状态：ctf=未解/卡点/已解（stuck 合法、verified 落 verifiedAt）", () => {
+		const r = registerFinding(st, "s-ctf", "ctf-solver", { title: "web1", target: "board#1", summary: "题", type: "hard" });
+		assert.equal(updateFinding(st, "s-ctf", "ctf-solver", r.id, { status: "stuck" }).status, "stuck");
+		const u2 = updateFinding(st, "s-ctf", "ctf-solver", r.id, { status: "verified" });
+		assert.equal(u2.status, "verified");
+		assert.ok(u2.verifiedAt, "已解（verified）落 verifiedAt");
+	});
+	ok("分模式状态：binary=分析中/疑似/已定论；漏洞型 fixed 前置规则不变", () => {
+		const r = registerFinding(st, "s-bin", "binary-analysis", { title: "样本A", target: "sha256:ab", summary: "家族分析" });
+		assert.equal(updateFinding(st, "s-bin", "binary-analysis", r.id, { status: "suspect" }).status, "suspect");
+		assert.equal(updateFinding(st, "s-bin", "binary-analysis", r.id, { status: "verified" }).status, "verified");
+		const v = registerFinding(st, "s-v", "code-audit", { title: "X", target: "t", summary: "s" });
+		assert.throws(() => updateFinding(st, "s-v", "code-audit", v.id, { status: "fixed" }), /此前已验证/, "漏洞型 fixed 需先 verified 的旧规则保留");
+	});
+	st.close();
+}

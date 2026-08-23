@@ -38,6 +38,7 @@ const MODE_LABELS = {
 	"cloud-security": "云安全攻防模式",
 	"ctf-solver": "CTF 解题模式"
 };
+for (const [_m, _tax] of Object.entries(TAXONOMIES)) _tax.id = _m; // 锚定生成器按模式取词
 const DB_PATH = path.join(os.homedir(), ".dsh", "attack-atlas", "atlas.db");
 const MAX_BODY = 1024 * 1024;
 
@@ -50,11 +51,28 @@ function theStore() {
 //#region 通道与工具共用逻辑
 
 /** 双击派单的注入文案（用户消息；模型按 playbook 对应章节执行并回写点亮）。 */
-function anchorLines(targets) {
+function trioWords(taxonomy) {
+	const sl = taxonomy.stateLabels || {};
+	return `${sl["tested-found"] || "已测·有发现"} / ${sl["tested-clear"] || "已测·未命中"} / ${sl.na || "N-A 附原因"}`;
+}
+/** 各模式锚定三元组（对象称谓/登记指引+基线/边界纪律）——词取自各模式 playbook 的既有定义，
+ *  pentest/attack-defense 为原生授权目标语义走默认文案。 */
+const MODE_ANCHOR = {
+	"code-audit": { word: "对象", obj: "审计对象", reg: "开工先确认仓库/版本范围并调 redteam_atlas_target 登记审计对象（应用/模块组/源码仓库）", baseline: "面映射基线（入口清单+sink 面）", discipline: "不超出约定审计范围", detail: "入口清单与 sink 面见面映射表" },
+	"binary-analysis": { word: "样本", obj: "样本", reg: "先过样本登记（B0：sha256/形态/来源）并调 redteam_atlas_target 登记", baseline: "样本登记与假设台账", discipline: "按受理样本分析，样本外传须登记", detail: "样本档案与假设台账见 B0 登记产物" },
+	"av-evasion": { word: "对象", obj: "在验载荷", reg: "先调 redteam_atlas_target 登记实验对象（生成的 shell/载荷/引擎族）", baseline: "experiment-plan 判定环境清单", discipline: "本地默认验证；授权目标按任务执行", detail: "判定环境与实验课题见 experiment-plan" },
+	"incident-response": { word: "范围", obj: "调查对象", reg: "受理后先调 redteam_atlas_target 登记调查对象（受侵主机/案件）", baseline: "证据保全清单", discipline: "先保全后分析，不超出受理范围", detail: "主机与证据明细见保全清单" },
+	"cloud-security": { word: "目标", obj: "云目标", reg: "先调 redteam_atlas_target 登记云目标（账号/租户/集群）", baseline: "cloud-assets.md 测绘基线", discipline: "只读探测优先；环境改动逐项登记还原", detail: "资产明细见 cloud-assets.md 暴露面测绘" },
+	"ctf-solver": { word: "对象", obj: "题目", reg: "先调 redteam_atlas_target 登记题目/赛局", baseline: "challenge-board.md 题面登记", discipline: "平台规则即边界", detail: "题面与解题进度见 challenge-board" }
+};
+function anchorLines(taxonomy, targets) {
+	const cfg = MODE_ANCHOR[taxonomy?.id ?? ""];
 	if (!targets || targets.length === 0) {
+		if (cfg) return `${cfg.word}锚定：本会话尚未登记${cfg.obj}——${cfg.reg}（与${cfg.baseline}同步），${cfg.discipline}。`;
 		return "目标锚定：本会话尚未登记目标——开测前先确认授权目标并调 redteam_atlas_target 登记（与资产清单基线 assets.md 同步），严格不超出授权范围。";
 	}
 	const list = targets.map((t, i) => `「${t.label}」${targetKindLabel(t.kind)}`).join("、");
+	if (cfg) return `${cfg.word}锚定：${list}（${cfg.detail}；多对象时终态回写须带 target 参数注明所属对象，N-A 须注明对哪个对象不具备）。`;
 	return `目标锚定：${list}（资产明细见 assets.md/入口面盘点表；多目标时终态回写须带 target 参数注明所属目标，N-A 须注明对哪个目标不具备）。`;
 }
 export function triggerMessage(taxonomy, payload) {
@@ -73,15 +91,15 @@ export function triggerMessage(taxonomy, payload) {
 		return [
 			`[AttackAtlas·阶段推进] 进入阶段「${stage ? stage.label : payload.stageId}」（${taxonomy.label}模式作战流程）。`,
 			`按 playbook 该阶段章节执行；完成后调用 redteam_coverage_stage(stage="${payload.stageId}", state="done") 回写点亮。`,
-			anchorLines(payload.targets)
+			anchorLines(taxonomy, payload.targets)
 		].join("\n");
 	}
 	if (payload.level === "category") {
 		const category = taxonomy.categories.find((c) => c.id === payload.categoryId);
 		return [
 			`[AttackAtlas·主类派单] 对主类「${category ? category.label : payload.categoryId}」整组开测（${taxonomy.label}模式${formLabel}）。`,
-			"要求：子项逐格推进，每格终态三选一（已测·未命中 / 已测·有发现 / N-A 附原因），逐格调用 redteam_coverage_mark 回写；发现即 redteam_finding_register 登记；速率与红线照 playbook 执行。",
-			anchorLines(payload.targets)
+			`要求：子项逐格推进，每格终态三选一（${trioWords(taxonomy)}），逐格调用 redteam_coverage_mark 回写；发现即 redteam_finding_register 登记；速率与红线照 playbook 执行。`,
+			anchorLines(taxonomy, payload.targets)
 		].join("\n");
 	}
 	const loc = locate(taxonomy, `${payload.categoryId}/${payload.itemId}`);
@@ -93,8 +111,8 @@ export function triggerMessage(taxonomy, payload) {
 	return [
 		`[AttackAtlas·格子派单] 对以下格子开测（${taxonomy.label}模式${formLabel}）：`,
 		`主类「${category ? category.label : payload.categoryId}」｜子项「${item ? item.label : payload.itemId}」${refHint}`,
-		"按 playbook 验证姿势执行（最小影响、非破坏性）；终态三选一（已测·未命中 / 已测·有发现 / N-A 附原因），完成后调用 redteam_coverage_mark 回写点亮；有发现即 redteam_finding_register 登记。",
-		anchorLines(payload.targets)
+		`按 playbook 验证姿势执行（最小影响、非破坏性）；终态三选一（${trioWords(taxonomy)}），完成后调用 redteam_coverage_mark 回写点亮；有发现即 redteam_finding_register 登记。`,
+		anchorLines(taxonomy, payload.targets)
 	].join("\n");
 }
 
@@ -290,20 +308,41 @@ export function validateStageRef(taxonomy, stage) {
 //#region 终态标签等价 + 覆盖表批量同步
 
 const STATE_ALIASES = [
-	["tested-found", ["已测有发现", "已审有finding", "有finding", "走通", "有战果", "发现"]],
-	["tested-clear", ["已测未命中", "已审无finding", "无finding", "未走通", "未命中"]],
+	["tested-found", ["已测有发现", "已审有finding", "有finding", "走通", "有战果", "发现", "过检"]],
+	["tested-clear", ["已测未命中", "已审无finding", "无finding", "未走通", "未命中", "被检出", "卡点"]],
 	["na", ["不适用"]],
-	["budget-stop", ["未完成", "让位", "预算耗尽", "预算"]]
+	["budget-stop", ["未完成", "让位", "预算耗尽", "预算", "未测", "未开", "未查", "未分析"]]
 ];
+// 七模式图例词并入（各模式四态语义不同、canonical 全局一致）：
+// av=已测·过检/被检出、ctf=已解·flag 验证/已试·卡点、IR=查实·有证据/已查·未命中、
+// binary=已分析·有结论/未见异常、ad/cloud=走通·有战果/执行·未走通、代审=已审·有/无 finding。
+for (const _t of Object.values(TAXONOMIES)) {
+	if (!_t.stateLabels) continue;
+	for (const [canonical, label] of Object.entries(_t.stateLabels)) {
+		const n = normLabel(label);
+		const row = STATE_ALIASES.find(([c]) => c === canonical);
+		if (row && !row[1].includes(n)) row[1].push(n);
+	}
+}
 
-/** 终态归一：canonical id 或中文标签（走通/未命中/N-A/未完成…）→ 四态；不认识返回 ""。 */
+/** 终态归一：canonical id 或中文标签（各模式图例词/常用简称均可）→ 四态；歧义或未知返回 ""。 */
 export function resolveStateLabel(input) {
 	const raw = String(input ?? "").trim().toLowerCase();
 	if (CELL_STATES.includes(raw)) return raw;
 	const norm = normLabel(raw);
+	if (!norm) return "";
 	for (const [canonical, aliases] of STATE_ALIASES) {
 		if (norm === normLabel(canonical) || aliases.includes(norm)) return canonical;
 	}
+	// 包含式唯一匹配：图例全称/简称互认（「执行·未走通」→「未走通」→ tested-clear）；
+	// 命中多个 canonical（如裸「已分析」）判歧义返回空，宁拒勿猜。
+	const hits = new Set();
+	for (const [canonical, aliases] of STATE_ALIASES) {
+		for (const a of aliases) {
+			if (norm.includes(a) || a.includes(norm)) { hits.add(canonical); break; }
+		}
+	}
+	if (hits.size === 1) return [...hits][0];
 	return "";
 }
 
@@ -648,7 +687,7 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		const notes = String(p.notes ?? m.notes ?? "").trim().slice(0, METHOD_LIMITS.notes);
 		agent.followup({
 			id: `atlas-method-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-			content: [{ type: "text", text: methodRunMessage(taxonomy, m, { anchor: anchorLines(targets), notes }) }],
+			content: [{ type: "text", text: methodRunMessage(taxonomy, m, { anchor: anchorLines(taxonomy, targets), notes }) }],
 			source: { kind: "user" }
 		});
 		return { ok: true };
@@ -813,7 +852,7 @@ function apply(ctx) {
 	//#region 模型工具（宿主平面；九模式会话内可用）
 	ctx.tools.register(defineTool({
 		name: "redteam_coverage_mark",
-		description: "把攻击面图谱（「攻击面图谱」标签页）里的一个格子或主类标为终态。每个格子终态三选一：已测·有发现(tested-found) / 已测·未命中(tested-clear) / N-A附原因(na)；预算耗尽用 budget-stop（附原因）。key 形如 injection/sqli（格子）或 injection（主类整组 N-A），也接受主类/格子的中文标签（自动归一）；写错时报错会列出该模式全部合法主类。tested-clear 时 reason 建议写未排除面；tested-found 时 findingRefs 填关联 finding id。逐格回写，图谱实时点亮。",
+		description: "把攻击面图谱（「攻击面图谱」标签页）里的一个格子或主类标为终态。每个格子终态：tested-found / tested-clear / na / budget-stop（图例按模式显示对应语义——渗透=已测·有发现/未命中、免杀=已测·过检/被检出、CTF=已解·flag 验证/已试·卡点、应急=查实·有证据/已查·未命中等）。key 形如 injection/sqli（格子）或 injection（主类整组 N-A），也接受主类/格子的中文标签（自动归一）；写错时报错会列出该模式全部合法主类。tested-clear 时 reason 建议写未排除面；tested-found 时 findingRefs 填关联 finding id。逐格回写，图谱实时点亮。",
 		parameters: {
 			key: { type: "string", required: true, description: "cat/item 格子 key、cat 主类 key，或主类/格子中文标签" },
 			state: { type: "string", required: true, enum: CELL_STATES, description: "终态" },
@@ -953,7 +992,7 @@ function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "redteam_atlas_chain",
-		description: "登记/查看本会话 AttackAtlas 的攻击链拓扑（链路拓扑图弹窗实时成图）。节点：entry 入口/host 主机/segment 网段关口/bastion 堡垒机/dc 域控/cred 凭据，重大成果节点 major=true，seg 填网段（如 10.1.1.x）；边 label 写动作（获取权限/凭据复用/隔离突破/域控获取…）。多入口/暂无链路按实际登记，不虚构。突破成立、拿下一台主机、跨段、拿到关键凭据时即登记——链路拓扑随战役推进实时生长。",
+		description: "登记/查看本会话 AttackAtlas 的攻击链拓扑（仅攻防评估/应急溯源/云安全三模式有链路体系，其余模式不可用；链路拓扑图弹窗实时成图）。节点：entry 入口/host 主机/segment 网段关口/bastion 堡垒机/dc 域控/cred 凭据，重大成果节点 major=true，seg 填网段（如 10.1.1.x）；边 label 写动作（获取权限/凭据复用/隔离突破/域控获取…）。多入口/暂无链路按实际登记，不虚构。突破成立、拿下一台主机、跨段、拿到关键凭据时即登记——链路拓扑随战役推进实时生长。",
 		parameters: {
 			action: { type: "string", required: true, enum: ["add-node", "add-edge", "list", "clear"], description: "add-node=登记节点 add-edge=登记边 list=查看 clear=清空" },
 			id: { type: "string", description: "节点 id（字母数字与 ._-，如 h-192-168-1-2；action=add-node 必填）" },
@@ -973,6 +1012,7 @@ function apply(ctx) {
 		execute(args, exec) {
 			const session = sessionOf(ctx, exec);
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅专业模式会话内可用" });
+			if (!TAXONOMIES[session.mode]?.chain) return Promise.resolve({ ok: false, error: "本模式无链路拓扑体系（链路图仅 攻防评估/应急溯源/云安全 三模式）" });
 			try {
 				if (args.action === "list") return Promise.resolve({ ok: true, chain: listChain(theStore(), session.id, session.mode) });
 				if (args.action === "clear") { clearChain(theStore(), session.id, session.mode); return Promise.resolve({ ok: true, what: "链路已清空" }); }

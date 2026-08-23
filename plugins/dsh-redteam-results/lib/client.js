@@ -109,13 +109,27 @@ var MODE_META = {
 	}
 };
 var ASSET_STATUS_LABEL = { pending: "待验证", verified: "有效·已验证", "false-positive": "已失效", fixed: "已交付" };
+var AV_STATUS_LABEL = { pending: "在验", verified: "过检", detected: "被检出", "false-positive": "已失效", fixed: "已交付" };
+var BIN_STATUS_LABEL = { pending: "分析中", suspect: "疑似", verified: "已定论", "false-positive": "已失效", fixed: "已归档" };
+var STATUS_OPTIONS_OF = {
+	"av-evasion": ["pending", "verified", "detected"],
+	"ctf-solver": ["pending", "stuck", "verified"],
+	"binary-analysis": ["pending", "suspect", "verified"]
+};
 var LEDGER_STATUS_LABEL = { pending: "进行中", verified: "已收口", "false-positive": "挂起", fixed: "已路由" };
-var CTF_STATUS_LABEL = { pending: "进行中", verified: "已解出", "false-positive": "放弃/排除", fixed: "已复盘" };
-var TIMELINE_STATUS_LABEL = { pending: "待复核", verified: "已证实", "false-positive": "排除", fixed: "已处置" };
+var CTF_STATUS_LABEL = { pending: "未解", stuck: "卡点", verified: "已解·flag 验证", "false-positive": "放弃/排除", fixed: "已复盘" };
+var TIMELINE_STATUS_LABEL = { pending: "待复核", "code-reviewed": "复核通过", verified: "已证实", "false-positive": "排除", fixed: "已处置" };
 var CLOUDPATH_STATUS_LABEL = { pending: "待验证", verified: "已证实", "false-positive": "排除", fixed: "已修复" };
 var BINARY_TYPE_VOCAB = "结论类型词表：恶意定性 / 家族识别 / 脱壳还原 / 算法破解 / Key恢复 / 加壳识别 / C2提取 / 后门确认 / 行为能力 / 诱饵排除 / 固件后门";
 
-function fmtTime(iso) { return iso ? String(iso).replace("T", " ").slice(0, 16) : ""; }
+function fmtTime(iso) {
+	if (!iso) return "";
+	var d = new Date(iso);
+	if (isNaN(d.getTime())) return String(iso).replace("T", " ").slice(0, 16);
+	var p = function (n) { return (n < 10 ? "0" : "") + n; };
+	return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function localDate() { var d = new Date(); var p = function (n) { return (n < 10 ? "0" : "") + n; }; return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()); }
 function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function fmtTimelineAt(v) {
 	var s = String(v == null ? "" : v).trim();
@@ -140,6 +154,8 @@ function cmpTimeline(a, b) {
 }
 function statusLabelSetFor(archetype, mode) {
 	if (mode === "ctf-solver") return CTF_STATUS_LABEL;
+	if (mode === "av-evasion") return AV_STATUS_LABEL;
+	if (mode === "binary-analysis") return BIN_STATUS_LABEL;
 	return archetype === "assets" ? ASSET_STATUS_LABEL : archetype === "ledger" ? LEDGER_STATUS_LABEL : archetype === "timeline" ? TIMELINE_STATUS_LABEL : archetype === "cloudpath" ? CLOUDPATH_STATUS_LABEL : STATUS_LABEL;
 }
 function statusTextFor(f, mode, labelSet) {
@@ -257,7 +273,7 @@ function mdReport(f, mode) {
 			"- " + M.locLabel + "：" + (f.target || "（未填写）") + (f.sampleHash ? "（关联样本 " + f.sampleHash.slice(0, 12) + "…）" : ""),
 			f.family ? "- 家族/变种：" + f.family : "",
 			f.packer ? "- 壳/保护：" + f.packer : "",
-			"- 状态：" + (ASSET_STATUS_LABEL[f.status] || f.status) + " ｜ 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel),
+			"- 状态：" + ((mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : ASSET_STATUS_LABEL)[f.status] || f.status) + " ｜ 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel),
 			"- 登记时间：" + fmtTime(f.createdAt) + (f.verifiedAt ? " ｜ 验证时间：" + fmtTime(f.verifiedAt) : ""),
 			"",
 			"## " + M.descLabel,
@@ -1375,7 +1391,7 @@ function ModePage(props) {
 	}
 	function exportAll() {
 		fetchAllForExport().then(function (all) {
-			download(meta.allName + new Date().toISOString().slice(0, 10) + ".md", mdTable(all, meta.tableTitle, mode));
+			download(meta.allName + localDate() + ".md", mdTable(all, meta.tableTitle, mode));
 			setNotice("已导出 " + all.length + " 条（当前筛选范围）");
 		});
 	}
@@ -1383,21 +1399,21 @@ function ModePage(props) {
 		var picked = rows.filter(function (f) { return selected[0][f.id]; });
 		if (picked.length === 0) { setNotice("先勾选要导出的成果"); return; }
 		var text = picked.map(function (f) { return mdReport(f, mode); }).join("\n---\n\n");
-		download(meta.reportName + new Date().toISOString().slice(0, 10) + ".md", text);
+		download(meta.reportName + localDate() + ".md", text);
 		setNotice("已导出 " + picked.length + " 份报告（MD）");
 	}
 	function exportOne(f) {
-		download("finding-" + mode + "-" + f.seq + "-" + new Date().toISOString().slice(0, 10) + ".md", mdReport(f, mode));
+		download("finding-" + mode + "-" + f.seq + "-" + localDate() + ".md", mdReport(f, mode));
 	}
 	function exportOverview() {
 		fetchAllForExport().then(function (all) {
-			download((mode === "code-audit" ? "audit" : "pentest") + "-overview-" + new Date().toISOString().slice(0, 10) + ".md", mdOverview(sesMeta, stats, all, mode));
+			download((mode === "code-audit" ? "audit" : "pentest") + "-overview-" + localDate() + ".md", mdOverview(sesMeta, stats, all, mode));
 			setNotice("总览报告已导出（MD）");
 		});
 	}
 	function exportHtml() {
 		fetchAllForExport().then(function (all) {
-			download((mode === "code-audit" ? "audit" : "pentest") + "-report-" + new Date().toISOString().slice(0, 10) + ".html", htmlReport(sesMeta, stats, all, mode), "text/html");
+			download((mode === "code-audit" ? "audit" : "pentest") + "-report-" + localDate() + ".html", htmlReport(sesMeta, stats, all, mode), "text/html");
 			setNotice("报告包已导出（HTML，可浏览器打印成 PDF）");
 		});
 	}
@@ -1548,12 +1564,12 @@ function ModePage(props) {
 		}),
 		React.createElement("div", { className: "dsh-rtr-toolbar" },
 			React.createElement(RangePicker, { range: range[0], customFrom: customFrom[0], customTo: customTo[0], onChange: function (sel, cf, ct) { setRange(sel); setCustomFrom(cf); setCustomTo(ct); } }),
-			meta.archetype !== "assets" ? React.createElement("select", { className: "dsh-rtr-select", value: severity[0], onChange: function (e) { setSeverity(e.target.value); } },
+			meta.archetype !== "assets" && mode !== "av-evasion" && mode !== "ctf-solver" && mode !== "binary-analysis" ? React.createElement("select", { className: "dsh-rtr-select", value: severity[0], onChange: function (e) { setSeverity(e.target.value); } },
 				React.createElement("option", { value: "" }, meta.archetype === "ledger" ? "全部优先级" : "全部等级"),
 				SEVERITY_ORDER.map(function (s) { return React.createElement("option", { key: s, value: s }, SEVERITY_LABEL[s]); })) : null,
 			React.createElement("select", { className: "dsh-rtr-select", value: status[0], onChange: function (e) { setStatus(e.target.value); } },
 				React.createElement("option", { value: "" }, "全部状态"),
-				Object.keys(STATUS_LABEL).map(function (s) { return React.createElement("option", { key: s, value: s }, statusLabelSetFor(meta.archetype)[s] || STATUS_LABEL[s]); })),
+				(STATUS_OPTIONS_OF[mode] || Object.keys(STATUS_LABEL)).map(function (s) { return React.createElement("option", { key: s, value: s }, statusLabelSetFor(meta.archetype, mode)[s] || STATUS_LABEL[s] || s); })),
 			React.createElement("input", { className: "dsh-rtr-search", placeholder: "搜索名称/简介/地址/CWE", value: q[0], onChange: function (e) { setQ(e.target.value); } }),
 			meta.archetype !== "timeline" ? React.createElement(Btn, { onClick: function () { setGrouped(!grouped[0]); } }, grouped[0] ? "平铺视图" : meta.groupLabel) : null,
 			React.createElement("span", { className: "dsh-rtr-spacer" }),

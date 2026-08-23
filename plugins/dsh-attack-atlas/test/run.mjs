@@ -1032,4 +1032,32 @@ await ok("isGatePassText：仅本门 PASS 前缀命中，FAIL/他门不误触", 
 	assert.equal(isGatePassText("", "code-audit", "A2"), false);
 });
 
+
+// ===== 分模式锚定与目标词表 =====
+await ok("锚定分模式：七模式各自对象/基线/纪律词，pentest 原文不变", () => {
+	const noTarget = (mode) => triggerMessage(TAXONOMIES[mode], { level: "category", categoryId: TAXONOMIES[mode].categories[0].id, formId: "all", targets: [] });
+	assert.match(noTarget("av-evasion"), /在验载荷/);
+	assert.match(noTarget("av-evasion"), /experiment-plan/);
+	assert.match(noTarget("av-evasion"), /本地默认验证/);
+	assert.match(noTarget("ctf-solver"), /题目/);
+	assert.match(noTarget("ctf-solver"), /平台规则即边界/);
+	assert.match(noTarget("code-audit"), /审计对象/);
+	assert.match(noTarget("code-audit"), /面映射/);
+	assert.match(noTarget("binary-analysis"), /B0/);
+	assert.match(noTarget("incident-response"), /保全清单/);
+	assert.match(noTarget("cloud-security"), /cloud-assets\.md/);
+	assert.match(noTarget("pentest"), /授权目标/);
+	assert.match(noTarget("pentest"), /assets\.md/);
+	const av = triggerMessage(TAXONOMIES["av-evasion"], { level: "category", categoryId: TAXONOMIES["av-evasion"].categories[0].id, formId: "all", targets: [{ label: "exp/x.jsp", kind: "webshell" }] });
+	assert.match(av, /对象锚定：「exp\/x.jsp」WebShell/, "新 kind 词表生效");
+	assert.match(av, /已测·过检 \/ 已测·被检出 \/ 不适用（无环境）/, "三选一按模式图例生成");
+});
+
+await ok("派单三选一按模式图例：ctf/binary/IR 各自词", () => {
+	const cell = (mode) => { const t = TAXONOMIES[mode]; return triggerMessage(t, { level: "cell", categoryId: t.categories[0].id, itemId: t.categories[0].items[0].id, formId: "all", targets: [] }); };
+	assert.match(cell("ctf-solver"), /已解·flag 验证 \/ 已试·卡点/);
+	assert.match(cell("binary-analysis"), /已分析·有结论 \/ 已分析·未见异常/);
+	assert.match(cell("incident-response"), /查实·有证据 \/ 已查·未命中/);
+});
+
 console.log(`\n${passed} passed`);

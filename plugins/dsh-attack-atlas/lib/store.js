@@ -94,8 +94,8 @@ CREATE TABLE IF NOT EXISTS capabilities (
 CREATE INDEX IF NOT EXISTS caps_mode ON capabilities(mode);
 `;
 
-export const TARGET_KINDS = ["domain", "web", "ip", "api", "miniprogram", "android", "ios", "desktop", "component", "cloud", "ai", "other"];
-const TARGET_KIND_LABELS = { domain: "域名", web: "Web 站点", ip: "IP/主机", api: "API 服务", miniprogram: "小程序", android: "Android", ios: "iOS", desktop: "桌面客户端", component: "组件/中间件", cloud: "云资产", ai: "AI 服务", other: "其他" };
+export const TARGET_KINDS = ["domain", "web", "ip", "api", "miniprogram", "android", "ios", "desktop", "component", "cloud", "ai", "repo", "sample", "payload", "webshell", "loader", "memshell", "c2", "host", "case", "challenge", "account", "tenant", "cluster", "other"];
+const TARGET_KIND_LABELS = { domain: "域名", web: "Web 站点", ip: "IP/主机", api: "API 服务", miniprogram: "小程序", android: "Android", ios: "iOS", desktop: "桌面客户端", component: "组件/中间件", cloud: "云资产", ai: "AI 服务", repo: "源码仓库", sample: "样本", payload: "载荷", webshell: "WebShell", loader: "加载器", memshell: "内存马", c2: "C2 通道", host: "主机", case: "案件", challenge: "题目", account: "云账号", tenant: "租户", cluster: "集群", other: "其他" };
 
 export function targetKindLabel(kind) {
 	return TARGET_KIND_LABELS[kind] || "其他";

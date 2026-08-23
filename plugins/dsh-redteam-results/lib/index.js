@@ -16,7 +16,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { openStore, registerFinding, updateFinding, removeFinding, getFinding, listFindings, listFindingsAll, groupByTarget, groupByTargetAll, computeStats, computeStatsAll, modeCounts, modeCountsAll, ledgerOverview, ledgerOverviewAll, getMeta, setMeta, SEVERITIES, STATUSES, EVIDENCE_LEVELS, SOURCE_ORIGINS } from "./store.js";
+import { openStore, registerFinding, updateFinding, removeFinding, getFinding, listFindings, listFindingsAll, groupByTarget, groupByTargetAll, computeStats, computeStatsAll, modeCounts, modeCountsAll, ledgerOverview, ledgerOverviewAll, getMeta, setMeta, SEVERITIES, STATUSES, MODE_STATUSES, ALL_STATUSES, EVIDENCE_LEVELS, SOURCE_ORIGINS, statusesOf } from "./store.js";
 
 const name = "dsh-redteam-results";
 const inject = ["tools", "webServer", "webRuntime", "agentPresets"];
@@ -225,10 +225,10 @@ function apply(ctx) {
 		description: "登记一条 finding 到本会话「redteam 成果」页（会话×模式自动隔离，不可指定他模式）。每条进报告的 finding 必登；status 复核前一律 pending；字段语义全集见 shared/refs/finding-fields.md。子代理登记落入其自身会话库。",
 		parameters: {
 			title: { type: "string", required: true, description: "名称（简短）" },
-			severity: { type: "string", required: true, enum: SEVERITIES, description: "等级" },
+			severity: { type: "string", enum: SEVERITIES, description: "等级（漏洞型模式必填；免杀/CTF/二进制等产物型模式不展示等级，可省略默认 medium，分类标签走 type）" },
 			target: { type: "string", required: true, description: "地址/目标/位置" },
 			summary: { type: "string", required: true, description: "一句话简介" },
-			type: { type: "string", description: "类型（按各模式类型词表，可含 CWE）" },
+			type: { type: "string", description: "分类标签（按模式本体词表：渗透/代审=漏洞类可含 CWE；免杀=交付物语言/形态如 jsp/aspx/powershell/nim/加载器/内存马；CTF=题目难度 easy/medium/hard/insane；二进制=判定/形态如 exe/dll/so/家族/壳；其余=各模式类型词表）" },
 			description: { type: "string", description: "描述（影响与成因）" },
 			poc: { type: "string", description: "测试过程+完整EXP：复杂=exp/<id>.py 脚本；简单=可直接复现的请求/命令" },
 			chain: { type: "string", description: "调用链 entry→sink（审计双链之一，每行一链）" },
@@ -286,7 +286,7 @@ function apply(ctx) {
 		description: "按 id 更新一条 finding：状态流转（verified/false-positive/fixed）、字段修订、verifyNote 记复核结论、retestNote 记复测结论。语义全集见 shared/refs/finding-fields.md。",
 		parameters: {
 			id: { type: "string", required: true, description: "finding id（如 pentest-3）" },
-			status: { type: "string", enum: STATUSES, description: "新状态（verified=验证成功且可再复现；code-reviewed=代码审计静态复核通过；fixed=仅限此前已验证、修复后复测不成功）" },
+			status: { type: "string", enum: ALL_STATUSES, description: "新状态（按模式子集：漏洞型=pending/code-reviewed/verified/false-positive/fixed，verified=验证成功且可再复现，fixed=仅限此前已验证后修复复测不成功；免杀=pending 在验/verified 过检/detected 被检出；CTF=pending 未解/stuck 卡点/verified 已解；二进制=pending 分析中/suspect 疑似/verified 已定论）" },
 			verifyNote: { type: "string", description: "复核注记（结论+依据，简短）" },
 			severity: { type: "string", enum: SEVERITIES },
 			title: { type: "string" },

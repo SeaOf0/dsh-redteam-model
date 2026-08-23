@@ -10,6 +10,17 @@ import { DatabaseSync } from "node:sqlite";
 
 const SEVERITIES = ["critical", "high", "medium", "low"];
 const STATUSES = ["pending", "code-reviewed", "verified", "false-positive", "fixed"];
+/** 分模式状态子集：漏洞生命周期五态=发现型（渗透/代审/攻防/应急/云）；
+ *  产物型模式用各自本体词——免杀=在验/过检/被检出、CTF=未解/卡点/已解、二进制=分析中/疑似/已定论。
+ *  verified 语义通用（各模式的"验证类终态"），verifiedAt 落库逻辑不变。 */
+const MODE_STATUSES = {
+	default: STATUSES,
+	"av-evasion": ["pending", "verified", "detected"],
+	"ctf-solver": ["pending", "stuck", "verified"],
+	"binary-analysis": ["pending", "suspect", "verified"]
+};
+const ALL_STATUSES = Array.from(new Set([].concat(...Object.values(MODE_STATUSES))));
+const statusesOf = (mode) => MODE_STATUSES[mode] ?? STATUSES;
 const EVIDENCE_LEVELS = ["confirmed", "partial", "unknown"];
 const SOURCE_ORIGINS = ["manual", "scan-confirmed", "scan-false-positive"];
 const DEFAULT_PAGE_SIZE = 10;
@@ -187,14 +198,15 @@ export function updateFinding(store, sessionId, mode, id, patch = {}) {
 	const row = store.get.get(sessionId, id);
 	if (row === undefined || row.mode !== mode) return undefined;
 	const prev = rowToFinding(row);
-	// fixed 只接受"此前已验证真实存在"的流转：先 verified、修复后复测不成功才可标记。
-	if (cleanEnum(patch.status, STATUSES, prev.status) === "fixed" && prev.status !== "verified") {
+	const statusSet = statusesOf(mode);
+	// fixed 只接受"此前已验证真实存在"的流转：先 verified、修复后复测不成功才可标记（仅含 fixed 的模式适用）。
+	if (statusSet.includes("fixed") && cleanEnum(patch.status, statusSet, prev.status) === "fixed" && prev.status !== "verified") {
 		throw new Error("已修复 仅可用于此前已验证（verified）真实存在的 finding——先验证成立，用户修复后复测不成功再标记 fixed");
 	}
 	const next = {
 		title: cleanText(patch.title, 200) || prev.title,
 		severity: cleanEnum(patch.severity, SEVERITIES, prev.severity),
-		status: cleanEnum(patch.status, STATUSES, prev.status),
+		status: cleanEnum(patch.status, statusSet, prev.status),
 		evidenceLevel: cleanEnum(patch.evidenceLevel, EVIDENCE_LEVELS, prev.evidenceLevel),
 		type: patch.type !== undefined ? cleanText(patch.type, 60) : prev.type,
 		target: patch.target !== undefined ? cleanText(patch.target, 500) : prev.target,
@@ -206,7 +218,7 @@ export function updateFinding(store, sessionId, mode, id, patch = {}) {
 		fix: patch.fix !== undefined ? cleanText(patch.fix) : prev.fix,
 		verifyNote: patch.verifyNote !== undefined ? cleanText(patch.verifyNote) : prev.verifyNote,
 		updatedAt: nowIso(),
-		verifiedAt: prev.status !== "verified" && cleanEnum(patch.status, STATUSES, prev.status) === "verified" ? nowIso() : prev.verifiedAt,
+		verifiedAt: prev.status !== "verified" && cleanEnum(patch.status, statusSet, prev.status) === "verified" ? nowIso() : prev.verifiedAt,
 		sourceOrigin: cleanEnum(patch.sourceOrigin, SOURCE_ORIGINS, prev.sourceOrigin)
 	};
 	for (const k of EXTRA_FIELDS) next[k] = patch[k] !== undefined ? cleanText(patch[k]) : prev[k];
@@ -418,4 +430,4 @@ export function setMeta(store, sessionId, { targetLabel = "", version = "", scop
 	return getMeta(store, sessionId);
 }
 
-export { SEVERITIES, STATUSES, EVIDENCE_LEVELS, SOURCE_ORIGINS, MODES };
+export { SEVERITIES, STATUSES, MODE_STATUSES, ALL_STATUSES, EVIDENCE_LEVELS, SOURCE_ORIGINS, MODES, statusesOf };
