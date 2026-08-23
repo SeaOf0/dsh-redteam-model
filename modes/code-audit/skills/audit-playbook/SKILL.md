@@ -58,7 +58,7 @@ shared/refs/finding-fields.md）；成果页列表/详情/导出报告/统计分
   shiro / log4j / struts2 / weblogic / spring 全家桶 / 若依等各有专项）：先核该组件全部
   已知漏洞面（版本比对 + 利用条件核对）再增量审业务代码；refs 未收录的框架按 `refs/lang/`
   通用手册 + 公开漏洞库检索兜底，并登记「未收录框架」到规则降级记录。
-- **经验召回**：开工读工作区 `lessons.md`（存在时）——同类框架/组件续审召回历史坑与方法
+- **经验召回**：开工读工作区 `lessons.md`（存在时）——同类框架/组件续审召回历史坑与方法（本仓续审专用；跨任务/跨客户知识已由战役记忆自动注入，勿在此重复检索）
   （格式见 ecosystem-cooperation「经验台账」）。
 - 完全不认识的代码/框架/系统：才走 0→1 全量审计，且先向用户确认范围与深度。
 
@@ -201,6 +201,13 @@ shared/refs/finding-fields.md）；成果页列表/详情/导出报告/统计分
 3. 确证（静态→待人工验证；动态→自动验证）→ 4. 报告 → 5. 修复 → 6. 复测（原 poc 复验）→ 闭环记录。
 - 状态机：疑似 → 待人工验证 → 已验证 / 已排除（误报）→ 已修复 → 已复测。
 
+**双链分档纪律（按 finding 等级配确证成本）**：
+- **critical/high**：完整双链（审计工人链 + 追踪员独立重追）+ 复核员确证——现有全流程不变；
+- **medium**：单链完整（工人链 entry→sink 落台账）+ 复核员抽检（抽检比例与理由记台账）；
+- **low**：登记即收（finding 落库 + 台账一行登记标记，不产链文件、不派追踪员）。
+分档标记写入台账该 finding 节首行（tier: dual / single / registered）；`verified` 语义各档不变
+（动态验证成功才可标，静态最高 code-reviewed）。
+
 **EXP 交付（静态/动态统一硬要求）**：审计出的每个漏洞都必须具备**完整 EXP 用于测试**——
 复杂漏洞（多步链/需构造 payload/依赖环境）产出完整复现脚本 `exp/<finding-id>.py`
 （参数化、破坏性步骤默认关闭、复现条件写头部注释）；简单漏洞（单请求/单输入触发）
@@ -255,7 +262,7 @@ L1验证:GET /toLogin 期望:任务调度中心
   **chain=调用链（必填，双链格式每行一链：`entry → … → sink(file:line)`）**、
   type=RCE 主线词表（任意上传RCE/未授权RCE/组合RCE/硬编码前端绕过/zip自解压RCE/深度反序列化/溢出RCE/其他）、
   **poc=完整 EXP（必填，见「确证闭环流程」节：复杂=exp/<finding-id>.py 脚本路径+用法；简单=直接可复现的请求/命令）**、
-  evidence=双链比对文件路径（artifacts/<id>-chains.md）、**fix=修复建议（必填）**。
+  evidence=双链台账路径（artifacts/audit-chains.md 的对应 finding 节）、**fix=修复建议（必填）**。
 - 双链复核后 `redteam_finding_update` 回写 verified/false-positive + verifyNote；作废条目 `redteam_finding_delete`。
 - **代审富字段登记必填组**：chainTracer=追踪员链（独立重追）、chainVerdict=双链一致性结论（页面双栏对照展示）、
   snippetEntry/snippetSink=入口与 sink 处关键代码——导出报告的「双链对照/一致性结论/关键代码」节
@@ -517,7 +524,7 @@ trivy config --config-policy ./policy --namespaces user <dir>
 | 审计工人扇出 | workflow（per 模块/per 语言） | 模块 + 该模块可达 sink 清单 → 候选 finding | sink 优先、只带该语言手册+sink 表（信息裁剪）；平均用力是大忌 |
 | 扫描命中复核组 | workflow（per 命中） | semgrep/trivy/osv 每个命中 → 真实调用链或丢弃 | **扫描器输出≠报告**（persona 义务）的并行落地 |
 | 供应链审计员 | 独立 spawn | SBOM → 版本核对 → 组件级 finding | 独立线（数据源不同：依赖而非代码） |
-| **调用链追踪员** | spawn（per 候选 finding） | 候选 → entry→sink 独立追踪链 | 与审计工人**双链独立**，Gate A2 比对 |
+| **调用链追踪员** | spawn（per 候选 finding，**按级分档**：critical/high 必派；medium 抽检或单链；low 不派） | 候选 → entry→sink 独立追踪链 | 与审计工人**双链独立**，Gate A2 比对 |
 | 动态验证员 | spawn | 有动态环境时：finding → 请求/响应证据 | 无环境 → 全部进待人工验证清单 |
 | 复核员 | 独立 spawn（independent-review） | 原始代码段 → 确认/挑战 + gate | 跨 harness 复核列为建议项（用户触发） |
 | 报告员 | spawn | gate-pass findings → 六字段 + 待人工验证清单汇总 | 调用链标注反编译来源（如适用） |
@@ -555,7 +562,7 @@ trivy config --config-policy ./policy --namespaces user <dir>
 | 门 | 校验物 | 通过判据 |
 |---|---|---|
 | **Gate A1 面映射** | 框架识别 + 入口清单 + sink 面 + 深度分级 | 无面映射不开深审；快速扫描级可轻量化（仅 sink 清单） |
-| **Gate A2 双链一致** | 审计工人链 vs 追踪员链（调用 `stage_gate` 时以**该 finding 的双链比对文件**作 `file` 参数，落盘 `artifacts/<finding-id>-chains.md`） | 两条 entry→sink 链一致才进复核；不一致 → 退回重追，仍不一致标「未决」（见三要素判据） |
+| **Gate A2 双链一致** | 审计工人链 vs 追踪员链（调用 `stage_gate` 时以**统一双链台账** `artifacts/audit-chains.md` 作 `file` 参数——每 finding 一节，节内含 entry/sink 行与分档标记） | 两条 entry→sink 链一致才进复核；不一致 → 退回重追，仍不一致标「未决」（见三要素判据） |
 | 语义门禁：复核 gate-pass（无 stage_gate 编号） | 复核记录（+关键项跨 harness 复核建议项） | 无复核记录的报告条目拒收 |
 | **Gate A3 覆盖度** | audit-coverage-matrix.md + scan-reconcile.md（扫描命中对账表落盘文件名） | 每格每命中都有终态；无终态格子/对账不守恒 = 报告不完整退回 |
 

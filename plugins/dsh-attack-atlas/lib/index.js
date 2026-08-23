@@ -51,6 +51,18 @@ function theStore() {
 //#region 通道与工具共用逻辑
 
 /** 双击派单的注入文案（用户消息；模型按 playbook 对应章节执行并回写点亮）。 */
+/** 各模式执行姿势词（派单文案用模式自己的语态，不统一用攻击措辞）。 */
+const MODE_POSTURE = {
+	pentest: "按 playbook 验证姿势执行（最小影响、非破坏性）",
+	"code-audit": "按 playbook 验证姿势执行（最小影响、非破坏性）",
+	"attack-defense": "按 playbook 验证姿势执行（最小影响、非破坏性）",
+	"cloud-security": "按 playbook 验证姿势执行（只读探测优先、最小影响）",
+	"binary-analysis": "按 playbook 分析姿势执行（样本不外传；动态分析须隔离环境）",
+	"av-evasion": "按 playbook 实验姿势执行（本地默认验证；授权目标按任务）",
+	"incident-response": "按 playbook 取证姿势执行（先保全后分析、只读优先）",
+	"ctf-solver": "按 playbook 解题姿势执行（平台规则内，flag 以平台回显为准）"
+};
+const postureOf = (taxonomy) => MODE_POSTURE[taxonomy?.id] || MODE_POSTURE.pentest;
 function trioWords(taxonomy) {
 	const sl = taxonomy.stateLabels || {};
 	return `${sl["tested-found"] || "已测·有发现"} / ${sl["tested-clear"] || "已测·未命中"} / ${sl.na || "N-A 附原因"}`;
@@ -106,12 +118,12 @@ export function triggerMessage(taxonomy, payload) {
 	const category = loc?.category;
 	const item = loc?.item;
 	let refHint = "";
-	if (item?.ref) refHint = item.ref.startsWith("pentest:") ? `\n知识手册：pentest refs/${item.ref.slice(8)}（开测前先读对应验证姿势）` : `\n知识手册：refs/${item.ref}（开测前先读对应验证姿势）`;
+	if (item?.ref) refHint = item.ref.startsWith("pentest:") ? `\n知识手册：pentest refs/${item.ref.slice(8)}（开测前先读对应验证姿势）` : item.ref === "README.md" ? `\n知识手册：refs/README.md（按目标语言快速路由到对应语言手册后再读验证姿势——语言类格子不预设语言）` : `\n知识手册：refs/${item.ref}（开测前先读对应验证姿势）`;
 	else if (item?.pb) refHint = `\n打法出处：本模式 playbook ${item.pb}`;
 	return [
 		`[AttackAtlas·格子派单] 对以下格子开测（${taxonomy.label}模式${formLabel}）：`,
 		`主类「${category ? category.label : payload.categoryId}」｜子项「${item ? item.label : payload.itemId}」${refHint}`,
-		`按 playbook 验证姿势执行（最小影响、非破坏性）；终态三选一（${trioWords(taxonomy)}），完成后调用 redteam_coverage_mark 回写点亮；有发现即 redteam_finding_register 登记。`,
+		`${postureOf(taxonomy)}；终态三选一（${trioWords(taxonomy)}），完成后调用 redteam_coverage_mark 回写点亮；有发现即 redteam_finding_register 登记。`,
 		anchorLines(taxonomy, payload.targets)
 	].join("\n");
 }
@@ -722,6 +734,8 @@ export async function dispatch(ctx, st, endpoint, payload) {
 
 /** 门 id → 阶段 id（八模式）。流程带顺序语义：过门凭据蕴含此前阶段已完成，
  *  少门模式（pentest 3 门/7 阶段等）靠级联补齐，未设门阶段留手动。 */
+export /** 级联不点亮的阶段（条件性阶段——点亮须自身凭据，过门不蕴含完成）：pentest s3 登陆口专线（无帐密才走）、binary s3 动态分析（无动态环境即 N-A）。 */
+const GATE_NO_FILL = { pentest: ["s3"], "binary-analysis": ["s3"] };
 export const GATE_STAGE = {
 	pentest: { "P1": "s1", "P2": "s5", "P3": "s6" },
 	"code-audit": { "A1": "s2", "A2": "s4", "A3": "s5" },
@@ -746,7 +760,9 @@ export function autoStageFromGate(st, taxonomy, sessionId, mode, gateId) {
 	const idx = stages.findIndex((s) => s.id === target);
 	if (idx < 0) return [];
 	const marked = [];
+	const noFill = GATE_NO_FILL[mode] ?? [];
 	for (let i = 0; i <= idx; i++) {
+		if (noFill.includes(stages[i].id)) continue; // 条件性阶段不凭过门推定完成
 		try {
 			markStage(st, sessionId, mode, stages[i].id, "done");
 			marked.push(stages[i].id);

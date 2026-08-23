@@ -854,8 +854,8 @@ await ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
 import { resolveKey, canonicalKey, resolveStageId, resolveStateLabel, parseCoverageTable, applyCoverageRows, autoLightFromFinding, validateCoverageRef, validateStageRef } from "../lib/index.js";
 const CA = TAXONOMIES["code-audit"];
 
-await ok("标签归一：常用中文标签全部自愈（code-audit）", () => {
-	// 模型按中文标签回写是常态，须全部归一到体系 key
+await ok("R3·昨日七连拒实测标签全部自愈（code-audit）", () => {
+	// 2026-08-23 数字通会话实录：模型用中文标签调 mark 全被拒——现在全部归一
 	const cases = {
 		"任意上传RCE": "rce-main/upload-rce", "未授权RCE": "rce-main/unauth-rce", "组合RCE": "rce-main/combo-rce",
 		"深度反序列化": "rce-main/deep-deser", "溢出RCE": "rce-main/overflow-rce", "zip自解压RCE": "rce-main/zipslip-rce",
@@ -1065,6 +1065,34 @@ await ok("派单三选一按模式图例：ctf/binary/IR 各自词", () => {
 	assert.match(cell("ctf-solver"), /已解·flag 验证 \/ 已试·卡点/);
 	assert.match(cell("binary-analysis"), /已分析·有结论 \/ 已分析·未见异常/);
 	assert.match(cell("incident-response"), /查实·有证据 \/ 已查·未命中/);
+});
+
+
+// ===== 评估批：ref 路由化 / 姿势词 / 级联排除 =====
+await ok("sink 类格子 refHint 走 README 路由（不预设语言）", () => {
+	const msg = triggerMessage(CA, { level: "cell", categoryId: "sink-core", itemId: "sqli", formId: "all", targets: [] });
+	assert.match(msg, /refs\/README\.md（按目标语言快速路由/, "sqli 派单不再硬编码 java 手册");
+	const path = triggerMessage(CA, { level: "cell", categoryId: "sink-core", itemId: "path", formId: "all", targets: [] });
+	assert.match(path, /按目标语言快速路由/);
+});
+
+await ok("派单姿势词按模式语态：IR=取证 / av=实验 / ctf=解题", () => {
+	const cell = (mode) => { const t2 = TAXONOMIES[mode]; return triggerMessage(t2, { level: "cell", categoryId: t2.categories[0].id, itemId: t2.categories[0].items[0].id, formId: "all", targets: [] }); };
+	assert.match(cell("incident-response"), /取证姿势执行（先保全后分析、只读优先）/);
+	assert.match(cell("av-evasion"), /实验姿势执行（本地默认验证/);
+	assert.match(cell("ctf-solver"), /解题姿势执行（平台规则内/);
+	assert.match(cell("pentest"), /验证姿势执行（最小影响、非破坏性）/, "渗透保持原姿势词");
+});
+
+await ok("级联排除：pentest P2 不点亮 s3 登陆口专线；binary B1 不点亮 s3 动态分析", () => {
+	const st = openStore(":memory:");
+	const marked = autoStageFromGate(st, TAXONOMIES["pentest"], "nf-1", "pentest", "P2");
+	assert.ok(!marked.includes("s3"), "s3 登陆口专线不凭过门推定完成");
+	assert.ok(marked.includes("s5") && marked.includes("s0"), "目标与此前无条件阶段照常点亮");
+	const marked2 = autoStageFromGate(st, TAXONOMIES["binary-analysis"], "nf-2", "binary-analysis", "B1");
+	assert.ok(!marked2.includes("s3"), "binary s3 动态分析不凭 B1 推定完成");
+	assert.ok(marked2.includes("s4"), "B1 目标阶段照常");
+	st.close();
 });
 
 console.log(`\n${passed} passed`);
