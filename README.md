@@ -143,6 +143,7 @@ dsh-redteam-model/
 ### v1.1.3（2026-08-23）
 
 - 修复记忆系统bug以及优化功能
+- 修复AttackAtlas体系中的关于key值过于精确导致无法finding记录的bug
 
 ### v1.1.2（2026-08-22）
 

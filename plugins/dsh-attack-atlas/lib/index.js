@@ -12,6 +12,7 @@
 
 import path from "node:path";
 import crypto from "node:crypto";
+import fs from "node:fs";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, removeCap, exportCaps, importCaps } from "./store.js";
@@ -113,6 +114,20 @@ function resolveAgents(ctx) {
 	return undefined;
 }
 
+/** 会话真实模式的权威源：agents 注册表 → composedPreset（列表源重启后可能退化为组合名）。
+ *  工具路径（sessionOf/exec）与事件路径（仅 sessionId）共用。 */
+function modeOfSession(ctx, sessionId) {
+	const agents = resolveAgents(ctx);
+	const agent = agents?.get?.(sessionId);
+	let mode = "";
+	try { mode = String(ctx.agentPresets?.composedPreset?.(agent?.ctx) ?? ""); } catch { /* 组合未就绪 */ }
+	if (!ATLAS_MODES.includes(mode)) {
+		const header = agent?.session?.header?.agentPreset;
+		mode = ATLAS_MODES.includes(header) ? header : "";
+	}
+	return mode;
+}
+
 /** 合并类目：内置 taxonomy 副本 + 本模式自定义主类/子类（key 同构；_cap 携带自定义元数据）。
  *  方法论的校验/定位/信封全部走合并版——自定义模块自动被认得。 */
 function taxonomyWithCaps(st, taxonomy, mode) {
@@ -131,20 +146,228 @@ function taxonomyWithCaps(st, taxonomy, mode) {
 	return { ...taxonomy, categories };
 }
 
-/** 覆盖 key 对合并体系的存在性校验：拼错即拒（否则终态落库但矩阵永不渲染——静默丢失）。
- *  key 形如 cat（主类整组）或 cat/item；自定义 u- 主类/子类经合并体系一并认得。 */
-export function validateCoverageRef(taxonomy, key) {
+//#region 词典治理：标签等价与报错带候选
+
+const LABEL_STRIP = /[\s·•,，、。.；;：:！!？?（）()\[\]【】「」『』/／\-—_~*"'`|｜\\#]/g;
+const FUZZY_MIN = 0.45;    // bigram Dice 最低分：低于不认（宁拒勿猜）
+const FUZZY_MARGIN = 1.25; // 最佳与次佳须拉开倍率（防歧义误亮）
+const FUZZY_INCOV = 0.6;   // 输入侧 bigram 覆盖率：垃圾串只零星命中即拒
+
+function normLabel(s) {
+	return String(s ?? "").toLowerCase().normalize("NFKC").replace(LABEL_STRIP, "");
+}
+function bigramSet(s) {
+	const set = new Set();
+	for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+	return set;
+}
+function diceScore(a, b) {
+	if (!a || !b) return 0;
+	const A = bigramSet(a), B = bigramSet(b);
+	if (!A.size || !B.size) return 0;
+	let hit = 0;
+	for (const g of A) if (B.has(g)) hit++;
+	return (2 * hit) / (A.size + B.size);
+}
+
+function keyLabel(taxonomy, key) {
 	const [catId, itemId] = String(key).split("/");
-	const category = taxonomy.categories.find((c) => c.id === catId);
-	if (!category) return `主类不存在：${catId}（不在${taxonomy.label}体系，key 拼写有误？）`;
-	if (itemId !== undefined && !category.items.some((i) => i.id === itemId)) return `子项不存在：${key}（主类「${category.label}」下无此子项）`;
+	const cat = taxonomy.categories.find((c) => c.id === catId);
+	if (!cat) return key;
+	if (itemId === undefined) return cat.label;
+	return `${cat.label}/${cat.items.find((i) => i.id === itemId)?.label ?? itemId}`;
+}
+
+/** 在一组候选（item 或 category）里按 标签全等 → 包含 → bigram Dice 选出唯一解。
+ *  返回 { ok, best, second, top }——ok=Dice 过阈、与次佳拉开倍率、且输入侧覆盖率达标。 */
+function bestOf(cands, norm) {
+	const inputGrams = bigramSet(norm);
+	let best = null, second = 0;
+	for (const c of cands) {
+		const grams = bigramSet(normLabel(c.label));
+		let hit = 0;
+		for (const g of inputGrams) if (grams.has(g)) hit++;
+		const score = inputGrams.size && grams.size ? (2 * hit) / (inputGrams.size + grams.size) : 0;
+		const inputCov = inputGrams.size ? hit / inputGrams.size : 0;
+		if (!best || score > best.score) { if (best) second = best.score; best = { ...c, score, inputCov }; }
+		else if (score > second) second = score;
+	}
+	const top = cands.map((c) => { const grams = bigramSet(normLabel(c.label)); let hit = 0; for (const g of inputGrams) if (grams.has(g)) hit++; return { ...c, score: inputGrams.size && grams.size ? (2 * hit) / (inputGrams.size + grams.size) : 0 }; }).sort((a, b) => b.score - a.score).slice(0, 5);
+	const ok = !!(best && inputGrams.size >= 3 && best.score >= FUZZY_MIN && best.score >= FUZZY_MARGIN * Math.max(second, 0.01) && best.inputCov >= FUZZY_INCOV);
+	return { ok, best, top };
+}
+
+/** 解析覆盖 key：canonical id（含 cat/中文子项混合形）→ 标签全等 → 包含 → Dice 模糊。
+ *  返回 { key, catId, itemId? }（解析成功）/ { ambiguous: [...] } / { missingItem: {...} } / null。
+ *  解析示例：「任意上传RCE」→ rce-main/upload-rce（模糊）；「深度反序列化」→ rce-main/deep-deser（全等）。 */
+export function resolveKey(taxonomy, input) {
+	const raw = String(input ?? "").trim();
+	if (!raw) return null;
+	const norm = normLabel(raw);
+	if (!norm) return null;
+	if (raw.includes("/")) {
+		const idx = raw.indexOf("/");
+		const catId = raw.slice(0, idx), itemIdRaw = raw.slice(idx + 1);
+		const cat = taxonomy.categories.find((c) => c.id === catId);
+		if (cat) {
+			if (cat.items.some((it) => it.id === itemIdRaw)) return { key: `${catId}/${itemIdRaw}`, catId, itemId: itemIdRaw, via: "id" };
+			const items = cat.items.map((it) => ({ key: `${catId}/${it.id}`, catId, itemId: it.id, label: it.label }));
+			for (const it of items) if (normLabel(it.label) === normLabel(itemIdRaw)) return { ...it, via: "label" };
+			const hits = items.filter((it) => { const l = normLabel(it.label); return l.includes(normLabel(itemIdRaw)) || normLabel(itemIdRaw).includes(l); });
+			if (hits.length === 1) return { ...hits[0], via: "contains" };
+			const b = bestOf(items, normLabel(itemIdRaw));
+			if (b.ok) return { key: b.best.key, catId, itemId: b.best.itemId, via: "fuzzy" };
+			if (b.best && b.best.score >= FUZZY_MIN) return { ambiguous: b.top.filter((x) => x.score >= FUZZY_MIN).map((x) => ({ key: x.key, catId, itemId: x.itemId })) };
+			return { missingItem: { catId, input: raw } };
+		}
+	}
+	const allItems = [];
+	for (const c of taxonomy.categories) for (const it of c.items) allItems.push({ key: `${c.id}/${it.id}`, catId: c.id, itemId: it.id, label: it.label });
+	for (const it of allItems) if (normLabel(it.label) === norm) return { ...it, via: "label" };
+	const catExact = taxonomy.categories.find((c) => normLabel(c.label) === norm);
+	if (catExact) return { key: catExact.id, catId: catExact.id, via: "label" };
+	const hits = allItems.filter((it) => { const l = normLabel(it.label); return l.includes(norm) || norm.includes(l); });
+	const catHits = taxonomy.categories.filter((c) => { const l = normLabel(c.label); return l.includes(norm) || norm.includes(l); });
+	if (hits.length === 1) return { ...hits[0], via: "contains" };
+	if (hits.length > 1) {
+		// 最长标签优先：更具体的包含胜出（「深度反序列化」→ rce-main/deep-deser 而非 sink-core/deser）；
+		// 同长才是真歧义（「上传」命中多个上传格）。
+		const byLen = [...hits].sort((a, b) => normLabel(b.label).length - normLabel(a.label).length);
+		if (normLabel(byLen[0].label).length > normLabel(byLen[1].label).length) return { ...byLen[0], via: "contains" };
+		return { ambiguous: byLen.slice(0, 6).map((h) => ({ key: h.key, catId: h.catId, itemId: h.itemId })) };
+	}
+	if (catHits.length === 1) return { key: catHits[0].id, catId: catHits[0].id, via: "contains" };
+	const bi = bestOf(allItems, norm);
+	const bc = bestOf(taxonomy.categories.map((c) => ({ key: c.id, catId: c.id, label: c.label })), norm);
+	if (bi.ok && (!bc.best || bi.best.score >= bc.best.score)) return { key: bi.best.key, catId: bi.best.catId, itemId: bi.best.itemId, via: "fuzzy" };
+	if (bc.ok) return { key: bc.best.key, catId: bc.best.key, via: "fuzzy-cat" };
+	if (bi.best && bi.best.score >= FUZZY_MIN && bi.best.inputCov >= FUZZY_INCOV) return { ambiguous: bi.top.filter((x) => x.score >= FUZZY_MIN).map((x) => ({ key: x.key, catId: x.catId, itemId: x.itemId })) };
+	return null;
+}
+
+export function canonicalKey(taxonomy, input) {
+	const res = resolveKey(taxonomy, input);
+	return res?.key ?? undefined;
+}
+
+/** 覆盖 key 对合并体系的存在性校验：拼错即拒（否则终态落库但矩阵永不渲染——静默丢失）。
+ *  key 形如 cat（主类整组）或 cat/item；亦接受主类/子类中文标签；报错必带合法候选。 */
+export function validateCoverageRef(taxonomy, key) {
+	const raw = String(key ?? "").trim();
+	if (!raw) return "key 不能为空（形如 cat/item 或 cat，也接受主类/格子中文标签）";
+	const res = resolveKey(taxonomy, raw);
+	if (res?.key) return "";
+	if (res?.missingItem) {
+		const cat = taxonomy.categories.find((c) => c.id === res.missingItem.catId);
+		return `子项不存在：「${raw}」——主类「${cat?.label ?? res.missingItem.catId}」合法子项：${(cat?.items ?? []).map((it) => `${it.label}(${cat.id}/${it.id})`).join("、")}`;
+	}
+	if (res?.ambiguous) return `「${raw}」无法唯一解析（命中多格）：${res.ambiguous.map((a) => keyLabel(taxonomy, a.key)).join("、")}——请写完整标签或 cat/item 形式 key`;
+	return `主类不存在：「${raw}」（不在${taxonomy.label}体系）。合法主类：${taxonomy.categories.map((c) => `${c.label}(${c.id})`).join("、")}；key=主类id 或 主类id/子项id，也接受中文标签`;
+}
+
+/** 阶段解析：canonical id → 标签全等/包含 → Dice。 */
+export function resolveStageId(taxonomy, input) {
+	const raw = String(input ?? "").trim();
+	if (!raw) return "";
+	const stages = taxonomy.stages ?? [];
+	for (const s of stages) if (s.id === raw) return s.id;
+	const norm = normLabel(raw);
+	for (const s of stages) if (normLabel(s.label) === norm) return s.id;
+	for (const s of stages) { const l = normLabel(s.label); if (l.includes(norm) || norm.includes(l)) return s.id; }
+	const b = bestOf(stages.map((s) => ({ key: s.id, label: s.label })), norm);
+	return b.ok ? b.best.key : "";
+}
+
+/** 阶段 id 对体系的存在性校验（同上——防拼错静默丢失；报错带全量阶段清单）。 */
+export function validateStageRef(taxonomy, stage) {
+	const raw = String(stage ?? "").trim();
+	if (resolveStageId(taxonomy, raw)) return "";
+	return `阶段不存在：「${raw}」（不在${taxonomy.label}作战流程）。合法阶段：${(taxonomy.stages ?? []).map((s) => `${s.id} ${s.label}`).join("、")}——也接受阶段中文标签`;
+}
+
+//#endregion
+
+//#region 终态标签等价 + 覆盖表批量同步
+
+const STATE_ALIASES = [
+	["tested-found", ["已测有发现", "已审有finding", "有finding", "走通", "有战果", "发现"]],
+	["tested-clear", ["已测未命中", "已审无finding", "无finding", "未走通", "未命中"]],
+	["na", ["不适用"]],
+	["budget-stop", ["未完成", "让位", "预算耗尽", "预算"]]
+];
+
+/** 终态归一：canonical id 或中文标签（走通/未命中/N-A/未完成…）→ 四态；不认识返回 ""。 */
+export function resolveStateLabel(input) {
+	const raw = String(input ?? "").trim().toLowerCase();
+	if (CELL_STATES.includes(raw)) return raw;
+	const norm = normLabel(raw);
+	for (const [canonical, aliases] of STATE_ALIASES) {
+		if (norm === normLabel(canonical) || aliases.includes(norm)) return canonical;
+	}
 	return "";
 }
 
-/** 阶段 id 对体系的存在性校验（同上——防拼错静默丢失）。 */
-export function validateStageRef(taxonomy, stage) {
-	return (taxonomy.stages || []).some((s) => s.id === stage) ? "" : `阶段不存在：${stage}（不在${taxonomy.label}作战流程）`;
+/** 解析覆盖矩阵 markdown 表：表头须含「格子」「终态」列（兼容 key/state/原因/finding/目标列名），
+ *  分隔行自动跳过；返回带原始行号的行集。 */
+export function parseCoverageTable(text) {
+	const rows = [];
+	const lines = String(text ?? "").split(/\r?\n/);
+	let cols = null;
+	for (let i = 0; i < lines.length; i++) {
+		const line = lines[i].trim();
+		if (!line.startsWith("|")) { if (cols) break; continue; }
+		const cells = line.replace(/^\|/, "").split("|").map((c) => c.trim());
+		if (cells.length && cells[cells.length - 1] === "") cells.pop();
+		if (cells.every((c) => /^:?-{2,}:?$/.test(c))) continue;
+		if (!cols) {
+			const norm = cells.map((c) => normLabel(c));
+			const keyCol = norm.findIndex((c) => c.includes("格子") || c === "key");
+			const stateCol = norm.findIndex((c) => c.includes("终态") || c === "state");
+			if (keyCol < 0 || stateCol < 0) continue;
+			cols = {
+				key: keyCol, state: stateCol,
+				reason: norm.findIndex((c) => c.includes("原因")),
+				finding: norm.findIndex((c) => c.includes("finding")),
+				target: norm.findIndex((c) => c.includes("目标"))
+			};
+			continue;
+		}
+		const at = (idx) => (idx >= 0 && idx < cells.length ? cells[idx] : "");
+		rows.push({ key: at(cols.key), state: at(cols.state), reason: at(cols.reason), findingRefs: at(cols.finding), target: at(cols.target), line: i + 1 });
+	}
+	return rows;
 }
+
+/** 批量落终态（sync 工具与测试共用核心）：逐行解析（key/终态均走标签归一）→ markCell；
+ *  坏行跳过并附行号说明，好行照常落库。 */
+export function applyCoverageRows(st, taxonomy, sessionId, mode, rows) {
+	const applied = [];
+	const failed = [];
+	let n = 0;
+	for (const row of rows) {
+		n++;
+		const where = row.line ? `第 ${row.line} 行` : `rows[${n - 1}]`;
+		const keyRaw = String(row.key ?? "").trim();
+		const state = resolveStateLabel(row.state);
+		if (!keyRaw) { failed.push(`${where}：格子列为空，跳过`); continue; }
+		if (!state) { failed.push(`${where}：「${row.state}」不是合法终态（tested-found/tested-clear/na/budget-stop，接受中文标签），跳过`); continue; }
+		let key = keyRaw;
+		if (taxonomy) {
+			const bad = validateCoverageRef(taxonomy, keyRaw);
+			if (bad) { failed.push(`${where}：${bad}，跳过`); continue; }
+			key = canonicalKey(taxonomy, keyRaw) ?? keyRaw;
+		}
+		try {
+			markCell(st, sessionId, mode, key, { state, reason: String(row.reason ?? ""), findingRefs: String(row.findingRefs ?? ""), target: String(row.target ?? "") });
+			applied.push(key);
+		} catch (e) {
+			failed.push(`${where}：${e?.message ?? e}，跳过`);
+		}
+	}
+	return { applied, failed };
+}
+
+//#endregion
 
 //#endregion
 
@@ -207,15 +430,7 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		// 会话真实模式的权威源：agents 注册表 → composedPreset（列表源重启后可能退化为组合名）。
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		const agents = resolveAgents(ctx);
-		const agent = agents?.get?.(sessionId);
-		let mode = "";
-		try { mode = String(ctx.agentPresets?.composedPreset?.(agent.ctx) ?? ""); } catch { /* 组合未就绪 */ }
-		if (!ATLAS_MODES.includes(mode)) {
-			const header = agent?.session?.header?.agentPreset;
-			mode = ATLAS_MODES.includes(header) ? header : "";
-		}
-		return { mode };
+		return { mode: modeOfSession(ctx, sessionId) };
 	}
 	if (endpoint === "coverage.get") {
 		const sessionId = String(p.sessionId ?? "");
@@ -227,11 +442,14 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		if (!sessionId) throw new Error("sessionId required");
 		const mode = String(p.mode ?? "pentest");
 		const base = TAXONOMIES[mode];
+		let key = String(p.key ?? "");
 		if (base && !base.pending) {
-			const bad = validateCoverageRef(taxonomyWithCaps(st, base, mode), p.key);
+			const tax = taxonomyWithCaps(st, base, mode);
+			const bad = validateCoverageRef(tax, key);
 			if (bad) throw new Error(bad);
+			key = canonicalKey(tax, key) ?? key;
 		}
-		const cell = markCell(st, sessionId, mode, String(p.key ?? ""), {
+		const cell = markCell(st, sessionId, mode, key, {
 			state: String(p.state ?? ""), reason: p.reason, findingRefs: p.findingRefs, target: p.target
 		});
 		return { ok: true, cell };
@@ -458,13 +676,107 @@ export async function dispatch(ctx, st, endpoint, payload) {
 
 //#region host wiring
 
+//#region finding 自动点亮与覆盖提醒
+
+/** 常用 CWE → 类目语义标签（与体系子项标签对齐后再走 resolveKey；未收录返回 ""，保守跳过）。 */
+const CWE_LABELS = {
+	78: "命令执行", 77: "命令注入", 89: "SQL 注入", 79: "XSS", 22: "路径穿越", 918: "SSRF",
+	611: "XXE", 502: "反序列化", 674: "反序列化", 94: "代码注入", 917: "表达式注入", 915: "表达式注入",
+	434: "任意文件上传", 98: "文件包含", 73: "文件读写", 352: "CSRF", 287: "认证绕过", 862: "未授权访问",
+	798: "硬编码凭据", 321: "硬编码凭据", 327: "密码学实现误用", 362: "并发", 840: "业务逻辑", 1336: "正则拒绝服务"
+};
+function cweToLabel(cwe) {
+	const m = /(\d+)/.exec(String(cwe ?? ""));
+	return m ? (CWE_LABELS[Number(m[1])] ?? "") : "";
+}
+
+let resultsStoreCache;
+/** 从 redteam-results 库反查 finding id（同进程只读；失败返回空串——自动面缺 ref 不缺格）。 */
+async function findFindingIdInResults(sessionId, mode, title) {
+	if (!title) return "";
+	const mod = await import("@dsh-external/dsh-redteam-results/store");
+	if (!resultsStoreCache) resultsStoreCache = mod.openStore(path.join(os.homedir(), ".dsh", "redteam-results", "results.db"));
+	const hit = (mod.allFindings(resultsStoreCache, sessionId, mode) || []).find((f) => f.title === title);
+	return hit?.id ?? "";
+}
+
+/** 每主类一次的覆盖提醒限流（进程级；会话删除/重启自然重置）。 */
+const NUDGED_CATS = new Set();
+function nudgeUndetermined(ctx, sessionId, mode, taxonomy, doneKeys, markedCats, deps = {}) {
+	const out = [];
+	let agent = null;
+	if (!deps.followup) {
+		const agents = resolveAgents(ctx);
+		agent = agents?.get?.(sessionId);
+		if (!agent || typeof agent.followup !== "function") return out;
+	}
+	for (const catId of markedCats) {
+		const cat = taxonomy.categories.find((c) => c.id === catId);
+		if (!cat) continue;
+		const nk = `${sessionId}:${mode}:${catId}`;
+		if (NUDGED_CATS.has(nk)) continue;
+		const undetermined = cat.items.filter((it) => !doneKeys.has(`${catId}/${it.id}`));
+		if (!undetermined.length) continue;
+		NUDGED_CATS.add(nk);
+		const names = undetermined.slice(0, 8).map((it) => it.label).join("、") + (undetermined.length > 8 ? " 等" : "");
+		const message = {
+			id: `atlas-nudge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+			content: [{ type: "text", text: `[AttackAtlas·覆盖提醒] finding 已自动点亮「${cat.label}」内关联格子。该主类仍有 ${undetermined.length} 格未终态：${names}——收口时逐格终态三选一，或用 redteam_coverage_sync 整表批量回写（key/终态均可写中文标签）。` }],
+			source: { kind: "user" }
+		};
+		if (deps.followup) deps.followup(message); else agent.followup(message);
+		out.push(catId);
+	}
+	return out;
+}
+
+/** finding 登记成功 → 类型/CWE/标题走 resolveKey 解析格子 → 仅对无终态格子落 tested-found
+ *  （人工终态永不被自动覆盖）；关联主类若有剩余未终态格，注入一次覆盖提醒。
+ *  deps 供测试注入：{ mode, findFindingId, followup }。 */
+export async function autoLightFromFinding(ctx, st, sessionId, findingArgs, deps = {}) {
+	const mode = deps.mode ?? modeOfSession(ctx, sessionId);
+	if (!mode) return { marked: [], nudged: [] };
+	const base = TAXONOMIES[mode];
+	if (!base || base.pending) return { marked: [], nudged: [] };
+	const taxonomy = taxonomyWithCaps(st, base, mode);
+	const title = String(findingArgs?.title ?? "").trim();
+	const cues = [String(findingArgs?.type ?? "").trim(), cweToLabel(findingArgs?.cwe), title].filter(Boolean);
+	if (!cues.length) return { marked: [], nudged: [] };
+	let ref = "";
+	try {
+		ref = deps.findFindingId ? await deps.findFindingId(sessionId, mode, title) : await findFindingIdInResults(sessionId, mode, title);
+	} catch { ref = ""; }
+	const cov = getCoverage(st, sessionId, mode);
+	const done = new Set(cov.cells.map((c) => c.key));
+	const marked = [];
+	const markedCats = new Set();
+	for (const cue of cues) {
+		const res = resolveKey(taxonomy, cue);
+		if (!res || !res.key || res.ambiguous || res.missingItem) continue;
+		if (done.has(res.key)) continue;
+		markCell(st, sessionId, mode, res.key, {
+			state: "tested-found",
+			reason: `自动：finding${ref ? ` ${ref}` : ""}「${title.slice(0, 40)}」类型关联点亮（人工终态可覆盖）`,
+			findingRefs: ref,
+			target: String(findingArgs?.target ?? "").slice(0, 120)
+		});
+		done.add(res.key);
+		marked.push(res.key);
+		markedCats.add(res.catId);
+	}
+	const nudged = markedCats.size ? nudgeUndetermined(ctx, sessionId, mode, taxonomy, done, [...markedCats], deps) : [];
+	return { marked, nudged };
+}
+
+//#endregion
+
 function apply(ctx) {
 	//#region 模型工具（宿主平面；九模式会话内可用）
 	ctx.tools.register(defineTool({
 		name: "redteam_coverage_mark",
-		description: "把攻击面图谱（「攻击面图谱」标签页）里的一个格子或主类标为终态。每个格子终态三选一：已测·有发现(tested-found) / 已测·未命中(tested-clear) / N-A附原因(na)；预算耗尽用 budget-stop（附原因）。key 形如 injection/sqli（格子）或 injection（主类整组 N-A）。tested-clear 时 reason 建议写未排除面；tested-found 时 findingRefs 填关联 finding id。逐格回写，图谱实时点亮。",
+		description: "把攻击面图谱（「攻击面图谱」标签页）里的一个格子或主类标为终态。每个格子终态三选一：已测·有发现(tested-found) / 已测·未命中(tested-clear) / N-A附原因(na)；预算耗尽用 budget-stop（附原因）。key 形如 injection/sqli（格子）或 injection（主类整组 N-A），也接受主类/格子的中文标签（自动归一）；写错时报错会列出该模式全部合法主类。tested-clear 时 reason 建议写未排除面；tested-found 时 findingRefs 填关联 finding id。逐格回写，图谱实时点亮。",
 		parameters: {
-			key: { type: "string", required: true, description: "cat/item 格子 key 或 cat 主类 key" },
+			key: { type: "string", required: true, description: "cat/item 格子 key、cat 主类 key，或主类/格子中文标签" },
 			state: { type: "string", required: true, enum: CELL_STATES, description: "终态" },
 			reason: { type: "string", description: "原因（na/budget-stop 必填；tested-clear 建议写未排除面）" },
 			findingRefs: { type: "string", description: "关联 finding id（逗号分隔）" },
@@ -479,11 +791,14 @@ function apply(ctx) {
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅专业模式会话内可用（当前会话未挂专业模式）" });
 			try {
 				const base = TAXONOMIES[session.mode];
+				let key = String(args.key ?? "");
 				if (base && !base.pending) {
-					const bad = validateCoverageRef(taxonomyWithCaps(theStore(), base, session.mode), args.key);
+					const tax = taxonomyWithCaps(theStore(), base, session.mode);
+					const bad = validateCoverageRef(tax, key);
 					if (bad) return Promise.resolve({ ok: false, error: bad });
+					key = canonicalKey(tax, key) ?? key;
 				}
-				const cell = markCell(theStore(), session.id, session.mode, args.key, { state: args.state, reason: args.reason, findingRefs: args.findingRefs, target: args.target });
+				const cell = markCell(theStore(), session.id, session.mode, key, { state: args.state, reason: args.reason, findingRefs: args.findingRefs, target: args.target });
 				return Promise.resolve({ ok: true, key: cell.key, state: cell.state });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
@@ -493,9 +808,9 @@ function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "redteam_coverage_stage",
-		description: "推进攻击面图谱顶部的作战流程带：进入某阶段标 active、完成标 done。stage 取当前模式体系的阶段 id（渗透模式为 s0-s6：防护画像/被动收集/入口面盘点/登陆口专线/逐面挖掘/验证与影响证明/收口）。",
+		description: "推进攻击面图谱顶部的作战流程带：进入某阶段标 active、完成标 done。stage 取当前模式体系的阶段 id（渗透模式为 s0-s6：防护画像/被动收集/入口面盘点/登陆口专线/逐面挖掘/验证与影响证明/收口），也接受阶段中文标签（自动归一）；写错时报错会列出该模式全部合法阶段。",
 		parameters: {
-			stage: { type: "string", required: true, description: "阶段 id" },
+			stage: { type: "string", required: true, description: "阶段 id 或阶段中文标签" },
 			state: { type: "string", required: true, enum: STAGE_STATES, description: "active=进行中 done=完成" }
 		},
 		output: {
@@ -507,12 +822,47 @@ function apply(ctx) {
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅专业模式会话内可用" });
 			try {
 				const base = TAXONOMIES[session.mode];
+				let stage = String(args.stage ?? "");
 				if (base && !base.pending) {
-					const bad = validateStageRef(taxonomyWithCaps(theStore(), base, session.mode), args.stage);
+					const tax = taxonomyWithCaps(theStore(), base, session.mode);
+					const bad = validateStageRef(tax, stage);
 					if (bad) return Promise.resolve({ ok: false, error: bad });
+					stage = resolveStageId(tax, stage) || stage;
 				}
-				const stage = markStage(theStore(), session.id, session.mode, args.stage, args.state);
-				return Promise.resolve({ ok: true, stage: stage.stage, state: stage.state });
+				const marked = markStage(theStore(), session.id, session.mode, stage, args.state);
+				return Promise.resolve({ ok: true, stage: marked.stage, state: marked.state });
+			} catch (e) {
+				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
+			}
+		}
+	}));
+
+	ctx.tools.register(defineTool({
+		name: "redteam_coverage_sync",
+		description: "批量回写覆盖终态（覆盖对账/收口用）：一次调用替代逐格 redteam_coverage_mark。入口二选一——rows=[{key,state,reason,findingRefs,target}] 数组，或 path=覆盖矩阵 markdown 文件（表头须含「格子」「终态」列名，兼容 原因/finding/目标 列，分隔行自动跳过）。key 与终态均接受中文标签（自动归一到体系 key 与四态）；坏行跳过并在结果逐行说明原因，好行照常落库。",
+		parameters: {
+			rows: { type: "array", items: { type: "object" }, description: "终态行数组（与 path 二选一）：{key, state, reason, findingRefs, target}" },
+			path: { type: "string", description: "覆盖矩阵文件路径（与 rows 二选一；工作区相对或绝对路径）" }
+		},
+		output: {
+			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
+			render: (_a, v) => [{ type: "text", text: v.ok ? `批量回写：成功 ${v.applied.length} 格${v.failed.length ? `，跳过 ${v.failed.length} 行（${v.failed.slice(0, 3).join("；")}${v.failed.length > 3 ? " 等" : ""}）` : ""}` : `批量回写失败：${v.error}` }]
+		},
+		execute(args, exec) {
+			const session = sessionOf(ctx, exec);
+			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅专业模式会话内可用" });
+			try {
+				let rows = Array.isArray(args.rows) ? args.rows.map((r) => ({ ...r })) : [];
+				if (!rows.length && args.path) {
+					const text = fs.readFileSync(String(args.path), "utf8");
+					rows = parseCoverageTable(text);
+					if (!rows.length) return Promise.resolve({ ok: false, error: "文件里没找到覆盖表（表头须含「格子」「终态」两列名的 markdown 表）" });
+				}
+				if (!rows.length) return Promise.resolve({ ok: false, error: "rows 与 path 至少给一个" });
+				const base = TAXONOMIES[session.mode];
+				const taxonomy = base && !base.pending ? taxonomyWithCaps(theStore(), base, session.mode) : null;
+				const { applied, failed } = applyCoverageRows(theStore(), taxonomy, session.id, session.mode, rows);
+				return Promise.resolve({ ok: true, applied, failed });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
 			}
@@ -596,6 +946,31 @@ function apply(ctx) {
 		}
 	}));
 
+	//#endregion
+
+	//#region finding 自动点亮与覆盖提醒：监听工具事件流（tool/call + tool/result 按 callId 配对）
+	const inflightFinds = new Map();
+	ctx.on("session/event", (session, event) => {
+		if (event?.type === "tool/call") {
+			if (event.data?.name !== "redteam_finding_register") return;
+			let args = {};
+			try { args = JSON.parse(String(event.data.arguments ?? "{}")); } catch { args = {}; }
+			inflightFinds.set(`${session?.id}:${event.data.callId}`, args);
+			return;
+		}
+		if (event?.type === "tool/result") {
+			const message = event.data?.message ?? {};
+			const callId = typeof message.source?.callId === "string" && message.source?.kind === "tool" ? message.source.callId : (Array.isArray(message.content) ? message.content.find((b) => typeof b?.toolCallId === "string")?.toolCallId : undefined);
+			if (typeof callId !== "string") return;
+			const key = `${session?.id}:${callId}`;
+			if (!inflightFinds.has(key)) return;
+			const args = inflightFinds.get(key);
+			inflightFinds.delete(key);
+			const failed = (Array.isArray(message.content) && message.content.some((b) => b?.isError === true)) || event.data?.error !== undefined;
+			if (failed) return;
+			autoLightFromFinding(ctx, theStore(), String(session?.id ?? ""), args).catch(() => { /* 自动面不阻塞业务 */ });
+		}
+	});
 	//#endregion
 
 	//#region Web 通道路由（自注册 + 同源栅栏）

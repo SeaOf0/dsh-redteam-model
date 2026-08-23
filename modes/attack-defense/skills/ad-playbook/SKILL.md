@@ -469,7 +469,7 @@ ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
 
 - **AttackAtlas 图谱联动（覆盖台账的 UI 面）**：「AttackAtlas」标签页按本手册作战链展示——三战场分区（外网打点/内网横向/登记收尾）× 19 战术列 × 五阶段带 × 四形态（外网/内网/域/AI 应用）。
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
-  候选路径台账与阶段终态落盘时同步调 `redteam_coverage_mark`（key=战术列/子项；走通=tested-found、失败附原因=tested-clear、不适用附原因=na、未尝试让位=budget-stop），阶段推进调 `redteam_coverage_stage`（s1 侦察…s5 报告）；
+  候选路径台账与阶段终态落盘时同步调 `redteam_coverage_mark`（key=战术列/子项；走通=tested-found、失败附原因=tested-clear、不适用附原因=na、未尝试让位=budget-stop），阶段推进调 `redteam_coverage_stage`（s1 侦察…s5 报告）；key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。
   作战目标（授权范围/网段/域）调 `redteam_atlas_target` 登记，多目标终态带 target 参数逐目标回写。双击战术列/子项=按对应章节派单（自动带目标锚定与 refs 知识手册）。
 - **目标重申（防漂移）**：每阶段开始与每次图谱派单，先重读图谱目标带/assets.md 目标节核对当前作业对象——对未登记对象作业或超出授权范围=漂移，立即停手上报回锚；目标不清先与用户/图谱核对再动手。
 

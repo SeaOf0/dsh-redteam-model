@@ -800,9 +800,12 @@ await ok("saveMethod：跨模式覆盖拒绝、同模式更新不受影响", asy
 });
 
 
-await ok("体系校验：拼错格子/阶段 key 即拒（mark 不再静默丢失）", async () => {
+await ok("体系校验：拼错格子/阶段 key 即拒（mark 不再静默丢失）+ typo 模糊自愈", async () => {
 	const st = openStore(":memory:");
-	await assert.rejects(() => dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqll", state: "tested-clear" }), /子项不存在/);
+	const healed = await dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqll", state: "tested-clear" });
+	assert.equal(healed.ok, true);
+	assert.equal(healed.cell.key, "injection/sqli", "高置信 typo 归一到 canonical key");
+	await assert.rejects(() => dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/zzzz", state: "tested-clear" }), /子项不存在/);
 	await assert.rejects(() => dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "ghost-cat", state: "na", reason: "x" }), /主类不存在/);
 	await assert.rejects(() => dispatch(null, st, "stage.mark", { sessionId: SID, mode: "pentest", stage: "s7", state: "done" }), /阶段不存在/);
 	const okMark = await dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqli", state: "tested-clear" });
@@ -845,6 +848,148 @@ await ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
 	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "X" } }, "T"), false);
 	assert.equal(checkCsrf({ headers: {} }, "T"), false);
 	assert.equal(checkCsrf({}, "T"), false);
+});
+
+// ===== 词典治理：标签等价与报错带候选 =====
+import { resolveKey, canonicalKey, resolveStageId, resolveStateLabel, parseCoverageTable, applyCoverageRows, autoLightFromFinding, validateCoverageRef, validateStageRef } from "../lib/index.js";
+const CA = TAXONOMIES["code-audit"];
+
+await ok("标签归一：常用中文标签全部自愈（code-audit）", () => {
+	// 模型按中文标签回写是常态，须全部归一到体系 key
+	const cases = {
+		"任意上传RCE": "rce-main/upload-rce", "未授权RCE": "rce-main/unauth-rce", "组合RCE": "rce-main/combo-rce",
+		"深度反序列化": "rce-main/deep-deser", "溢出RCE": "rce-main/overflow-rce", "zip自解压RCE": "rce-main/zipslip-rce",
+		"SQL 注入": "sink-core/sqli", "RCE 主线": "rce-main", "rce-main/任意上传RCE": "rce-main/upload-rce"
+	};
+	for (const [label, key] of Object.entries(cases)) assert.equal(resolveKey(CA, label)?.key, key, `${label} 应归一到 ${key}`);
+});
+
+await ok("八模式标签直查抽查 + 同长歧义保守拒", () => {
+	for (const mode of ["pentest", "binary-analysis", "av-evasion", "cloud-security", "ctf-solver", "incident-response", "attack-defense"]) {
+		const t = TAXONOMIES[mode];
+		if (!t || t.pending) continue;
+		const item = t.categories[0].items[0];
+		assert.equal(resolveKey(t, item.label)?.key, `${t.categories[0].id}/${item.id}`, `${mode} 首格标签应全等归一`);
+	}
+	const fake = { label: "测试体系", stages: [], categories: [{ id: "c1", label: "甲", items: [{ id: "a", label: "苹果派" }, { id: "b", label: "苹果酱" }] }] };
+	assert.ok(resolveKey(fake, "苹果")?.ambiguous, "同长双命中须判歧义而非硬选");
+});
+
+await ok("错值报错必带合法候选清单", () => {
+	const e1 = validateCoverageRef(CA, "不存在的主类");
+	assert.match(e1, /合法主类：/, "主类清单在场");
+	assert.match(e1, /审计形态判定\(audit-shape\)/, "清单含 id 对");
+	const e2 = validateCoverageRef(CA, "rce-main/zzz");
+	assert.match(e2, /子项不存在/, "主类对子项错给子项清单");
+	assert.match(e2, /任意文件上传 RCE\(rce-main\/upload-rce\)/, "子项清单含 id 对");
+	const e3 = validateStageRef(CA, "乱写");
+	assert.match(e3, /合法阶段：s1 /, "阶段清单在场");
+});
+
+await ok("阶段中文标签归一 + 垃圾串拒收", () => {
+	assert.equal(resolveStageId(CA, "静态审计"), "s2");
+	assert.equal(resolveStageId(CA, "覆盖与对账"), "s5");
+	assert.equal(resolveKey(TAXONOMIES["pentest"], "ghost-cat"), null, "垃圾串不得模糊命中");
+	const typo = resolveKey(TAXONOMIES["pentest"], "injection/sqll");
+	assert.equal(typo?.key, "injection/sqli", "高置信 typo 自愈");
+});
+
+await ok("终态中文标签归一（两套 UI 词表 + canonical）", () => {
+	assert.equal(resolveStateLabel("tested-found"), "tested-found");
+	assert.equal(resolveStateLabel("已测·有发现"), "tested-found");
+	assert.equal(resolveStateLabel("已审·有 finding"), "tested-found");
+	assert.equal(resolveStateLabel("无finding"), "tested-clear");
+	assert.equal(resolveStateLabel("不适用"), "na");
+	assert.equal(resolveStateLabel("未完成"), "budget-stop");
+	assert.equal(resolveStateLabel("让位"), "budget-stop");
+	assert.equal(resolveStateLabel("瞎写的态"), "");
+});
+
+// ===== 矩阵批量同步 =====
+await ok("parseCoverageTable：表头定位/分隔行跳过/列映射/乱序容错", () => {
+	const md = [
+		"# 覆盖矩阵", "",
+		"| 主类 | 格子 | 终态 | 原因 | finding | 目标 |",
+		"|---|---|---|---|---|---|",
+		"| RCE | 任意上传RCE | 已审·有 finding |  | code-audit-2 | oa.xxx |",
+		"| sink | SQL 注入 | 已审·无 finding | 白盒 grep 全量无拼接 | | oa.xxx |",
+		"| sink | LDAP | 不适用 | 无 LDAP 面 | | |",
+		"", "正文里孤立的 | 行不算表内行：此行在表结束后应终止解析"
+	].join("\n");
+	const rows = parseCoverageTable(md);
+	assert.equal(rows.length, 3, "分隔行不计、表后断裂");
+	assert.equal(rows[0].key, "任意上传RCE");
+	assert.equal(rows[0].state, "已审·有 finding");
+	assert.equal(rows[0].findingRefs, "code-audit-2");
+	assert.equal(rows[2].state, "不适用");
+	assert.equal(parseCoverageTable("没有表格的文本").length, 0);
+});
+
+await ok("applyCoverageRows：中文 key/终态批量落库 + 坏行跳过带行号", () => {
+	const st = openStore(":memory:");
+	const rows = [
+		{ key: "任意上传RCE", state: "已审·有 finding", findingRefs: "code-audit-2", line: 4 },
+		{ key: "sink-core/sqli", state: "无finding", reason: "白盒 grep 无拼接", line: 5 },
+		{ key: "LDAP", state: "不适用", reason: "无 LDAP 面", line: 6 },
+		{ key: "幽灵格子", state: "已审·有 finding", line: 7 },
+		{ key: "SQL 注入", state: "乱写的态", line: 8 },
+		{ key: "溢出RCE", state: "不适用", line: 9 }
+	];
+	const { applied, failed } = applyCoverageRows(st, CA, "sync-1", "code-audit", rows);
+	assert.deepEqual(applied.sort(), ["rce-main/upload-rce", "sink-core/ldap", "sink-core/sqli"].sort());
+	assert.equal(failed.length, 3, "幽灵格/坏终态/na 无原因各跳一行");
+	assert.match(failed[0], /第 7 行.*合法主类/);
+	assert.match(failed[1], /第 8 行.*不是合法终态/);
+	assert.match(failed[2], /第 9 行.*原因/);
+	const cov = getCoverage(st, "sync-1", "code-audit");
+	assert.equal(cov.cells.length, 3);
+	st.close();
+});
+
+// ===== finding 自动亮与覆盖提醒 =====
+await ok("autoLight：type/CWE 线索点亮 + finding ref 回填 + 不覆盖已有终态", async () => {
+	const st = openStore(":memory:");
+	const nudges = [];
+	const deps = { mode: "code-audit", findFindingId: async () => "code-audit-3", followup: (m) => nudges.push(m) };
+	const r1 = await autoLightFromFinding(null, st, "auto-1", { title: "F1 上传RCE", type: "任意文件上传", cwe: "", target: "oa.xxx" }, deps);
+	assert.deepEqual(r1.marked, ["rce-main/upload-rce"], "type 线索归一落格");
+	const cov = getCoverage(st, "auto-1", "code-audit");
+	const cell = cov.cells.find((c) => c.key === "rce-main/upload-rce");
+	assert.equal(cell.state, "tested-found");
+	assert.equal(cell.findingRefs, "code-audit-3");
+	assert.match(cell.reason, /自动：finding code-audit-3/);
+	assert.equal(cell.target, "oa.xxx");
+	// 人工终态不可被自动覆盖：先手写 tested-clear，自动亮须跳过
+	await dispatch(null, st, "coverage.mark", { sessionId: "auto-2", mode: "code-audit", key: "SQL 注入", state: "tested-clear", reason: "人工已排除" });
+	const r2 = await autoLightFromFinding(null, st, "auto-2", { title: "F2 注入", type: "SQL 注入" }, deps);
+	assert.equal(r2.marked.length, 0, "已有终态不覆盖");
+	// CWE 线索
+	const r3 = await autoLightFromFinding(null, st, "auto-3", { title: "F3 注入", cwe: "CWE-89" }, deps);
+	assert.deepEqual(r3.marked, ["sink-core/sqli"], "CWE-89 → SQL 注入格");
+	// 查不到 finding id 也不缺格（ref 空）
+	const r4 = await autoLightFromFinding(null, st, "auto-4", { title: "F4", type: "命令执行" }, { ...deps, findFindingId: async () => { throw new Error("库不可用"); } });
+	assert.equal(r4.marked.length, 1);
+	assert.equal(getCoverage(st, "auto-4", "code-audit").cells[0].findingRefs, "");
+	// 无线索/无关线索保守跳过
+	assert.equal((await autoLightFromFinding(null, st, "auto-5", { title: "F5" }, deps)).marked.length, 0);
+	assert.equal((await autoLightFromFinding(null, st, "auto-6", { title: "F6", type: "完全无关线索" }, deps)).marked.length, 0, "低相似线索不点亮");
+	st.close();
+});
+
+await ok("autoLight·P3 覆盖提醒：每主类一次限流、文案带剩余格与 sync 指引", async () => {
+	const st = openStore(":memory:");
+	const nudges = [];
+	const deps = { mode: "code-audit", findFindingId: async () => "", followup: (m) => nudges.push(m) };
+	await autoLightFromFinding(null, st, "nudge-1", { title: "F1", type: "任意文件上传" }, deps);
+	assert.equal(nudges.length, 1, "首亮即提醒一次");
+	assert.match(nudges[0].content[0].text, /AttackAtlas·覆盖提醒/);
+	assert.match(nudges[0].content[0].text, /RCE 主线聚焦/);
+	assert.match(nudges[0].content[0].text, /redteam_coverage_sync/);
+	await autoLightFromFinding(null, st, "nudge-1", { title: "F2", type: "未授权 RCE" }, deps);
+	assert.equal(nudges.length, 1, "同主类第二次不重复提醒");
+	await autoLightFromFinding(null, st, "nudge-1", { title: "F3", type: "SQL 注入" }, deps);
+	assert.equal(nudges.length, 2, "新主类（sink 全集）新提醒");
+	st.close();
 });
 
 console.log(`\n${passed} passed`);

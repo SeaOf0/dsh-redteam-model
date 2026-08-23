@@ -262,7 +262,7 @@ tools: x86_64-w64-mingw32-gcc
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
 
 - 「AttackAtlas」标签页按本手册结构展示——五分区（作战循环/对抗技术面/四类载荷时序/判定与配对/交付与回馈）× 14 战术列 × 六阶段带（现象采集→诊断归因→路径构建→判定实验→检测配对→回馈交付）× 四载荷形态（webshell/可执行/C2/工具二开）。
-- **判定覆盖的 UI 面**：技术×环境（引擎族矩阵）与实验轮次落终态时同步调 `redteam_coverage_mark`（已测过检=tested-found、已测被检出附引擎=tested-clear、不适用无环境=na、未测附原因=budget-stop）——**结论只覆盖已测环境，图谱点亮范围即外推边界**；阶段推进调 `redteam_coverage_stage`（s1…s6）；实验对象（载荷/引擎族）调 `redteam_atlas_target` 登记。
+- **判定覆盖的 UI 面**：技术×环境（引擎族矩阵）与实验轮次落终态时同步调 `redteam_coverage_mark`（已测过检=tested-found、已测被检出附引擎=tested-clear、不适用无环境=na、未测附原因=budget-stop）——**结论只覆盖已测环境，图谱点亮范围即外推边界**；阶段推进调 `redteam_coverage_stage`（s1…s6）；实验对象（载荷/引擎族）调 `redteam_atlas_target` 登记。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。
 
 ### 判定与配对完整性规则（防「单引擎判定就下结论」）
 

@@ -526,7 +526,7 @@ trivy config --config-policy ./policy --namespaces user <dir>
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
 
 - 「AttackAtlas」标签页按本手册结构展示——五分区（审计前置/RCE 主线/覆盖矩阵轴/场景审计卡/确证与交付）× 15 战术列 × 六阶段带（形态 Triage→静态→动态验证→确证闭环→覆盖对账→复核报告）× 五对象形态（后端应用/移动端/小程序/LLM Agent/供应链配置）。
-- **覆盖矩阵的 UI 面**：audit-coverage-matrix.md 每格（sink 类型/业务逻辑行/RCE 类）落终态时同步调 `redteam_coverage_mark`（已审有 finding=tested-found、已审无 finding=tested-clear、N-A 附原因=na、未完成附预算=budget-stop）；扫描对账终态同规则；阶段推进调 `redteam_coverage_stage`（s1…s6）。审计对象（应用/模块组/样本）调 `redteam_atlas_target` 登记，多对象逐对象 target 参数回写。
+- **覆盖矩阵的 UI 面**：audit-coverage-matrix.md 每格（sink 类型/业务逻辑行/RCE 类）落终态时同步调 `redteam_coverage_mark`（已审有 finding=tested-found、已审无 finding=tested-clear、N-A 附原因=na、未完成附预算=budget-stop）；扫描对账终态同规则；阶段推进调 `redteam_coverage_stage`（s1…s6）。审计对象（应用/模块组/样本）调 `redteam_atlas_target` 登记，多对象逐对象 target 参数回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或矩阵文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。
 
 ### 审计覆盖规则（防「只审几个模块」）
 
