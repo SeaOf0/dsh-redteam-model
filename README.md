@@ -4,6 +4,8 @@
 
 > **请勿用于非法行为。** 本项目仅面向已获得书面授权的安全测试、CTF 竞赛、漏洞赏金与安全研究场景（见文末免责声明）。
 
+**改项目是为 [https://github.com/deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 赋能的项目，先装好 deepseek-harness 以后，再装该项目；最快捷的安装方式：下载仓库源码包，并让 DeepSeek 自行给 deepseek-harness 装好即可；在 dsh web 的新会话中选择相应的模式即可开始任务。**
+
 ## 九个工作模式
 
 | 模式 | 定位 | 核心纪律 |
