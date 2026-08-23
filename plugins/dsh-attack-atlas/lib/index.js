@@ -676,6 +676,45 @@ export async function dispatch(ctx, st, endpoint, payload) {
 
 //#region host wiring
 
+//#region 阶段门联动：stage_gate PASS → 阶段带级联点亮
+
+/** 门 id → 阶段 id（八模式）。流程带顺序语义：过门凭据蕴含此前阶段已完成，
+ *  少门模式（pentest 3 门/7 阶段等）靠级联补齐，未设门阶段留手动。 */
+export const GATE_STAGE = {
+	pentest: { "P1": "s1", "P2": "s5", "P3": "s6" },
+	"code-audit": { "A1": "s2", "A2": "s4", "A3": "s5" },
+	"binary-analysis": { "B0": "s1", "B1": "s4", "B2": "s5" },
+	"attack-defense": { "recon": "s1", "breach": "s2", "lateral": "s3", "persistence": "s4", "report": "s5" },
+	"av-evasion": { "V1": "s2", "V2": "s4", "V3": "s5", "V4": "s6" },
+	"incident-response": { "I1": "s1", "I2": "s3", "I3": "s4", "I4": "s5", "I5": "s6" },
+	"cloud-security": { "C1": "s1", "C2": "s2", "C3": "s3", "C4": "s4", "C5": "s5", "C6": "s6", "C7": "s7" },
+	"ctf-solver": { "board": "s1", "flag": "s3" }
+};
+
+/** stage_gate 结果文本判定（render 前缀确定性）：仅 PASS 触发，FAIL 不动阶段带。 */
+export function isGatePassText(text, mode, gate) {
+	return String(text ?? "").startsWith(`stage_gate ${mode}/${gate}: PASS`);
+}
+
+/** 门 PASS → 目标阶段及此前全部阶段标 done（级联）；未知门/未知阶段返回空。 */
+export function autoStageFromGate(st, taxonomy, sessionId, mode, gateId) {
+	const target = GATE_STAGE[mode]?.[gateId];
+	if (!target) return [];
+	const stages = taxonomy?.stages ?? [];
+	const idx = stages.findIndex((s) => s.id === target);
+	if (idx < 0) return [];
+	const marked = [];
+	for (let i = 0; i <= idx; i++) {
+		try {
+			markStage(st, sessionId, mode, stages[i].id, "done");
+			marked.push(stages[i].id);
+		} catch { /* 单阶段失败不阻级联 */ }
+	}
+	return marked;
+}
+
+//#endregion
+
 //#region finding 自动点亮与覆盖提醒
 
 /** 常用 CWE → 类目语义标签（与体系子项标签对齐后再走 resolveKey；未收录返回 ""，保守跳过）。 */
@@ -808,7 +847,7 @@ function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "redteam_coverage_stage",
-		description: "推进攻击面图谱顶部的作战流程带：进入某阶段标 active、完成标 done。stage 取当前模式体系的阶段 id（渗透模式为 s0-s6：防护画像/被动收集/入口面盘点/登陆口专线/逐面挖掘/验证与影响证明/收口），也接受阶段中文标签（自动归一）；写错时报错会列出该模式全部合法阶段。",
+		description: "推进攻击面图谱顶部的作战流程带：进入某阶段标 active、完成标 done。stage_gate 判定 PASS 后对应阶段（及其此前阶段）自动回写 done，本工具用于无门阶段的推进与补记。stage 取当前模式体系的阶段 id（渗透模式为 s0-s6：防护画像/被动收集/入口面盘点/登陆口专线/逐面挖掘/验证与影响证明/收口），也接受阶段中文标签（自动归一）；写错时报错会列出该模式全部合法阶段。",
 		parameters: {
 			stage: { type: "string", required: true, description: "阶段 id 或阶段中文标签" },
 			state: { type: "string", required: true, enum: STAGE_STATES, description: "active=进行中 done=完成" }
@@ -948,14 +987,15 @@ function apply(ctx) {
 
 	//#endregion
 
-	//#region finding 自动点亮与覆盖提醒：监听工具事件流（tool/call + tool/result 按 callId 配对）
-	const inflightFinds = new Map();
+	//#region finding 自动点亮与阶段门联动：监听工具事件流（tool/call + tool/result 按 callId 配对）
+	const inflight = new Map();
 	ctx.on("session/event", (session, event) => {
 		if (event?.type === "tool/call") {
-			if (event.data?.name !== "redteam_finding_register") return;
+			const nm = event.data?.name;
+			if (nm !== "redteam_finding_register" && nm !== "stage_gate") return;
 			let args = {};
 			try { args = JSON.parse(String(event.data.arguments ?? "{}")); } catch { args = {}; }
-			inflightFinds.set(`${session?.id}:${event.data.callId}`, args);
+			inflight.set(`${session?.id}:${event.data.callId}`, { name: nm, args });
 			return;
 		}
 		if (event?.type === "tool/result") {
@@ -963,12 +1003,23 @@ function apply(ctx) {
 			const callId = typeof message.source?.callId === "string" && message.source?.kind === "tool" ? message.source.callId : (Array.isArray(message.content) ? message.content.find((b) => typeof b?.toolCallId === "string")?.toolCallId : undefined);
 			if (typeof callId !== "string") return;
 			const key = `${session?.id}:${callId}`;
-			if (!inflightFinds.has(key)) return;
-			const args = inflightFinds.get(key);
-			inflightFinds.delete(key);
+			const entry = inflight.get(key);
+			if (!entry) return;
+			inflight.delete(key);
 			const failed = (Array.isArray(message.content) && message.content.some((b) => b?.isError === true)) || event.data?.error !== undefined;
 			if (failed) return;
-			autoLightFromFinding(ctx, theStore(), String(session?.id ?? ""), args).catch(() => { /* 自动面不阻塞业务 */ });
+			if (entry.name === "redteam_finding_register") {
+				autoLightFromFinding(ctx, theStore(), String(session?.id ?? ""), entry.args).catch(() => { /* 自动面不阻塞业务 */ });
+				return;
+			}
+			// stage_gate：PASS → 阶段带级联点亮（会话模式权威；未挂模式时回落门的 mode）
+			const sid = String(session?.id ?? "");
+			let mode = modeOfSession(ctx, sid);
+			if (!mode && ATLAS_MODES.includes(entry.args.mode)) mode = entry.args.mode;
+			if (!mode || String(entry.args.mode ?? "") !== mode) return;
+			const text = (Array.isArray(message.content) ? message.content.find((b) => b?.type === "text")?.text : "") ?? "";
+			if (!isGatePassText(text, mode, String(entry.args.stage ?? ""))) return;
+			try { autoStageFromGate(theStore(), TAXONOMIES[mode], sid, mode, String(entry.args.stage ?? "")); } catch { /* 自动面不阻塞业务 */ }
 		}
 	});
 	//#endregion

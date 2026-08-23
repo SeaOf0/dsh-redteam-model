@@ -850,7 +850,7 @@ await ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
 	assert.equal(checkCsrf({}, "T"), false);
 });
 
-// ===== 词典治理：标签等价与报错带候选 =====
+// ===== 词典治理（R2 报错带候选 / R3 标签等价）=====
 import { resolveKey, canonicalKey, resolveStageId, resolveStateLabel, parseCoverageTable, applyCoverageRows, autoLightFromFinding, validateCoverageRef, validateStageRef } from "../lib/index.js";
 const CA = TAXONOMIES["code-audit"];
 
@@ -976,7 +976,7 @@ await ok("autoLight：type/CWE 线索点亮 + finding ref 回填 + 不覆盖已�
 	st.close();
 });
 
-await ok("autoLight·P3 覆盖提醒：每主类一次限流、文案带剩余格与 sync 指引", async () => {
+await ok("覆盖提醒：每主类一次限流、文案带剩余格与 sync 指引", async () => {
 	const st = openStore(":memory:");
 	const nudges = [];
 	const deps = { mode: "code-audit", findFindingId: async () => "", followup: (m) => nudges.push(m) };
@@ -990,6 +990,46 @@ await ok("autoLight·P3 覆盖提醒：每主类一次限流、文案带剩余�
 	await autoLightFromFinding(null, st, "nudge-1", { title: "F3", type: "SQL 注入" }, deps);
 	assert.equal(nudges.length, 2, "新主类（sink 全集）新提醒");
 	st.close();
+});
+
+// ===== 阶段门联动：stage_gate PASS → 阶段带级联点亮 =====
+import { autoStageFromGate, isGatePassText } from "../lib/index.js";
+
+await ok("门映射完备：八模式全部门 id 有阶段映射且阶段 id 在体系内", async () => {
+	let gatesObj = null;
+	try { ({ GATES: gatesObj } = await import("@dsh-external/dsh-stage-gate")); } catch { gatesObj = null; }
+	for (const [mode, mapping] of Object.entries(GATE_STAGE_REF)) {
+		const t = TAXONOMIES[mode];
+		assert.ok(t && !t.pending, `${mode} 体系就绪`);
+		const stageIds = new Set((t.stages ?? []).map((s) => s.id));
+		for (const stageId of Object.values(mapping)) assert.ok(stageIds.has(stageId), `${mode} 映射 ${stageId} 不在体系阶段内`);
+		if (gatesObj) {
+			for (const gateId of Object.keys(gatesObj[mode] ?? {})) assert.ok(mapping[gateId], `${mode} 门 ${gateId} 缺阶段映射`);
+			assert.equal(Object.keys(mapping).length, Object.keys(gatesObj[mode] ?? {}).length, `${mode} 映射与门数一致`);
+		}
+	}
+	assert.ok(gatesObj, "桥接环境应有 stage-gate 可交叉核对（CI/debug 均满足）");
+});
+// 从模块导出里拿 GATE_STAGE（经 autoStageFromGate 反推不便，直接再导出一份引用）
+import { GATE_STAGE as GATE_STAGE_REF } from "../lib/index.js";
+
+await ok("autoStageFromGate：PASS 级联点亮此前全部阶段；未知门不动", () => {
+	const st = openStore(":memory:");
+	const marked = autoStageFromGate(st, CA, "gate-1", "code-audit", "A2");
+	assert.deepEqual(marked, ["s1", "s2", "s3", "s4"], "A2 过门 → s1-s4 级联 done");
+	const cov = getCoverage(st, "gate-1", "code-audit");
+	assert.equal(cov.stages.length, 4);
+	assert.ok(cov.stages.every((s) => s.state === "done"));
+	assert.deepEqual(autoStageFromGate(st, CA, "gate-1", "code-audit", "A9"), [], "未知门不动");
+	assert.deepEqual(autoStageFromGate(st, TAXONOMIES["ctf-solver"], "gate-2", "ctf-solver", "flag"), ["s1", "s2", "s3"], "ctf flag 过门 → s1-s3 级联");
+	st.close();
+});
+
+await ok("isGatePassText：仅本门 PASS 前缀命中，FAIL/他门不误触", () => {
+	assert.equal(isGatePassText("stage_gate code-audit/A2: PASS — manual review still required: x", "code-audit", "A2"), true);
+	assert.equal(isGatePassText("stage_gate code-audit/A2: FAIL — missing: assets", "code-audit", "A2"), false);
+	assert.equal(isGatePassText("stage_gate code-audit/A3: PASS", "code-audit", "A2"), false);
+	assert.equal(isGatePassText("", "code-audit", "A2"), false);
 });
 
 console.log(`\n${passed} passed`);

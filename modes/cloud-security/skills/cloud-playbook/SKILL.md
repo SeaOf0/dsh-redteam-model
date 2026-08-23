@@ -140,7 +140,7 @@ environment-restore.md（含手动排除步骤），不自动清理（与 C6 同
 - **目标重申（防漂移）**：每阶段开始与每次图谱派单，先重读图谱目标带/assets.md 目标节核对当前作业对象——对未登记对象作业或超出授权范围=漂移，立即停手上报回锚；目标不清先与用户/图谱核对再动手。
 
 - 「AttackAtlas」标签页按本手册结构展示——四分区（入口与凭证/战果扩大引擎/云原生战场/收口与检测）× 18 战术列 × 七阶段带（C1-C7）× 六入口形态（元数据 SSRF/泄露 AK·SK/容器/CI-CD/K8s/快照）。
-- 攻击路径与覆盖台账落盘时同步调 `redteam_coverage_mark`（走通有战果=tested-found、执行未走通附原因=tested-clear、不适用=na、未尝试让位=budget-stop），阶段推进调 `redteam_coverage_stage`（s1 测绘…s7 报告）；云目标（账号/租户/集群）调 `redteam_atlas_target` 登记，多账号终态带 target 参数逐账号回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。
+- 攻击路径与覆盖台账落盘时同步调 `redteam_coverage_mark`（走通有战果=tested-found、执行未走通附原因=tested-clear、不适用=na、未尝试让位=budget-stop），阶段推进调 `redteam_coverage_stage`（s1 测绘…s7 报告）；云目标（账号/租户/集群）调 `redteam_atlas_target` 登记，多账号终态带 target 参数逐账号回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。阶段门 stage_gate 判定 PASS 后，对应阶段及其此前阶段自动回写 done（级联点亮）；无门阶段可手动 redteam_coverage_stage 推进补记。
 - **链路拓扑图（攻击路径五要素的图形化）**：attack-paths.csv 每行同步登记 `redteam_atlas_chain`——节点型：entry 入口凭证/identity 身份·角色/secret 密钥面/resource 云资源/pivot 信任链·横移/orgroot 组织根·KMS（高价值节点 major=true）；边 label 写动作（凭证验证/ AssumeRole/提权/快照落袋…）。拓扑即云攻击路径的可视化交付物，多入口按实际画不虚构。
 
 ## 阶段编排（七阶段 ↔ 七门）

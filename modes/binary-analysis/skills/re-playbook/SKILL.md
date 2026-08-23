@@ -379,7 +379,7 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
 
 - 「AttackAtlas」标签页按本手册结构展示——五分区（分诊与登记/分析维度/形态与还原/场景作战卡/交付与收口）× 18 战术列 × 六阶段带（登记分诊→静态→动态→还原破解→假设循环覆盖→IOC 报告）× 五样本形态（Windows/Linux/macOS/移动/固件硬件）。
-- **分析维度覆盖的 UI 面**：analysis-coverage.md 每维度落终态时同步调 `redteam_coverage_mark`（已分析有结论=tested-found、已分析未见异常=tested-clear、不适用附原因=na、未分析收窄=budget-stop）；假设台账终态同规则；阶段推进调 `redteam_coverage_stage`（s1…s6）。样本（sha256/形态）调 `redteam_atlas_target` 登记，多样本批次逐样本 target 参数回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。
+- **分析维度覆盖的 UI 面**：analysis-coverage.md 每维度落终态时同步调 `redteam_coverage_mark`（已分析有结论=tested-found、已分析未见异常=tested-clear、不适用附原因=na、未分析收窄=budget-stop）；假设台账终态同规则；阶段推进调 `redteam_coverage_stage`（s1…s6）。样本（sha256/形态）调 `redteam_atlas_target` 登记，多样本批次逐样本 target 参数回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。阶段门 stage_gate 判定 PASS 后，对应阶段及其此前阶段自动回写 done（级联点亮）；无门阶段可手动 redteam_coverage_stage 推进补记。
 
 ### 分析维度覆盖规则（防「看了字符串就交卷」）
 
