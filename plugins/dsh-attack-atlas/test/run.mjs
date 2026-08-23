@@ -5,7 +5,7 @@ import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, 
 import { TAXONOMIES, ATLAS_MODES, locate, itemsInForm, validateTaxonomy, refPaths } from "../lib/taxonomy.js";
 import fs2 from "node:fs";
 import path2 from "node:path";
-import { triggerMessage, isTrustedRequest, dispatch } from "../lib/index.js";
+import { triggerMessage, isTrustedRequest, dispatch, checkCsrf } from "../lib/index.js";
 
 let passed = 0;
 const ok = async (name, fn) => { await fn(); passed++; console.log(`ok   ${name}`); };
@@ -219,6 +219,7 @@ await ok("信任栅栏：loopback 放行、外域 Host 拒、跨源 Origin 拒",
 	assert.equal(isTrustedRequest({ headers: { host: "evil.com:3080" } }, []), false);
 	assert.equal(isTrustedRequest({ headers: { host: "127.0.0.1:3080", origin: "http://evil.com" } }, []), false);
 	assert.equal(isTrustedRequest({ headers: { host: "127.0.0.1:3080", origin: "http://127.0.0.1:3080" } }, []), true);
+	assert.equal(isTrustedRequest({ headers: { host: "127.0.0.1:3080", origin: "http://127.0.0.1:9999" } }, []), false); // 本机他端口 Origin 拒（端口比对）
 	assert.equal(isTrustedRequest({}, []), false);
 });
 
@@ -607,7 +608,7 @@ await ok("模板导入导出：导出→删除→导入复原；坏行跳过并�
 	assert.equal(imp.imported.length, 2);
 	assert.equal(imp.skipped.length, 2);
 	assert.ok(imp.skipped.some((x) => x.reason.includes("未知模式")));
-	assert.ok(imp.skipped.some((x) => x.reason.includes("图数据")));
+	assert.ok(imp.skipped.some((x) => x.reason.includes("画布为空")), "空图行经结构校验跳过");
 	assert.equal((await dispatch(null, st, "methods.list", { mode: "pentest" })).methods.length, 1);
 	st.close();
 });
@@ -768,6 +769,82 @@ await ok("能力库：自定义主类/子类 CRUD+级联删；并入方法论（
 	const back = (await dispatch(null, st, "caps.list", { mode: "pentest" })).caps[0];
 	assert.equal(back.cat, "injection");
 	st.close();
+});
+
+await ok("caps.import：撞内置主类/子类标识的行被拒（同 key 遮蔽防护）", async () => {
+	const st = openStore(":memory:");
+	const r = await dispatch(null, st, "caps.import", { capabilities: [
+		{ mode: "pentest", kind: "category", cat: "injection", label: "撞车主类", desc: "x" },
+		{ mode: "pentest", kind: "item", cat: "injection", item: "sqli", label: "撞车子类" },
+		{ mode: "pentest", kind: "item", cat: "injection", item: "u-mine", label: "合法自定义子类" }
+	] });
+	assert.equal(r.imported.length, 1, "仅合法行入库");
+	assert.equal(r.skipped.length, 2);
+	assert.ok(r.skipped.every((s) => s.reason.includes("内置")), r.skipped.map((s) => s.reason).join("/"));
+	const caps = await dispatch(null, st, "caps.list", { mode: "pentest" });
+	assert.equal(caps.caps.length, 1);
+	assert.equal(caps.caps[0].cat, "injection");
+	assert.equal(caps.caps[0].item, "u-mine");
+	st.close();
+});
+
+await ok("saveMethod：跨模式覆盖拒绝、同模式更新不受影响", async () => {
+	const st = openStore(":memory:");
+	const g1 = { nodes: [{ id: "n1", ref: "injection", nt: "tax" }], edges: [] };
+	const a = saveMethod(st, { mode: "pentest", name: "渗透模板", graph: g1 });
+	await assert.rejects(async () => saveMethod(st, { id: a.id, mode: "ctf-solver", name: "越权覆盖", graph: { nodes: [{ id: "n1", ref: "ctf-web", nt: "tax" }], edges: [] } }), /属于.*不得跨模式覆盖/);
+	const b = saveMethod(st, { id: a.id, mode: "pentest", name: "渗透模板改", graph: g1 });
+	assert.equal(b.id, a.id, "同模式 upsert 仍可用");
+	assert.equal((await dispatch(null, st, "methods.list", { mode: "pentest" })).methods.length, 1);
+	st.close();
+});
+
+
+await ok("体系校验：拼错格子/阶段 key 即拒（mark 不再静默丢失）", async () => {
+	const st = openStore(":memory:");
+	await assert.rejects(() => dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqll", state: "tested-clear" }), /子项不存在/);
+	await assert.rejects(() => dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "ghost-cat", state: "na", reason: "x" }), /主类不存在/);
+	await assert.rejects(() => dispatch(null, st, "stage.mark", { sessionId: SID, mode: "pentest", stage: "s7", state: "done" }), /阶段不存在/);
+	const okMark = await dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqli", state: "tested-clear" });
+	assert.equal(okMark.ok, true);
+	st.close();
+});
+
+await ok("methods.import 走结构校验：坏模板跳过并说明原因", async () => {
+	const st = openStore(":memory:");
+	const bad = { mode: "pentest", name: "坏模板", graph: { nodes: [{ id: "n1", ref: "injection" }, { id: "n1", ref: "injection" }], edges: [] } };
+	const good = { mode: "pentest", name: "好模板", graph: { nodes: [{ id: "n1", ref: "injection", nt: "tax" }], edges: [] } };
+	const r = await dispatch(null, st, "methods.import", { methods: [bad, good] });
+	assert.equal(r.imported.length, 1);
+	assert.equal(r.skipped.length, 1);
+	assert.ok(r.skipped[0].reason.includes("结构问题"), r.skipped[0].reason);
+	st.close();
+});
+
+await ok("孤儿清理：删自定义主类/子类清终态行、删目标清归属", async () => {
+	const st = openStore(":memory:");
+	const cat = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "category", label: "业务面" });
+	const item = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "item", cat: cat.cat, label: "积分双花" });
+	await dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: cat.cat + "/" + item.item, state: "tested-found" });
+	await dispatch(null, st, "targets.add", { sessionId: SID, mode: "pentest", label: "目标A", kind: "web" });
+	await dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqli", state: "tested-clear", target: "目标A" });
+	// 删子类 → 其格子终态行清理
+	await dispatch(null, st, "caps.remove", { id: item.id });
+	assert.equal((await dispatch(null, st, "coverage.get", { sessionId: SID, mode: "pentest" })).cells.filter((c) => c.key.startsWith(cat.cat)).length, 0, "子类格子已清");
+	// 删目标 → 归属清空但终态保留
+	const tl = await dispatch(null, st, "targets.list", { sessionId: SID, mode: "pentest" });
+	await dispatch(null, st, "targets.remove", { sessionId: SID, mode: "pentest", seq: tl.targets[0].seq });
+	const after = (await dispatch(null, st, "coverage.get", { sessionId: SID, mode: "pentest" })).cells;
+	assert.equal(after.some((c) => c.key === "injection/sqli"), true, "终态保留");
+	assert.equal(after.every((c) => !c.target), true, "目标归属已清");
+	st.close();
+});
+
+await ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
+	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "T" } }, "T"), true);
+	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "X" } }, "T"), false);
+	assert.equal(checkCsrf({ headers: {} }, "T"), false);
+	assert.equal(checkCsrf({}, "T"), false);
 });
 
 console.log(`\n${passed} passed`);

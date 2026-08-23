@@ -32,10 +32,11 @@
 | `dsh-mcp-studio` | MCP 加载工作台：通用类 MCP（burpsuite/yakit/chrome-dev-mcp 等）的接入、状态与诊断 | 宿主 |
 | `dsh-redteam-results` | 会话标签页「redteam 成果」：任务台账作战大屏 + 五板式成果页（发现/资产/台账/时间线/云攻击路径），九模式**跨会话**聚合与时间范围筛选（验证/删除回原始会话执行），SQLite 行级持久 | 宿主（bundles） |
 | `dsh-hunter` | 会话标签页「hunter 狩猎」：FOFA / Hunter / Quake 三平台资产搜索（统一 DSL 自动转平台语法、分页与限额导出、API key 独立存储），代码审计成果页「实测」按钮一键验证（指纹搜索→存活探测→EXP 验证，仅授权资产执行） | 宿主（bundles） |
-| `dsh-campaign-memory` | 会话标签页「战役记忆」：跨会话打法沉淀（战术/指纹/工具/教训/检测指纹，原文存储、凭据走独立凭据库只写指位），检索即记账、按工作区隔离召回（新工作区干净开局，跨区显式检索带来源标注），检测指纹类自动过期；模型侧 write/search/get/list/remove 工具 + 装配期高频记忆注入 | 宿主（bundles） |
+| `dsh-campaign-memory` | 会话标签页「战役记忆」：跨会话打法沉淀（战术/指纹/工具/教训/检测指纹，原文存储不脱敏——凭据同样原样入库，或只写指位），同模式同工作区同题写入即刷新不重复，读全文记账、热度×30 天时间衰减排序（久未读取自然让位、读取即复活），按工作区隔离召回（新工作区干净开局，跨区显式检索带来源标注），检测指纹 30 天自动清理、目标指纹 180 天到期退场仍可检索（带过期标记、同题重写复活）；模型侧 write/search/get/list/remove 工具 + 装配期高频记忆注入 | 宿主（bundles） |
 | `dsh-mode-group` | 新建会话屏模式选择器两级化：内置模式与研究员模式留顶层，八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单（视口自适应翻转、触屏加大命中区） | 宿主（bundles） |
+| `dsh-session-pulse` | 会话状态面板（九模式）：头部右上角任务进度 chip（任务清单实时汇总 done/total + 进度条，全部完成转绿）+ 子代理 chip；右侧「子智能体目录」抽屉（正在运行/已结束分组，点名进入子代理会话查看运行内容，打开期间目录实时更新）；对话页左侧「提示词」栏（用户输入按序成列，悬停预览、点击平滑定位到消息并高亮，仅对话标签页可见） | 宿主（bundles） |
 | `dsh-attack-atlas` | 会话标签页「AttackAtlas 攻击面图谱」：八专业模式架构矩阵（战场分区 × 战术列 × 子项）四态点亮与阶段带、目标锚定、双击派单；自定义工作方法论（五类模块编排、闭环五查询问、分层运行信封）；工具 / MCP / 自定义工具模块（安装批准协议）；能力库（自定义主类 / 子类并入图谱与方法论） | 宿主（bundles） |
-| `dsh-scanner-tools` | `nuclei_scan`/`httpx_probe`/`ffuf_fuzz` 封装：保守限速默认、防盲打（须先登记资产）、产物自动落证据索引 | preset（仅 pentest / attack-defense） |
+| `dsh-scanner-tools` | `nuclei_scan`/`httpx_probe`/`ffuf_fuzz` 封装：保守限速默认、防盲打（须先登记资产）、产物自动落证据索引 | preset（pentest / attack-defense / cloud-security / ctf-solver） |
 | `dsh-webshell-mgr` | 会话标签页「webshell 管理」：webshell 生成器（PHP/JSP/ASPX 三语言 × 基础/加密/冰蝎/哥斯拉形态）→ 协议自动识别连接（七通道）→ 命令执行/文件管理（上传下载/权限/时间戳伪造/远程下载/文本编辑）/数据库操作（PDO 原生 MySQL/PostgreSQL/SQLite/MSSQL）/载荷插件体系（声明式扩展），操作台账审计；攻防评估模式立足点作战节方法论接线 | 宿主（bundles） |
 
 ## 安装
@@ -55,7 +56,7 @@ node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
 
 1. 打开 [http://127.0.0.1:3080](http://127.0.0.1:3080)，roster 列出九个模式（redteam 安全研究员 + 八个专业模式）；
 2. 任一会话让模型调 `gates_list`，返回专业模式门禁 schema；
-3. pentest/attack-defense 会话可见 `nuclei_scan` 等扫描工具（其余模式不可见 = preset 平面正确）；
+3. pentest/attack-defense/cloud-security/ctf-solver 会话可见 `nuclei_scan` 等扫描工具（其余模式不可见 = preset 平面正确）；
 4. 发起任务后出现 `[route-boost] mode=... phase=...` 运行时信封快照；
 5. 未过报告门就写 `reports/` 会被 sec-enforce 拦截并指路。
 
@@ -138,6 +139,10 @@ dsh-redteam-model/
 | ![AttackAtlas](功能展示/b.png) |
 
 ## 版本变更
+
+### v1.1.3（2026-08-23）
+
+- 修复记忆系统bug以及优化功能
 
 ### v1.1.2（2026-08-22）
 

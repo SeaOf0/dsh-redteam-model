@@ -6,12 +6,20 @@ var module = { exports: {} }; var exports = module.exports;
 var React = require("react");
 var useState = React.useState, useEffect = React.useEffect, useCallback = React.useCallback, useRef = React.useRef;
 
+var dshCsrf = {};
+/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。 */
+function csrfOf(base) {
+	if (!dshCsrf[base]) dshCsrf[base] = fetch(base + "/csrf").then(function (r) { return r.json(); }).then(function (r) { return r && r.token ? r.token : ""; }).catch(function () { return ""; });
+	return dshCsrf[base];
+}
 function api(endpoint, payload) {
-	return fetch("/dsh-redteam-results/" + endpoint, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(payload || {})
-	}).then(function (r) { return r.json(); });
+	return csrfOf("/dsh-redteam-results").then(function (tok) {
+		return fetch("/dsh-redteam-results/" + endpoint, {
+			method: "POST",
+			headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
+			body: JSON.stringify(payload || {})
+		}).then(function (r) { return r.json(); });
+	});
 }
 
 var MODES = [
@@ -1337,10 +1345,12 @@ function ModePage(props) {
 		// 一键实测：调 dsh-hunter 验证流水线（L0 指纹判定/L1 仅授权资产），结果回写 finding。
 		if (mode !== "code-audit") { setNotice("实测仅支持代码审计模式 finding"); return; }
 		setNotice("实测进行中：搜索资产 → 存活探测 → 指纹校验 →" + (f.auditMode === "dynamic" ? "影响面评估…" : "EXP 验证（L1 仅授权资产）…"));
-		fetch("/dsh-hunter/verify.live", {
-			method: "POST",
-			headers: { "content-type": "application/json" },
-			body: JSON.stringify({ sessionId: f.sessionId || sessionId, findingId: f.id, allMode: false })
+		csrfOf("/dsh-hunter").then(function (hTok) {
+			return fetch("/dsh-hunter/verify.live", {
+				method: "POST",
+				headers: hTok ? { "content-type": "application/json", "x-dsh-csrf": hTok } : { "content-type": "application/json" },
+				body: JSON.stringify({ sessionId: f.sessionId || sessionId, findingId: f.id, allMode: false })
+			});
 		}).then(function (r) { return r.json(); }).then(function (r) {
 			if (r && r.ok) {
 				setNotice("实测完成（#" + f.seq + "）：" + r.summary

@@ -8,12 +8,20 @@ var React = require("react");
 var useState = React.useState, useEffect = React.useEffect, useRef = React.useRef;
 var h = React.createElement;
 
+var dshCsrf = {};
+/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。 */
+function csrfOf(base) {
+	if (!dshCsrf[base]) dshCsrf[base] = fetch(base + "/csrf").then(function (r) { return r.json(); }).then(function (r) { return r && r.token ? r.token : ""; }).catch(function () { return ""; });
+	return dshCsrf[base];
+}
 function api(endpoint, payload) {
-	return fetch("/dsh-webshell-mgr/" + endpoint, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(payload || {})
-	}).then(function (r) { return r.json(); });
+	return csrfOf("/dsh-webshell-mgr").then(function (tok) {
+		return fetch("/dsh-webshell-mgr/" + endpoint, {
+			method: "POST",
+			headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
+			body: JSON.stringify(payload || {})
+		}).then(function (r) { return r.json(); });
+	});
 }
 
 function fmtBytes(n) {

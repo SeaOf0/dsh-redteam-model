@@ -185,7 +185,7 @@ export function methodRunMessage(taxonomy, method, opts) {
 		`辅助需求：${opts.notes ? opts.notes : "（无）"}`,
 		"执行纪律：",
 		"- 分层执行：同层步骤可并行或自选序，上层未完成不进入下层；",
-		"- 每完成一项调 redteam_coverage_mark(key, 终态) 点亮（主类=整组逐格终态三选一，子项=单格）；有发现即 redteam_finding_register 登记；",
+		"- 每完成一项调 redteam_coverage_mark(key, 终态) 点亮（主类=整组逐格终态三选一，子项=单格；自定义模块不进矩阵、终态照记可经 redteam_coverage_list 查）；有发现即 redteam_finding_register 登记；",
 		"- 步骤与目标/形态不适用时按 N-A 附原因回写，不硬凑" + (taxonomy.chain ? "；突破/拿权/跨段等链路事实按 redteam_atlas_chain 登记" : "") + "。",
 		"步骤序列："
 	];

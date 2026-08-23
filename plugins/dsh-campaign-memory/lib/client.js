@@ -1,17 +1,26 @@
 window.__ModuleLoader__.load({ id: "@dsh-external/dsh-campaign-memory", factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
 // dsh-campaign-memory client — 会话标签页「战役记忆」：九模式战役记忆的浏览 / 检索 / 删除。
-// 记忆为模式作用域跨会话资产：默认定位当前会话模式，可切换九模式查看；检测指纹类到期自动退出召回。
+// 记忆为模式作用域跨会话资产：默认定位当前会话模式，可切换九模式查看；检测指纹到期自动清理，
+// 目标指纹到期退出召回（可切「含已过期」查看/取舍）。
 "use strict";
 var React = require("react");
 var useState = React.useState, useEffect = React.useEffect, useRef = React.useRef;
 
+var dshCsrf = {};
+/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。 */
+function csrfOf(base) {
+	if (!dshCsrf[base]) dshCsrf[base] = fetch(base + "/csrf").then(function (r) { return r.json(); }).then(function (r) { return r && r.token ? r.token : ""; }).catch(function () { return ""; });
+	return dshCsrf[base];
+}
 function api(endpoint, payload) {
-	return fetch("/dsh-campaign-memory/" + endpoint, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(payload || {})
-	}).then(function (r) { return r.json(); });
+	return csrfOf("/dsh-campaign-memory").then(function (tok) {
+		return fetch("/dsh-campaign-memory/" + endpoint, {
+			method: "POST",
+			headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
+			body: JSON.stringify(payload || {})
+		}).then(function (r) { return r.json(); });
+	});
 }
 
 var MODES = [
@@ -49,6 +58,7 @@ var CSS = [
 	".dsh-cm-sel{border:1px solid rgba(58,157,255,.4);border-radius:6px;background:rgba(10,30,60,.6);color:#dbe8f6;padding:5px 9px;font-size:12px;outline:none}",
 	".dsh-cm-btn{border:1px solid rgba(58,157,255,.45);border-radius:8px;padding:4px 12px;font-size:12px;color:#cfe6ff;background:rgba(58,157,255,.1);cursor:pointer}",
 	".dsh-cm-btn:hover{background:rgba(58,157,255,.25)}",
+	".dsh-cm-btn.is-on{background:linear-gradient(90deg,#3f8ef7,#38d4ff);color:#04101f;font-weight:700;border-color:#38d4ff}",
 	".dsh-cm-list{flex:1;overflow:auto;padding:4px 14px 14px;display:flex;flex-direction:column;gap:8px}",
 	".dsh-cm-card{border:1px solid rgba(58,157,255,.3);border-radius:9px;padding:9px 12px;background:rgba(12,32,62,.6)}",
 	".dsh-cm-card b{font-size:13px;color:#e8f3ff}",
@@ -56,6 +66,7 @@ var CSS = [
 	".dsh-cm-card .body{font-size:11.5px;color:#b9d2ee;margin-top:5px;white-space:pre-wrap;word-break:break-word;line-height:1.6}",
 	".dsh-cm-kbadge{display:inline-block;margin-left:6px;font-size:9px;border-radius:4px;padding:0 5px;border:1px solid rgba(124,200,255,.4);color:#7cc8ff;vertical-align:1px}",
 	".dsh-cm-kbadge.k-detect{border-color:rgba(245,197,66,.55);color:#ffe9ad}",
+	".dsh-cm-kbadge.k-expired{border-color:rgba(255,120,120,.55);color:#ffc9c9}",
 	".dsh-cm-acts{display:flex;gap:5px;margin-top:6px;flex-wrap:wrap}",
 	".dsh-cm-acts button{border:1px solid rgba(58,157,255,.45);border-radius:5px;background:rgba(58,157,255,.1);color:#cfe6ff;font-size:11px;cursor:pointer;padding:2px 8px}",
 	".dsh-cm-acts button.is-danger{border-color:rgba(255,120,120,.5);color:#ffc9c9}",
@@ -83,6 +94,7 @@ function MemoryView(props) {
 	var rows = useState([]); var setRows = rows[1];
 	var stats = useState({ total: 0, byKind: {}, expired: 0 }); var setStats = stats[1];
 	var expanded = useState(""); var setExpanded = expanded[1];
+	var showExpired = useState(false); var setShowExpired = showExpired[1];
 	var delConfirm = useState(""); var setDelConfirm = delConfirm[1];
 	var fullOf = useState({}); var setFull = fullOf[1];
 	var toast = useState(null); var setToast = toast[1];
@@ -106,26 +118,26 @@ function MemoryView(props) {
 		window.clearTimeout(toastTimer.current);
 		toastTimer.current = window.setTimeout(function () { setToast(null); }, 3200);
 	}
-	function load(m, k) {
-		api("memory.list", { mode: m, kind: k || "" }).then(function (r) {
+	function load(m, k, incl) {
+		api("memory.list", { mode: m, kind: k || "", includeExpired: !!incl }).then(function (r) {
 			if (r && r.memories) setRows(r.memories);
 		}).catch(function () {});
 		api("memory.stats", { mode: m }).then(function (r) {
 			if (r && r.stats) setStats(r.stats);
 		}).catch(function () {});
 	}
-	useEffect(function () { load(resolved, kind[0]); setDelConfirm(""); setExpanded(""); }, [resolved, kind[0]]);
+	useEffect(function () { load(resolved, kind[0], showExpired[0]); setDelConfirm(""); setExpanded(""); }, [resolved, kind[0], showExpired[0]]);
 
 	function runSearch() {
-		if (!query[0].trim()) { load(resolved, kind[0]); return; }
+		if (!query[0].trim()) { load(resolved, kind[0], showExpired[0]); return; }
 		api("memory.search", { mode: resolved, query: query[0], kind: kind[0] || undefined, limit: 20 }).then(function (r) {
-			if (r && r.memories) { setRows(r.memories); say("检索命中 " + r.memories.length + " 条（已计入使用热度）"); }
+			if (r && r.memories) { setRows(r.memories); say("检索命中 " + r.memories.length + " 条"); }
 			else say((r && r.error) || "检索失败", true);
 		}).catch(function () { say("检索失败（通道不可达）", true); });
 	}
 	function purge() {
 		api("memory.purge", {}).then(function (r) {
-			if (r && r.ok) { load(resolved, kind[0]); say("已清理过期记忆 " + r.purged + " 条"); }
+			if (r && r.ok) { load(resolved, kind[0], showExpired[0]); say("已清理过期检测指纹 " + r.purged + " 条"); }
 		}).catch(function () {});
 	}
 
@@ -135,7 +147,7 @@ function MemoryView(props) {
 			React.createElement("div", { className: "dsh-cm-panel dsh-cm-head" },
 				React.createElement("div", null,
 					React.createElement("div", { className: "dsh-cm-title" }, "战役记忆"),
-					React.createElement("div", { className: "dsh-cm-sub" }, "跨会话打法沉淀 —— 检索即记账 · 指纹类到期自动退场 · 凭据走独立凭据库")),
+					React.createElement("div", { className: "dsh-cm-sub" }, "跨会话打法沉淀 —— 读全文计热度 · 检测指纹到期清理 / 目标指纹到期退场可召回 · 原文入库不脱敏")),
 				React.createElement("div", { className: "dsh-cm-acts" },
 					React.createElement("button", { type: "button", className: "dsh-cm-btn", onClick: purge }, "清理过期"))),
 			React.createElement("div", { className: "dsh-cm-panel" },
@@ -154,20 +166,22 @@ function MemoryView(props) {
 					React.createElement("div", { className: "dsh-cm-stat" }, React.createElement("b", null, String(st.expired)), React.createElement("span", null, "已过期")))),
 			React.createElement("div", { className: "dsh-cm-panel", style: { display: "flex", flexDirection: "column", flex: 1, minHeight: 0 } },
 				React.createElement("div", { className: "dsh-cm-tools" },
-					React.createElement("input", { className: "dsh-cm-in", placeholder: "检索标题 / 正文 / 标签…（回车检索，计入使用热度）", value: query[0], onChange: function (e) { setQuery(e.target.value); }, onKeyDown: function (e) { if (e.key === "Enter") runSearch(); } }),
+					React.createElement("input", { className: "dsh-cm-in", placeholder: "检索标题 / 正文 / 标签…（回车检索）", value: query[0], onChange: function (e) { setQuery(e.target.value); }, onKeyDown: function (e) { if (e.key === "Enter") runSearch(); } }),
 					React.createElement("select", { className: "dsh-cm-sel", value: kind[0], onChange: function (e) { setKind(e.target.value); } },
 						KINDS.map(function (k) { return React.createElement("option", { key: k, value: k }, k ? KIND_LABEL[k] : "全部类别"); })),
+					React.createElement("button", { type: "button", className: "dsh-cm-btn" + (showExpired[0] ? " is-on" : ""), onClick: function () { setShowExpired(!showExpired[0]); } }, "含已过期"),
 					React.createElement("button", { type: "button", className: "dsh-cm-btn", onClick: runSearch }, "检索")),
 				React.createElement("div", { className: "dsh-cm-list" },
 					rows[0].length === 0
 						? React.createElement("div", { className: "dsh-cm-empty" },
 							"本模式还没有战役记忆。", React.createElement("br", null),
-							"会话内模型经 campaign_memory_write 沉淀有效打法（凭据不入记忆，走独立凭据库）；", React.createElement("br", null),
-							"开战时装配上下文自动携带高频记忆，检索 campaign_memory_search 命中即计入热度。")
+							"会话内模型经 campaign_memory_write 沉淀有效打法（正文原样入库不脱敏——凭据可入库或只写指位）；", React.createElement("br", null),
+							"开战时装配上下文自动携带高频记忆，读全文（campaign_memory_get）计入热度并驱动召回。")
 						: rows[0].map(function (m) {
 							return React.createElement("div", { key: m.id, className: "dsh-cm-card" },
 								React.createElement("b", { onClick: function () { setExpanded(expanded[0] === m.id ? "" : m.id); }, style: { cursor: "pointer" } }, m.title,
-									React.createElement("span", { className: "dsh-cm-kbadge" + (m.kind === "detect" ? " k-detect" : "") }, KIND_LABEL[m.kind] || m.kind)),
+									React.createElement("span", { className: "dsh-cm-kbadge" + (m.kind === "detect" ? " k-detect" : "") }, KIND_LABEL[m.kind] || m.kind),
+								m.expired ? React.createElement("span", { className: "dsh-cm-kbadge k-expired" }, "已过期") : null),
 								React.createElement("div", { className: "meta" },
 									(m.workspace ? "@" + m.workspace + " · " : "") + (m.tags ? m.tags + " · " : "") + (m.targetKind ? "目标：" + m.targetKind + " · " : "") + "热度 " + m.usageCount + " · " + (m.lastUsedAt ? "近用 " + fmtTime(m.lastUsedAt) : "未用过") + (m.expiresAt ? " · " + fmtTime(m.expiresAt) + " 过期" : "") ),
 								expanded[0] === m.id ? React.createElement("div", { className: "body" }, fullOf[0][m.id] || m.content) : null,

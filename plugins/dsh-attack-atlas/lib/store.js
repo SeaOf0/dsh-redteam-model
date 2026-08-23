@@ -227,6 +227,8 @@ export function clearChain(st, sessionId, mode) {
 }
 
 export function removeTarget(st, sessionId, mode, seq) {
+	const owner = st.db.prepare("SELECT label FROM targets WHERE session_id = ? AND mode = ? AND seq = ?").get(String(sessionId), String(mode), Number(seq));
+	if (owner) st.db.prepare("UPDATE coverage SET target = '' WHERE session_id = ? AND mode = ? AND target = ?").run(String(sessionId), String(mode), owner.label);
 	st.db.prepare("DELETE FROM targets WHERE session_id = ? AND mode = ? AND seq = ?").run(String(sessionId), String(mode), Number(seq));
 	return { removed: Number(seq) };
 }
@@ -264,7 +266,8 @@ export function saveMethod(st, { id, mode, name, target = "", notes = "", graph 
 	if (text.length > 64 * 1024) throw new Error("图数据超体积上限");
 	let nodeId = clean(id, 40);
 	if (nodeId && !METHOD_ID_RE.test(nodeId)) throw new Error(`非法模板 id：${nodeId}`);
-	const existing = nodeId ? st.db.prepare("SELECT id FROM methods WHERE id = ?").get(nodeId) : undefined;
+	const existing = nodeId ? st.db.prepare("SELECT id, mode FROM methods WHERE id = ?").get(nodeId) : undefined;
+	if (existing && existing.mode !== m) throw new Error(`模板属于 ${existing.mode}，不得跨模式覆盖`);
 	if (!existing) nodeId = newMethodId();
 	st.db.prepare(
 		"INSERT INTO methods (id, mode, name, target, notes, graph, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n" +
@@ -394,14 +397,18 @@ export function listCaps(st, mode) {
 	).all(String(mode));
 }
 
-/** 删除：自定义主类级联删除其全部自定义子类；返回级联数。 */
+/** 删除：自定义主类级联删除其全部自定义子类，并清理对应覆盖终态孤儿行；返回级联数。 */
 export function removeCap(st, id) {
-	const row = st.db.prepare("SELECT id, mode, kind, cat FROM capabilities WHERE id = ?").get(String(id ?? ""));
+	const row = st.db.prepare("SELECT id, mode, kind, cat, item FROM capabilities WHERE id = ?").get(String(id ?? ""));
 	if (!row) throw new Error(`能力不存在：${id}`);
 	let cascaded = 0;
 	if (row.kind === "category") {
 		const r = st.db.prepare("DELETE FROM capabilities WHERE mode = ? AND kind = 'item' AND cat = ?").run(row.mode, row.cat);
 		cascaded = r.changes;
+		// 主类与其全部子类格子（cat 及 cat/*）的终态行跨会话清理——矩阵本就不渲染自定义主类
+		st.db.prepare("DELETE FROM coverage WHERE mode = ? AND (key = ? OR key LIKE ? || '/%')").run(row.mode, row.cat, row.cat);
+	} else if (row.item) {
+		st.db.prepare("DELETE FROM coverage WHERE mode = ? AND key = ?").run(row.mode, row.cat + "/" + row.item);
 	}
 	st.db.prepare("DELETE FROM capabilities WHERE id = ?").run(row.id);
 	return { removed: row.id, cascaded };

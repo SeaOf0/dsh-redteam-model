@@ -7,12 +7,24 @@ var module = { exports: {} }; var exports = module.exports;
 var React = require("react");
 var useState = React.useState, useEffect = React.useEffect, useCallback = React.useCallback, useRef = React.useRef;
 
+var dshCsrf = {};
+/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。 */
+function csrfOf(base) {
+	if (!dshCsrf[base]) dshCsrf[base] = fetch(base + "/csrf").then(function (r) { return r.json(); }).then(function (r) { return r && r.token ? r.token : ""; }).catch(function () { return ""; });
+	return dshCsrf[base];
+}
 function api(endpoint, payload) {
-	return fetch("/dsh-attack-atlas/" + endpoint, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(payload || {})
-	}).then(function (r) { return r.json(); });
+	return csrfOf("/dsh-attack-atlas").then(function (tok) {
+		return fetch("/dsh-attack-atlas/" + endpoint, {
+			method: "POST",
+			headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
+			body: JSON.stringify(payload || {})
+		}).then(function (r) {
+			return r.text().then(function (t) {
+				try { return JSON.parse(t); } catch { throw new Error("HTTP " + r.status + (t ? "\uff1a" + String(t).slice(0, 60) : "")); }
+			});
+		});
+	});
 }
 
 var ATLAS_MODES = [
@@ -275,7 +287,7 @@ function AtlasView(props) {
 	var loadCov = useCallback(function () {
 		if (!sessionId || !resolvedMode) return;
 		api("coverage.get", { sessionId: sessionId, mode: resolvedMode }).then(function (r) {
-			if (r && r.cells) setCov({ cells: r.cells, stages: r.stages || [] });
+			if (r && r.cells) setCov({ cells: r.cells, stages: r.stages || [], targets: r.targets || [] });
 		}).catch(function () {});
 	}, [sessionId, resolvedMode]);
 
@@ -343,14 +355,14 @@ function AtlasView(props) {
 			React.createElement("div", { className: "dsh-ata-pending" },
 				React.createElement("div", { className: "dsh-ata-guide-title" }, "AttackAtlas"),
 				React.createElement("div", null, mLabel + " 的架构体系编排中"),
-				React.createElement("div", { className: "dsh-ata-guide-text" }, "渗透测试模式体系已就绪；其余模式体系按同一矩阵范式逐步纳入。")),
+				React.createElement("div", { className: "dsh-ata-guide-text" }, "该模式的架构体系按同一矩阵范式编排中，就绪后本页自动展示。")),
 			toastNode(toast[0]));
 	}
 	return React.createElement("div", { className: "dsh-ata-root" },
 		React.createElement(MatrixView, {
 			mode: resolvedMode, taxonomy: taxonomy, cov: cov[0],
 			openChain: function () { setChainOpen(true); }, targets: (cov[0].targets || []).map(function (t) { return { seq: t.seq, label: t.label, kindLabel: KIND_LABEL[t.kind] || t.kind, note: t.note }; }), form: form[0], setForm: setForm,
-			pop: pop[0], setPop: setPop, trigger: trigger, manualMark: manualMark, openChain: function () { setChainOpen(true); },
+			pop: pop[0], setPop: setPop, trigger: trigger, manualMark: manualMark,
 			openMethod: function () { setMethodOpen(true); },
 			openCaps: function () { setCapsOpen(true); }
 		}),
@@ -831,7 +843,7 @@ function MethodModal(props) {
 		api("methods.run", { id: d.id, sessionId: props.sessionId, mode: mode, target: d.target, notes: d.notes }).then(function (r) {
 			if (r && r.ok) {
 				setRunDlg(null); props.onClose();
-				say("已按自定义方法论派单——执行进度将实时点亮矩阵");
+				say("已按自定义方法论派单——内置模块进度实时点亮矩阵（自定义模块终态照记可查）");
 			} else say((r && r.error) || "运行失败", true);
 		}).catch(function () { say("运行失败（通道不可达）", true); });
 	}
@@ -1110,7 +1122,7 @@ function MethodModal(props) {
 		run ? React.createElement("div", { className: "dsh-ata-modal", onClick: function (e) { if (e.target === e.currentTarget) setRunDlg(null); } },
 			React.createElement("div", { className: "dsh-ata-mcard" },
 				React.createElement("h5", null, "运行自定义方法论"),
-				React.createElement("div", { style: { fontSize: 12, color: "#9db9d8" } }, "模板：", React.createElement("b", { style: { color: "#e8f3ff" } }, run.name), "（派单进当前会话，按分层执行并逐项点亮矩阵）"),
+					React.createElement("div", { style: { fontSize: 12, color: "#9db9d8" } }, "模板：", React.createElement("b", { style: { color: "#e8f3ff" } }, run.name), "（派单进当前会话，按分层执行；内置模块逐项点亮矩阵）"),
 				React.createElement("div", { className: "dsh-ata-mrow" },
 					React.createElement("label", { style: { fontSize: 11, color: "#8fb4d9", flex: "none" } }, "目标"),
 					React.createElement("input", { placeholder: "域名/ip:port/应用名", value: run.target, onChange: function (e) { setRunDlg(Object.assign({}, run, { target: e.target.value })); } })),
@@ -1139,7 +1151,7 @@ function MethodModal(props) {
 			React.createElement("h6", null, "保存与模板"),
 			React.createElement("div", null, "命名后保存即长期模板（本模式内），可编辑、复制、删除、导入、导出。编排过程中自动存本地草稿，误关弹层不丢。"),
 			React.createElement("h6", null, "运行"),
-			React.createElement("div", null, "输入目标与辅助需求后派单进当前会话：模型按分层执行（同层可并行，上层未完成不进下层），每完成一项点亮矩阵对应格子；主类模块运行时展开为子项逐格推进。不点运行则一切照默认全流程。同一模板可在多个会话反复运行。")) : null);
+			React.createElement("div", null, "输入目标与辅助需求后派单进当前会话：模型按分层执行（同层可并行，上层未完成不进下层），每完成一项点亮矩阵对应格子（自定义模块不进矩阵，终态照记、可经 redteam_coverage_list 查）；主类模块运行时展开为子项逐格推进。不点运行则一切照默认全流程。同一模板可在多个会话反复运行。")) : null);
 }
 
 //#endregion
@@ -1435,7 +1447,7 @@ function Popover(props) {
 		var onDown = function (e) { if (el && !el.contains(e.target)) props.setPop(null); };
 		window.addEventListener("mousedown", onDown);
 		return function () { window.removeEventListener("mousedown", onDown); };
-	}, []);
+	}, [needReason[0]]); // 原因输入框展开后重算位置——防下缘溢出视口
 
 	var rec = pop.rec || {};
 	function mark(state) {

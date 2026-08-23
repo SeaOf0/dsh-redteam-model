@@ -67,7 +67,7 @@ const pj = JSON.parse(fs.readFileSync(path.join(PROFILE_WEB, "package.json"), "u
 const bundles = pj.dsh?.profile?.bundles ?? [];
 // 本机 profile 可能还挂着用户自装的非交付插件（automation/easm/sidechain 等）——它们不在
 // dsh-redteam-model/plugins/ 内，按其 link 目标存在性单独放行说明，不算交付校验失败。
-const DELIVERED = new Set(["dsh-stage-gate", "dsh-mcp-studio", "dsh-product-subagents", "dsh-route-boost", "dsh-refusal-guard", "dsh-sec-enforce", "dsh-redteam-results", "dsh-hunter", "dsh-mode-group", "dsh-scanner-tools", "dsh-webshell-mgr"]);
+const DELIVERED = new Set(["dsh-stage-gate", "dsh-attack-atlas", "dsh-session-pulse", "dsh-mcp-studio", "dsh-product-subagents", "dsh-route-boost", "dsh-campaign-memory", "dsh-refusal-guard", "dsh-sec-enforce", "dsh-redteam-results", "dsh-hunter", "dsh-mode-group", "dsh-scanner-tools", "dsh-webshell-mgr"]);
 for (const name of bundles) {
 	if (!name.startsWith("@dsh-external/")) continue; // 官方 bundle 由真实启动校验
 	const dir = name.replace("@dsh-external/", "");

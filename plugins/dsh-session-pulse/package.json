@@ -1,0 +1,41 @@
+{
+	"name": "@dsh-external/dsh-session-pulse",
+	"version": "0.1.0",
+	"description": "Session status panel for the nine security presets: header progress chip (task-list projection with completion bar), subagent chip with a right-side subagent directory drawer (running/finished groups, click a name to open that subagent session), and a left-center prompt rail listing user prompts with hover preview and click-to-locate on the chat anchor.",
+	"keywords": [
+		"deepseek",
+		"deepseek-harness",
+		"dsh-plugin",
+		"dsh-bundle",
+		"session-status"
+	],
+	"type": "module",
+	"main": "./lib/index.js",
+	"exports": {
+		".": "./lib/index.js",
+		"./client": "./lib/client.js",
+		"./package.json": "./package.json",
+		"./pulse": "./lib/pulse.js"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/dsh-tools": "*"
+	},
+	"license": "MIT",
+	"author": "SeaOf0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+	},
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		},
+		"client": {
+			"platform": "web",
+			"inject": [
+				"@deepseek-ai/dsh-client-connection",
+				"@deepseek-ai/dsh-client-runtime"
+			]
+		}
+	}
+}

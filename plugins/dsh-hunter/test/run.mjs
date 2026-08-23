@@ -4,6 +4,7 @@ import assert from "node:assert";
 import { parseDsl, buildQueries, mergeAssets, fofaGuard, LIMITS } from "../lib/adapters.js";
 import { parseFingerprint, fingerprintQuery, fingerprintLadder, searchWithRelax, fingerprintMatches, verifyPipeline } from "../lib/verify.js";
 import { openHunterStore, configView, getKey } from "../lib/store.js";
+import { isTrustedRequest, checkCsrf } from "../lib/index.js";
 
 let pass = 0, fail = 0;
 // 异步用例必须等待完成后再计数，否则断言未执行就被进程退出（假绿）。
@@ -236,6 +237,23 @@ await ok("放宽寻源：全部零命中→空+null（衔接 no-assets 建议）
 	const r = await searchWithRelax(async () => [], fingerprintLadder(parseFingerprint('指纹:title="x"')));
 	assert.equal(r.assets.length, 0);
 	assert.equal(r.hit, null);
+});
+
+
+// 信任栅栏：端口比对（本机他端口 Origin 拒）
+{
+	const mk = (h) => ({ headers: h });
+	await ok("栅栏：loopback 放行、外域拒、本机他端口 Origin 拒", () => {
+		assert.equal(isTrustedRequest(mk({ host: "127.0.0.1:3080" }), []), true);
+		assert.equal(isTrustedRequest(mk({ host: "evil.com:3080" }), []), false);
+		assert.equal(isTrustedRequest(mk({ host: "127.0.0.1:3080", origin: "http://127.0.0.1:9999" }), []), false, "本机他端口 Origin 拒（端口比对）");
+		assert.equal(isTrustedRequest(mk({ host: "127.0.0.1:3080", origin: "http://127.0.0.1:3080" }), []), true);
+	});
+}
+await ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
+	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "T" } }, "T"), true);
+	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "X" } }, "T"), false);
+	assert.equal(checkCsrf({}, "T"), false);
 });
 
 console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pass} passed`);

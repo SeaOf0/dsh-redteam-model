@@ -330,6 +330,7 @@ await ok("生成器：8 类产物非空且特征正确", () => {
 //#region 6. 插件注册表
 
 import { listPlugins, renderPayload, getPlugin } from "../lib/plugins-registry.js";
+import { isTrustedRequest, checkCsrf } from "../lib/index.js";
 
 await ok("插件注册表：示例发现 + 清单校验 + 占位渲染", () => {
 	const plugins = listPlugins(join(tmpdir(), "wsm-none"));
@@ -544,6 +545,22 @@ if (phpAvailable()) {
 }
 
 //#endregion
+
+
+// 信任栅栏：端口比对（本机他端口 Origin 拒）
+await ok("栅栏：loopback 放行、外域拒、本机他端口 Origin 拒", () => {
+	const mk = (h) => ({ headers: h });
+	if (isTrustedRequest(mk({ host: "127.0.0.1:3080" }), []) !== true) throw new Error("loopback 应放行");
+	if (isTrustedRequest(mk({ host: "evil.com:3080" }), []) !== false) throw new Error("外域应拒");
+	if (isTrustedRequest(mk({ host: "127.0.0.1:3080", origin: "http://127.0.0.1:9999" }), []) !== false) throw new Error("本机他端口 Origin 应拒（端口比对）");
+	if (isTrustedRequest(mk({ host: "127.0.0.1:3080", origin: "http://127.0.0.1:3080" }), []) !== true) throw new Error("同源应放行");
+});
+
+await ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
+	if (checkCsrf({ headers: { "x-dsh-csrf": "T" } }, "T") !== true) throw new Error("匹配应放行");
+	if (checkCsrf({ headers: { "x-dsh-csrf": "X" } }, "T") !== false) throw new Error("错值应拒");
+	if (checkCsrf({}, "T") !== false) throw new Error("缺头应拒");
+});
 
 console.log(`\n结果：${results.pass} 通过 / ${results.fail} 失败 / ${results.skip} 跳过`);
 process.exit(results.fail ? 1 : 0);

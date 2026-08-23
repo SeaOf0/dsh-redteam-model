@@ -26,6 +26,8 @@
 | Linux webshell / 挖矿勒索远控 / 攻击链还原 | `linux/webshell/` · `linux/malware/` · `linux/attack-chain/` |
 | Linux 工具速查 / 知识库索引 | `linux/tools/` · `linux/knowledge/` |
 | 2026 威胁情报锚点（银狐仿冒链/Weax-Sorry 勒索，入口定性与家族识别对照） | `knowledge/threat-intel-2026.md` |
+| 云审计日志失陷指标判读（五类指标：凭据/提权/外带/持久化/清理） | `knowledge/cloud-audit-indicators.md` |
+| 盘面取证 artifacts（Win：$MFT/$UsnJrnl/Prefetch…十优先序；Linux：日志体系/清除检测/时间线） | `windows/methodology/disk-artifacts.md` · `linux/knowledge/disk-artifacts.md` |
 | Linux 应急响应手册原文（GPL-3.0，NOP Team，17 章） | `linux/cookbook-linux/` |
 
 ## 目录索引

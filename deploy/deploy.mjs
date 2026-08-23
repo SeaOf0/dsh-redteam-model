@@ -22,7 +22,7 @@ import os from "node:os";
 import { spawnSync, spawn } from "node:child_process";
 
 const IS_WIN = process.platform === "win32";
-// 布局：dsh-redteam-model/{ modes/<九预设>, shared/, plugins/<八插件>, deploy/ }。
+// 布局：dsh-redteam-model/{ modes/<九预设>, shared/, plugins/<十四插件>, deploy/ }。
 // 预设发现链接指向 modes/（发现器只扫其直接子目录=九个干净预设；shared/plugins/deploy
 // 平铺在 modes 之外，避免被当成缺 agent.cordis.yml 的损坏预设行）。
 const MODEL_ROOT = path.resolve(import.meta.dirname, ".."); // dsh-redteam-model/ 本身
@@ -32,9 +32,11 @@ const DSH_HOME = process.env.DSH_HOME ?? path.join(os.homedir(), ".dsh");
 const PRESET_LINK = path.join(DSH_HOME, ".agent-presets");
 const PROFILE_WEB = path.join(DSH_HOME, "profiles", "web");
 // hostPlane: true = 进 bundles（宿主平面、全模式可见）；false = 仅 link 依赖（preset 平面，
-// 由预设行挂载——scanner 只允许 pentest/attack-defense 可见，宿主不挂是设计而非遗漏）。
+// 由预设行挂载——scanner 允许 pentest/attack-defense/cloud-security/ctf-solver 可见，宿主不挂是设计而非遗漏）。
 const PLUGINS = [
 	{ name: "dsh-stage-gate", hostPlane: true },
+	{ name: "dsh-attack-atlas", hostPlane: true },
+	{ name: "dsh-session-pulse", hostPlane: true },
 	{ name: "dsh-mcp-studio", hostPlane: true },
 	{ name: "dsh-product-subagents", hostPlane: true },
 	{ name: "dsh-route-boost", hostPlane: true },

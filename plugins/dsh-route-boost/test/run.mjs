@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 // Offline unit tests for dsh-route-boost. No host, no session — pure data and
 // rendering, plus contract checks against dsh-stage-gate's real GATES and the
 // presets' top-level refs README indexes.
-import { MODES, inferPhase, inferRefs, inferEvidence, buildEnvelope, buildEnvelopeDetailed, wrapEnvelope, isEnvelopeText, envelopeRev, appendAccounting, isHumanUser, matchKeyword, escapePromptBraces, hasNegation, buildAuditRow, Config } from "../lib/index.js";
+import { MODES, inferPhase, inferRefs, inferEvidence, buildEnvelope, buildEnvelopeDetailed, purposeLine, wrapEnvelope, isEnvelopeText, envelopeRev, appendAccounting, isHumanUser, matchKeyword, escapePromptBraces, hasNegation, buildAuditRow, Config } from "../lib/index.js";
 import { scanSkillDeps, checkTool } from "../lib/skilltools.mjs";
 import { detectScope } from "../lib/scope.mjs";
 import { TAXONOMIES } from "../../dsh-attack-atlas/lib/taxonomy.js";
@@ -332,6 +332,11 @@ console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pas
 	ok("定向信封：用户指定优先+只做指定项+点亮+不欠账", dEnv.text.includes("scope: 定向——用户指定优先") && dEnv.text.includes("SQL 注入") && dEnv.text.includes("只执行用户指定项") && dEnv.text.includes("redteam_coverage_mark 点亮") && dEnv.text.includes("不补测不欠账"));
 	const fEnv = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase: m.phases[0], refsHits: [], gates: GATES, scope: { directed: false, hits: [] } });
 	ok("全流程信封：按矩阵推进", fEnv.text.includes("scope: 未指定具体项——按本模式全流程矩阵推进"));
+	ok("目的行：粘滞携带原文（定向）", buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase, refsHits: [], gates: GATES, scope: { directed: true, hits: ["SQL 注入"] }, purpose: "拿到 getshell 并证明可执行" }).text.includes("目的: 拿到 getshell 并证明可执行"));
+	ok("目的行：无 purpose 不出行", !buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase, refsHits: [], gates: GATES }).text.includes("目的:"));
+	ok("目的行：多行原文单行化+超长裁剪", purposeLine("第一行\n第二行   空格") === "第一行 第二行 空格" && purposeLine("x".repeat(200)).length === 121 && purposeLine("x".repeat(200)).endsWith("…") && purposeLine("  ") === "");
+	ok("target 行：三作战模式注入", ["pentest", "attack-defense", "cloud-security"].every((pid) => buildEnvelopeDetailed({ presetId: pid, mode: MODES[pid], phase: MODES[pid].phases[0], refsHits: [], gates: GATES }).text.includes("target: 开战先 redteam_atlas_target")));
+	ok("target 行：其余模式不注入", !buildEnvelopeDetailed({ presetId: "code-audit", mode: MODES["code-audit"], phase: MODES["code-audit"].phases[0], refsHits: [], gates: GATES }).text.includes("target: 开战先") && !buildEnvelopeDetailed({ presetId: "redteam", mode: MODES.redteam, phase: MODES.redteam.phases[0], refsHits: [], gates: GATES }).text.includes("target: 开战先"));
 	const rtEnv = buildEnvelopeDetailed({ presetId: "redteam", mode: MODES.redteam, phase: MODES.redteam.phases[0], refsHits: [], gates: GATES, scope: { directed: false, hits: [] } });
 	ok("redteam 口径走路由/台账措辞", rtEnv.text.includes("按路由手册受理") && !rtEnv.text.includes("redteam_coverage_mark"));
 	const rtDir = buildEnvelopeDetailed({ presetId: "redteam", mode: MODES.redteam, phase: MODES.redteam.phases[0], refsHits: [], gates: GATES, scope: { directed: true, hits: [] } });

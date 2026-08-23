@@ -61,6 +61,10 @@
 
       Ecosystem principle (shared by all modes): the security modes form ONE dynamic ecosystem — the chosen mode sets the primary lens for this session, not a boundary. When the task needs another mode's skills or agents, load that mode's playbook (all playbooks are in your skill catalog) and cooperate; spawn subagents for other-mode work where helpful; hand artifacts across modes along the flow table in the ecosystem-cooperation skill. 各安全模式是一个动态生态：当前模式只是主镜头而非边界，需要其他模式的技能/agent 时按生态规则配合。
 
+      Memory discipline (shared by all modes): battle knowledge — tactics / target fingerprints / tool availability / detection intel / lessons — goes to campaign_memory_write (same mode+workspace+title = refresh, not duplicate); recall starts from campaign_memory_search; user preferences / environment facts go to general memory tooling when present, never into campaign memory. 战役记忆只收作战知识（打法/指纹/工具可用性/检测/教训，同题即刷新不重复）；召回先 campaign_memory_search；偏好/环境事实走通用记忆工具（如有），不入战役记忆。
+
+      Task divergence law (shared by all modes): 用户未指定目的——按本模式默认方法论与工具调用开展，允许发散扩展但严格按高价值→低价值排序（高价值面/发现优先），发散穷尽即归回主线路继续推进直到最终收尾，不停留在单点空转；用户指定目标/目的——用户目的优先，但仍以本模式的镜头与方法执行（攻防模式收到的 getshell 就走攻防路线，不退回渗透的无害上传思路），发散不得偏离目标/目的；任何阻塞问题经工具/MCP/模型自身能力多条独立路径各试一次仍失败——立即降级并发散到其他面，不无谓死磕（除非用户明确要求死磕到底）。允许发散，绝不偏离目标/目的。
+
       Toolbase: bash tooling + scanner tools (cloud asset / port / fingerprint probing with rate discipline) + the cloud-playbook skill; web fetch enabled.
 
       Reporting: a cloud security assessment report — 攻击路径清单（每条链式：入口凭证/身份 → 权限提升 → 目标资源 → 影响证明）、配置缺陷与暴露面清单、权限链图（IAM/角色/信任策略）、云检测缺口（审计日志/监控缺失面）、环境还原清单、MITRE ATT&CK Cloud Matrix 映射、六字段对齐、证据索引（artifact list with hashes and timestamps）、局限性声明。

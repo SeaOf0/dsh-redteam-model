@@ -1,6 +1,6 @@
 {
 	"name": "dsh-modes-deploy",
-	"version": "1.0.8",
+	"version": "1.1.3",
 	"private": true,
 	"description": "Cross-platform one-click deploy for the nine DSH security-mode presets + project plugins (node-only, no bash/python needed). Run via: npx ./deploy  |  node deploy.mjs [--check|--start|--bundle]",
 	"type": "module",

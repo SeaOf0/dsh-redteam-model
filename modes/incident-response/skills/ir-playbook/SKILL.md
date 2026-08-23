@@ -380,5 +380,5 @@ win/mac/linux 命令等价对照见 ecosystem-cooperation「跨平台执行公�
 
 - 附录 A：跨平台执行公约（win/mac/linux 等价表——见 ecosystem-cooperation 技能）。
 - 附录 B：检测/排查脚本交付规范（exp/<finding-id>.py/.yar：默认只读检测、破坏性步骤 flag 关闭、头部注释授权与清理说明）。
-- 附录 C：MCP 兜底清单（TODO，第 9 步补）。
+- 附录 C：MCP 兜底清单（待接入）。
 - 附录 D：成果页登记（时间线板式，见 persona「成果登记」节）。

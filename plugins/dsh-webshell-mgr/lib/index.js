@@ -12,6 +12,7 @@
 // 不走 connection.rpc（部分 fiber 上注册 webServer 路由会静默 405——hunter/results 同款结论）。
 
 import path from "node:path";
+import crypto from "node:crypto";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { openStore, saveConn, listConns, getConn, deleteConn, recordProbe, getState, setState, listDbProfiles, saveDbProfile, deleteDbProfile, recordGeneration, listGenerations, logOp, listOps } from "./store.js";
@@ -26,6 +27,11 @@ const name = "dsh-webshell-mgr";
 const inject = ["tools", "webServer", "webRuntime", "agentPresets"];
 
 const ROUTE_PATH = "/dsh-webshell-mgr";
+/** 进程级 CSRF token：GET <route>/csrf 由同源页取走（跨源响应不可读），POST 须回带 x-dsh-csrf 头。 */
+const CSRF_TOKEN = crypto.randomBytes(24).toString("hex");
+export function checkCsrf(req, token) {
+	return String(req?.headers?.["x-dsh-csrf"] ?? "") === String(token ?? "");
+}
 const BASE_DIR = path.join(os.homedir(), ".dsh", "webshell-mgr");
 const DB_PATH = path.join(BASE_DIR, "webshell.db");
 const MAX_BODY = 8 * 1024 * 1024;
@@ -386,7 +392,7 @@ function isTrustedRequest(req, trustedHosts) {
 	if (typeof origin === "string" && origin !== "null") {
 		try {
 			const originUrl = new URL(origin);
-			if (originUrl.hostname !== hostUrl.hostname) return false;
+			if (originUrl.host !== hostUrl.host) return false; // 含端口：本机他端口页面的 Origin 不放行
 		} catch { return false; }
 	}
 	return true;
@@ -737,7 +743,11 @@ function apply(ctx) {
 				res.end(text);
 			};
 			if (!isTrustedRequest(req, trustedHosts())) { res.writeHead(403); res.end("forbidden"); return; }
+			let csrfPath = "";
+			try { csrfPath = new URL(req.url ?? "/", "http://x").pathname; } catch { csrfPath = ""; }
+			if (req.method === "GET" && csrfPath === ROUTE_PATH + "/csrf") { send(200, { token: CSRF_TOKEN }); return; }
 			if (req.method !== "POST") { res.writeHead(405); res.end("method not allowed"); return; }
+			if (!checkCsrf(req, CSRF_TOKEN)) { res.writeHead(403); res.end("csrf token missing or invalid"); return; }
 			let endpoint = "";
 			try { endpoint = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname.slice(ROUTE_PATH.length)).replace(/^\/+/, ""); } catch { endpoint = ""; }
 			if (endpoint === "") { res.writeHead(404); res.end("not found"); return; }
@@ -754,4 +764,4 @@ function apply(ctx) {
 	registerTools(ctx);
 }
 
-export { apply, inject, name, ROUTE_PATH, DB_PATH, BASE_DIR, ALLOWED_MODES };
+export { apply, inject, name, ROUTE_PATH, DB_PATH, BASE_DIR, ALLOWED_MODES, isTrustedRequest };

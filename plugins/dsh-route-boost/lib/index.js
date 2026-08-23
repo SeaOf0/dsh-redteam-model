@@ -1,5 +1,5 @@
 // dsh-route-boost — the per-turn governance envelope for the security presets
-// (six professional modes + redteam controller).
+// (eight professional modes + redteam controller).
 //
 // The envelope pushes a route envelope + discipline reminders into every
 // user turn via a UserPromptSubmit hook. DSH's native equivalent is the dynamic
@@ -155,7 +155,17 @@ export function escapePromptBraces(text) {
  *  （mode 行与 operation 恢复行在顶部受保护）；单行仍超才截断加省略号——整行粒度保证
  *  每一行的语义完整性。
  *  buildEnvelopeDetailed 额外带回 dropped 记账（供注入量审计）；buildEnvelope 保持纯文本返回。 */
-export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1200, includeRefs = true, negated = false, tools, scope }) {
+/** 目标锚定行只挂三作战模式（目标漂移是作战大忌；其余模式无目标概念）。 */
+const TARGET_ANCHOR_MODES = new Set(["pentest", "attack-defense", "cloud-security"]);
+
+/** 目的原文单行化+裁剪（粘滞随轮携带，防长会话目的漂移）。 */
+export function purposeLine(text, max = 120) {
+	const oneLine = String(text ?? "").replace(/\s+/g, " ").trim();
+	if (!oneLine) return "";
+	return oneLine.length > max ? oneLine.slice(0, max) + "…" : oneLine;
+}
+
+export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1200, includeRefs = true, negated = false, tools, scope, purpose }) {
 	const gateTable = gates?.[presetId] ?? {};
 	const gateLines = phase.gates
 		.map((id) => gateTable[id] ? `${id} ${gateTable[id].title}` : `${id}`)
@@ -175,6 +185,12 @@ export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidenc
 			? `scope: 定向——用户指定优先${scope.hits && scope.hits.length > 0 ? `：${scope.hits.slice(0, 5).join("、")}` : ""}；只执行用户指定项，完成即逐项 ${mark}，未指定项不补测不欠账；转全流程须用户明示`
 			: `scope: 未指定具体项——${presetId === "redteam" ? "按路由手册受理（多任务走台账）" : "按本模式全流程矩阵推进"}`;
 		lines.splice(1, 0, line);
+	}
+	if (TARGET_ANCHOR_MODES.has(presetId)) {
+		lines.splice(scope ? 2 : 1, 0, "target: 开战先 redteam_atlas_target 登记目标；每阶段/每次派单开头重读图谱目标带与 assets.md 核对当前作业对象——对未登记对象作业或超出授权=漂移，立即停手回锚");
+	}
+	if (purpose) {
+		lines.splice(scope ? 3 : 2, 0, `目的: ${purpose}`);
 	}
 	if (phase.channel) {
 		lines.splice(2, 0, `channel: ${phase.channel}（本阶段默认通道；缺失按工具手册·通道完整阶梯降级）`);
@@ -324,14 +340,18 @@ async function apply(ctx, config) {
 			if (state?.phaseId !== phase.id) auditRoute(agent, presetId, phase.id, text);
 			const tools = toolsStatus(presetId);
 			const scope = detectScope(presetId, text);
-			const detailed = buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence, gates, operation, maxChars: config.maxChars, includeRefs: config.includeRefs, negated, tools, scope });
+			// 目的锚定粘滞：定向消息=最新用户指定（覆盖更新）；全流程下首条任务消息快照后粘滞
+			let purpose = state?.purpose ?? "";
+			if (scope.directed && text) purpose = purposeLine(text);
+			else if (!purpose && text && state?.rev === undefined) purpose = purposeLine(text);
+			const detailed = buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence, gates, operation, maxChars: config.maxChars, includeRefs: config.includeRefs, negated, tools, scope, purpose });
 			let rev = state?.rev ?? 0;
 			if (state?.lastBody !== detailed.text) {
 				rev += 1;
-				agentState.set(agent.id, { text, phaseId: phase.id, rev, lastBody: detailed.text });
+				agentState.set(agent.id, { text, phaseId: phase.id, rev, lastBody: detailed.text, purpose });
 				appendAccounting(logFile, { ts: new Date().toISOString(), agent: agent.id, mode: presetId, phase: phase.id, rev, chars: detailed.text.length, dropped: detailed.dropped, refs: refsHits, evidence, scope: scope.directed ? "directed" : "full", scopeHits: scope.hits.slice(0, 5), tools: tools ? { ok: tools.ok, total: tools.total, missing: tools.missing } : undefined });
 			} else {
-				agentState.set(agent.id, { text, phaseId: phase.id, rev, lastBody: detailed.text });
+				agentState.set(agent.id, { text, phaseId: phase.id, rev, lastBody: detailed.text, purpose });
 			}
 			return wrapEnvelope(escapePromptBraces(detailed.text), { rev, presetId, phaseId: phase.id });
 		}

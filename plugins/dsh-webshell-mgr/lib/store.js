@@ -5,7 +5,7 @@
 //   - generations：生成器产物登记（文件落 ~/.dsh/webshell-mgr/generated/）
 //   - op_log：操作台账（报告门/清痕对账用——每次 exec/file/db/plugin 操作记一行）
 // 凭据为明文存储：webshell 口令属一次性作战凭据，不采用加密落盘；删除连接不自动清
-// 凭据明文落盘——彻底清除时删库文件并 VACUUM。
+// 库页残页（VACUUM 教训见 hunter——需要彻底清除时手动删库文件）。
 
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync } from "node:fs";

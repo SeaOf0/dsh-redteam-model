@@ -1,0 +1,8 @@
+# dsh-session-pulse：会话状态面板（九模式）。
+# 宿主平面：会话头部右上角任务进度 chip（todos 投影）+ 子代理 chip；
+# 右侧「子智能体目录」抽屉（正在运行/已结束，点名进入子代理会话）；
+# 对话页左侧「提示词」栏（悬停预览、点击定位消息锚点）。
+# 服务端仅一个 session.mode 端点（列表源 agentPreset 退化时的真相兜底）。
+- insert:
+    - id: dsh-session-pulse
+      name: '@dsh-external/dsh-session-pulse'

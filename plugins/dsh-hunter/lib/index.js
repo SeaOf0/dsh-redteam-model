@@ -8,6 +8,7 @@
 // 仅对用户标记授权的资产；L2 完整 EXP 不做。
 
 import path from "node:path";
+import crypto from "node:crypto";
 import os from "node:os";
 import { openHunterStore, configView, getKey, nowIso } from "./store.js";
 import { buildQueries, searchFofaPage, searchHunterPage, searchQuakePage, mergeAssets, fofaGuard, LIMITS, daysAgoStamp, nowStamp } from "./adapters.js";
@@ -18,6 +19,11 @@ const name = "dsh-hunter";
 const inject = ["webServer", "webRuntime"];
 
 const ROUTE_PATH = "/dsh-hunter";
+/** 进程级 CSRF token：GET <route>/csrf 由同源页取走（跨源响应不可读），POST 须回带 x-dsh-csrf 头。 */
+const CSRF_TOKEN = crypto.randomBytes(24).toString("hex");
+export function checkCsrf(req, token) {
+	return String(req?.headers?.["x-dsh-csrf"] ?? "") === String(token ?? "");
+}
 const DB_PATH = path.join(os.homedir(), ".dsh", "hunter", "hunter.db");
 const RESULTS_DB_PATH = path.join(os.homedir(), ".dsh", "redteam-results", "results.db");
 
@@ -66,7 +72,7 @@ function isTrustedRequest(req, trustedHosts) {
 	if (typeof origin === "string" && origin !== "null") {
 		try {
 			const originUrl = new URL(origin);
-			if (originUrl.hostname !== hostUrl.hostname) return false;
+			if (originUrl.host !== hostUrl.host) return false; // 含端口：本机他端口页面的 Origin 不放行
 		} catch { return false; }
 	}
 	return true;
@@ -293,7 +299,11 @@ function apply(ctx) {
 				res.end(text);
 			};
 			if (!isTrustedRequest(req, trustedHosts())) { res.writeHead(403); res.end("forbidden"); return; }
+			let csrfPath = "";
+			try { csrfPath = new URL(req.url ?? "/", "http://x").pathname; } catch { csrfPath = ""; }
+			if (req.method === "GET" && csrfPath === ROUTE_PATH + "/csrf") { send(200, { token: CSRF_TOKEN }); return; }
 			if (req.method !== "POST") { res.writeHead(405); res.end("method not allowed"); return; }
+			if (!checkCsrf(req, CSRF_TOKEN)) { res.writeHead(403); res.end("csrf token missing or invalid"); return; }
 			let endpoint = "";
 			try { endpoint = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname.slice(ROUTE_PATH.length)).replace(/^\/+/, ""); } catch { endpoint = ""; }
 			if (endpoint === "") { res.writeHead(404); res.end("not found"); return; }
@@ -309,4 +319,4 @@ function apply(ctx) {
 	}), "dsh-hunter: web route");
 }
 
-export { apply, inject, name, ROUTE_PATH, DB_PATH, openHunterStore, LIMITS };
+export { apply, inject, name, ROUTE_PATH, DB_PATH, openHunterStore, LIMITS, isTrustedRequest };

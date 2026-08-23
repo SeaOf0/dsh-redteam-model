@@ -6,12 +6,20 @@ var module = { exports: {} }; var exports = module.exports;
 var React = require("react");
 var useState = React.useState, useEffect = React.useEffect, useRef = React.useRef;
 
+var dshCsrf = {};
+/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。 */
+function csrfOf(base) {
+	if (!dshCsrf[base]) dshCsrf[base] = fetch(base + "/csrf").then(function (r) { return r.json(); }).then(function (r) { return r && r.token ? r.token : ""; }).catch(function () { return ""; });
+	return dshCsrf[base];
+}
 function api(endpoint, payload) {
-	return fetch("/dsh-hunter/" + endpoint, {
-		method: "POST",
-		headers: { "content-type": "application/json" },
-		body: JSON.stringify(payload || {})
-	}).then(function (r) { return r.json(); });
+	return csrfOf("/dsh-hunter").then(function (tok) {
+		return fetch("/dsh-hunter/" + endpoint, {
+			method: "POST",
+			headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
+			body: JSON.stringify(payload || {})
+		}).then(function (r) { return r.json(); });
+	});
 }
 
 var PLATFORM_META = [

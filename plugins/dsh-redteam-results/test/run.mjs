@@ -2,7 +2,7 @@
 // （登记/更新/删除/分页筛选/统计/计数/验证文案/信任栅栏/端点分发）。
 import assert from "node:assert/strict";
 import { openStore, registerFinding, updateFinding, removeFinding, getFinding, listFindings, listFindingsAll, computeStats, computeStatsAll, modeCounts, modeCountsAll, groupByTarget, groupByTargetAll, setMeta, getMeta, ledgerOverviewAll } from "../lib/store.js";
-import { verifyMessage, isTrustedRequest, dispatch } from "../lib/index.js";
+import { verifyMessage, isTrustedRequest, dispatch, checkCsrf } from "../lib/index.js";
 
 let passed = 0;
 const ok = (name, fn) => { fn(); passed++; console.log(`ok   ${name}`); };
@@ -122,6 +122,7 @@ ok("信任栅栏：回环 Host 放行、跨站 Origin 拒绝、伪造 Host 拒�
 	assert.equal(isTrustedRequest(mk({ host: "127.0.0.1:3080", origin: "http://evil.com" }), []), false, "跨站 Origin");
 	assert.equal(isTrustedRequest(mk({ host: "evil.com:3080" }), []), false, "非回环 Host");
 	assert.equal(isTrustedRequest(mk({ host: "127.0.0.1:3080", origin: "http://127.0.0.1:3080" }), []), true, "同源 Origin");
+	assert.equal(isTrustedRequest(mk({ host: "127.0.0.1:3080", origin: "http://127.0.0.1:9999" }), []), false, "本机他端口 Origin");
 });
 
 ok("dispatch 端点分发：list/delete 正常、未知端点抛错、缺 sessionId 拒绝", async () => {
@@ -353,3 +354,9 @@ ok("listFindingsAll 跨会话按模式聚合（行带 sessionId，范围过滤�
 });
 
 console.log(`\nall ${passed} tests passed`);
+
+ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
+	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "T" } }, "T"), true);
+	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "X" } }, "T"), false);
+	assert.equal(checkCsrf({}, "T"), false);
+});

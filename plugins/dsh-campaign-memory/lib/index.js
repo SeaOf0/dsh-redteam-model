@@ -1,16 +1,19 @@
 // dsh-campaign-memory — 战役记忆宿主插件（九模式）。
 //
 // 三件事：
-//   1) 沉淀：模型侧 campaign_memory_write 随战随记（写入即脱敏：凭据/令牌替换、内网 IP 掩末位）；
-//   2) 召回：campaign_memory_search 检索即记账（usage 排序）；装配期把该模式高频记忆注入
-//      上下文（<dsh-campaign-memory> 标记块，与 route-boost 信封同款的压缩存活标记）；
-//   3) 治理：检测指纹类默认 30 天过期（免杀情报半衰期），过期自动退出召回；Web 标签页
-//      「战役记忆」浏览/检索/删除，loopback RPC 同源栅栏。
+//   1) 沉淀：模型侧 campaign_memory_write 随战随记（存储原文不脱敏——内网地址/指纹细节是打法价值所在，凭据同样原样入库）；
+//   2) 召回：campaign_memory_search 检索预览不记账，campaign_memory_get 读全文即记账
+//      （usage/last_used 是热度排序的唯一驱动——排序=热度×30 天半衰，久未读取自然让位）；
+//      装配期把该模式本工作区高频记忆注入上下文（<dsh-campaign-memory> 标记块）；
+//   3) 治理：detect 默认 30 天过期并自动清理；fingerprint 默认 180 天——到期退出自动召回、
+//      检索仍可命中带过期标记、同题重写即刷新；同模式同工作区同题写入=刷新不重复；
+//      Web 标签页「战役记忆」浏览/检索/删除，loopback RPC 同源栅栏。
 //
 // 记忆是模式作用域的跨会话资产：渗透的目标指纹打法、攻防的环境突破序、代审的框架 sink、
 // 免杀的过检指纹、IR 的家族模式、云的账号提权路径、CTF 的题型解法、二进制的家族特征。
 
 import path from "node:path";
+import crypto from "node:crypto";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { openStore, writeMemory, searchMemories, topForInjection, listMemories, getMemory, removeMemory, statsMemories, purgeExpired, kindLabel, MEMORY_KINDS } from "./store.js";
@@ -25,6 +28,11 @@ const MODE_LABELS = {
 };
 const DB_PATH = path.join(os.homedir(), ".dsh", "campaign-memory", "memory.db");
 const ROUTE_PATH = "/dsh-campaign-memory";
+/** 进程级 CSRF token：GET <route>/csrf 由同源页取走（跨源响应不可读），POST 须回带 x-dsh-csrf 头。 */
+const CSRF_TOKEN = crypto.randomBytes(24).toString("hex");
+export function checkCsrf(req, token) {
+	return String(req?.headers?.["x-dsh-csrf"] ?? "") === String(token ?? "");
+}
 const MAX_BODY = 1024 * 1024;
 
 let store;
@@ -46,7 +54,7 @@ export function buildMemoryBlock(mode, workspace, rows) {
 		const brief = String(r.content).split("\n")[0].slice(0, 90);
 		lines.push(`${i + 1}. [${kindLabel(r.kind)}${r.targetKind ? "·" + r.targetKind : ""}] ${r.title}——${brief}`);
 	});
-	lines.push("沉淀/检索：有效打法即时 campaign_memory_write 记忆（凭据不入记忆——存本地凭据库，记忆只写指位）；开战或换目标类型先 campaign_memory_search 检索。");
+	lines.push("沉淀/检索：有效打法即时 campaign_memory_write 记忆（正文原样入库不脱敏——凭据可入库或只写指位指向本地凭据库）；开战或换目标类型先 campaign_memory_search 检索。");
 	lines.push(`</${INJECT_TAG}>`);
 	let text = lines.join("\n");
 	if (text.length > INJECT_BUDGET) {
@@ -101,7 +109,7 @@ export function isTrustedRequest(req, trustedHosts) {
 	if (typeof origin === "string" && origin !== "null") {
 		try {
 			const originUrl = new URL(origin);
-			if (originUrl.hostname !== hostUrl.hostname) return false;
+			if (originUrl.host !== hostUrl.host) return false; // 含端口：本机他端口页面的 Origin 不放行
 		} catch { return false; }
 	}
 	return true;
@@ -180,25 +188,25 @@ function apply(ctx) {
 	//#region 模型工具（宿主平面；九模式会话内可用）
 	ctx.tools.register(defineTool({
 		name: "campaign_memory_write",
-		description: "把本次战役中验证有效的打法/目标指纹/工具可用性/教训/检测指纹沉淀为战役记忆（跨会话长期复用）。存储原文不做脱敏——凭据/密钥不入记忆：凭据单独存本地凭据库（hunter key 库/webshell 连接库等），记忆只写指位（存哪、叫什么），需要时从库读。kind：tactic 战术打法 / fingerprint 目标指纹 / tooling 工具可用性 / lesson 教训 / detect 检测指纹（默认 30 天过期，可 expires_days 覆盖）。有效即可记，不必等收口。",
+		description: "把本次战役中验证有效的打法/目标指纹/工具可用性/教训/检测指纹沉淀为战役记忆（跨会话长期复用）。存储原文不做脱敏——内网地址/指纹细节/凭据均原样入库（记忆库是本地库）；已有独立凭据库（hunter key 库/webshell 连接库等）时也可只写指位（存哪、叫什么）。同模式同工作区同题写入=刷新既有记忆（正文与时效更新、热度保留，不产生重复——复用标题即可更新）。kind：tactic 战术打法 / fingerprint 目标指纹（默认 180 天时效，到期退出自动召回、检索仍可命中带过期标记，同题重写即刷新）/ tooling 工具可用性 / lesson 教训 / detect 检测指纹（默认 30 天过期并清理，可 expires_days 覆盖）。本模式作战记忆以本工具为准沉淀；用户偏好/环境事实等通用记忆（如有其他记忆工具）不在此沉淀。有效即可记，不必等收口。",
 		parameters: {
-			title: { type: "string", required: true, description: "一句话标题（如：XX 框架后台默认凭据直连）" },
-			content: { type: "string", required: true, description: "打法/事实正文（怎么做的、命中条件、关键参数；凭据类会被脱敏）" },
+			title: { type: "string", required: true, description: "一句话标题（如：XX 框架后台默认凭据直连）；与既有记忆同题即刷新而非新增" },
+			content: { type: "string", required: true, description: "打法/事实正文（怎么做的、命中条件、关键参数；原样入库不做脱敏——凭据/密钥也原样存储）" },
 			kind: { type: "string", required: true, enum: MEMORY_KINDS, description: "记忆类别" },
 			tags: { type: "string", description: "检索标签（逗号分隔，如：java,后台,弱口令）" },
 			target_kind: { type: "string", description: "适用目标形态（web/api/域环境/家族名等，召回过滤用）" },
-			expires_days: { type: "number", description: "有效期天数（省略时 detect=30 天，其余永久）" }
+			expires_days: { type: "number", description: "有效期天数（省略时 detect=30 天、fingerprint=180 天，其余永久）" }
 		},
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
-			render: (_a, v) => [{ type: "text", text: v.ok ? `记忆已沉淀：${v.id}${v.expires_at ? "（" + v.expires_at + " 过期）" : ""}` : `沉淀失败：${v.error}` }]
+			render: (_a, v) => [{ type: "text", text: v.ok ? `记忆已${v.refreshed ? "刷新" : "沉淀"}：${v.id}${v.expires_at ? "（" + v.expires_at + " 过期）" : ""}` : `沉淀失败：${v.error}` }]
 		},
 		execute(args, exec) {
 			const session = sessionOf(ctx, exec);
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅安全模式会话内可用" });
 			try {
 				const m = writeMemory(theStore(), { mode: session.mode, kind: args.kind, title: args.title, content: args.content, tags: args.tags, target_kind: args.target_kind, expires_days: args.expires_days, source_session: session.id, workspace: workspaceOf(exec?.agent) });
-				return Promise.resolve({ ok: true, id: m.id, expires_at: m.expires_at });
+				return Promise.resolve({ ok: true, id: m.id, expires_at: m.expires_at, refreshed: m.refreshed });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
 			}
@@ -207,7 +215,7 @@ function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "campaign_memory_search",
-		description: "检索本模式战役记忆（开战或换目标类型时先查——历史打法可能直接给出可复用路径）。跨工作区检索：全部工作区的同模式记忆都可命中，每行带 workspace 来源标注——跨客户/项目经验复用是显式动作。按使用频次+新近排序，命中自动记账；行内为正文预览，全文经 campaign_memory_get 按需读取。返回为空说明该方向没有历史沉淀。",
+		description: "检索本模式战役记忆（开战或换目标类型时先查——历史打法可能直接给出可复用路径；本模式作战记忆以本工具为准，通用记忆检索不作前置）。跨工作区检索：全部工作区的同模式记忆都可命中，每行带 workspace 来源标注——跨客户/项目经验复用是显式动作。按热度排序（使用频次×30 天时间衰减，久未读取自然让位）；命中不记账，campaign_memory_get 读全文即记账并复活热度；已过期目标指纹仍可命中（带过期标记）。行内为正文预览，全文经 campaign_memory_get 按需读取。返回为空说明该方向没有历史沉淀。",
 		parameters: {
 			query: { type: "string", required: true, description: "关键词（标题/正文/标签匹配，如：XX 云台 弱口令）" },
 			kind: { type: "string", enum: MEMORY_KINDS, description: "限定类别（可选）" },
@@ -231,7 +239,7 @@ function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "campaign_memory_get",
-		description: "读取一条战役记忆全文（检索/list 返回的是正文预览，需要完整打法细节时按 id 取全文）。",
+		description: "读取一条战役记忆全文（检索/list 返回的是正文预览，需要完整打法细节时按 id 取全文）。读取即计入热度（usage/last_used 刷新）——驱动自动召回排序，被采用的历史打法读完即复活。",
 		parameters: {
 			id: { type: "string", required: true, description: "记忆 id（cm- 开头）" }
 		},
@@ -296,7 +304,11 @@ function apply(ctx) {
 				res.end(text);
 			};
 			if (!isTrustedRequest(req, trustedHosts())) { res.writeHead(403); res.end("forbidden"); return; }
+			let csrfPath = "";
+			try { csrfPath = new URL(req.url ?? "/", "http://x").pathname; } catch { csrfPath = ""; }
+			if (req.method === "GET" && csrfPath === ROUTE_PATH + "/csrf") { send(200, { token: CSRF_TOKEN }); return; }
 			if (req.method !== "POST") { res.writeHead(405); res.end("method not allowed"); return; }
+			if (!checkCsrf(req, CSRF_TOKEN)) { res.writeHead(403); res.end("csrf token missing or invalid"); return; }
 			let endpoint = "";
 			try { endpoint = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname.slice(ROUTE_PATH.length)).replace(/^\/+/, ""); } catch { endpoint = ""; }
 			if (endpoint === "") { res.writeHead(404); res.end("not found"); return; }

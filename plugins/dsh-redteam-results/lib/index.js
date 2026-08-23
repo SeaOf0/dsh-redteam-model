@@ -13,6 +13,7 @@
 // 模型按模式验证纪律复核后用 redteam_finding_update 回写状态。
 
 import path from "node:path";
+import crypto from "node:crypto";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { openStore, registerFinding, updateFinding, removeFinding, getFinding, listFindings, listFindingsAll, groupByTarget, groupByTargetAll, computeStats, computeStatsAll, modeCounts, modeCountsAll, ledgerOverview, ledgerOverviewAll, getMeta, setMeta, SEVERITIES, STATUSES, EVIDENCE_LEVELS, SOURCE_ORIGINS } from "./store.js";
@@ -21,6 +22,11 @@ const name = "dsh-redteam-results";
 const inject = ["tools", "webServer", "webRuntime", "agentPresets"];
 
 const ROUTE_PATH = "/dsh-redteam-results";
+/** 进程级 CSRF token：GET <route>/csrf 由同源页取走（跨源响应不可读），POST 须回带 x-dsh-csrf 头。 */
+const CSRF_TOKEN = crypto.randomBytes(24).toString("hex");
+export function checkCsrf(req, token) {
+	return String(req?.headers?.["x-dsh-csrf"] ?? "") === String(token ?? "");
+}
 const MODES = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver"];
 const MODE_LABELS = {
 	redteam: "研究员模式",
@@ -117,7 +123,7 @@ export function isTrustedRequest(req, trustedHosts) {
 	if (typeof origin === "string" && origin !== "null") {
 		try {
 			const originUrl = new URL(origin);
-			if (originUrl.hostname !== hostUrl.hostname) return false;
+			if (originUrl.host !== hostUrl.host) return false; // 含端口：本机他端口页面的 Origin 不放行
 		} catch { return false; }
 	}
 	return true;
@@ -364,7 +370,11 @@ function apply(ctx) {
 				res.end(text);
 			};
 			if (!isTrustedRequest(req, trustedHosts())) { res.writeHead(403); res.end("forbidden"); return; }
+			let csrfPath = "";
+			try { csrfPath = new URL(req.url ?? "/", "http://x").pathname; } catch { csrfPath = ""; }
+			if (req.method === "GET" && csrfPath === ROUTE_PATH + "/csrf") { send(200, { token: CSRF_TOKEN }); return; }
 			if (req.method !== "POST") { res.writeHead(405); res.end("method not allowed"); return; }
+			if (!checkCsrf(req, CSRF_TOKEN)) { res.writeHead(403); res.end("csrf token missing or invalid"); return; }
 			let endpoint = "";
 			try { endpoint = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname.slice(ROUTE_PATH.length)).replace(/^\/+/, ""); } catch { endpoint = ""; }
 			if (endpoint === "") { res.writeHead(404); res.end("not found"); return; }

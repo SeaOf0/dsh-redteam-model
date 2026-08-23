@@ -11,6 +11,7 @@
 // 对应章节开测，完成后经 redteam_coverage_mark 回写点亮——图谱即覆盖度参考标准。
 
 import path from "node:path";
+import crypto from "node:crypto";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, removeCap, exportCaps, importCaps } from "./store.js";
@@ -21,6 +22,11 @@ const name = "dsh-attack-atlas";
 const inject = ["tools", "webServer", "webRuntime", "agentPresets"];
 
 const ROUTE_PATH = "/dsh-attack-atlas";
+/** 进程级 CSRF token：GET <route>/csrf 由同源页取走（跨源响应不可读），POST 须回带 x-dsh-csrf 头。 */
+const CSRF_TOKEN = crypto.randomBytes(24).toString("hex");
+export function checkCsrf(req, token) {
+	return String(req?.headers?.["x-dsh-csrf"] ?? "") === String(token ?? "");
+}
 const MODE_LABELS = {
 	pentest: "渗透测试模式",
 	"code-audit": "代码审计模式",
@@ -125,6 +131,21 @@ function taxonomyWithCaps(st, taxonomy, mode) {
 	return { ...taxonomy, categories };
 }
 
+/** 覆盖 key 对合并体系的存在性校验：拼错即拒（否则终态落库但矩阵永不渲染——静默丢失）。
+ *  key 形如 cat（主类整组）或 cat/item；自定义 u- 主类/子类经合并体系一并认得。 */
+export function validateCoverageRef(taxonomy, key) {
+	const [catId, itemId] = String(key).split("/");
+	const category = taxonomy.categories.find((c) => c.id === catId);
+	if (!category) return `主类不存在：${catId}（不在${taxonomy.label}体系，key 拼写有误？）`;
+	if (itemId !== undefined && !category.items.some((i) => i.id === itemId)) return `子项不存在：${key}（主类「${category.label}」下无此子项）`;
+	return "";
+}
+
+/** 阶段 id 对体系的存在性校验（同上——防拼错静默丢失）。 */
+export function validateStageRef(taxonomy, stage) {
+	return (taxonomy.stages || []).some((s) => s.id === stage) ? "" : `阶段不存在：${stage}（不在${taxonomy.label}作战流程）`;
+}
+
 //#endregion
 
 //#region HTTP 通道（自注册路由 + 同源信任栅栏）
@@ -153,7 +174,7 @@ export function isTrustedRequest(req, trustedHosts) {
 	if (typeof origin === "string" && origin !== "null") {
 		try {
 			const originUrl = new URL(origin);
-			if (originUrl.hostname !== hostUrl.hostname) return false;
+			if (originUrl.host !== hostUrl.host) return false; // 含端口：本机他端口页面的 Origin 不放行
 		} catch { return false; }
 	}
 	return true;
@@ -204,7 +225,13 @@ export async function dispatch(ctx, st, endpoint, payload) {
 	if (endpoint === "coverage.mark") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		const cell = markCell(st, sessionId, String(p.mode ?? "pentest"), String(p.key ?? ""), {
+		const mode = String(p.mode ?? "pentest");
+		const base = TAXONOMIES[mode];
+		if (base && !base.pending) {
+			const bad = validateCoverageRef(taxonomyWithCaps(st, base, mode), p.key);
+			if (bad) throw new Error(bad);
+		}
+		const cell = markCell(st, sessionId, mode, String(p.key ?? ""), {
 			state: String(p.state ?? ""), reason: p.reason, findingRefs: p.findingRefs, target: p.target
 		});
 		return { ok: true, cell };
@@ -212,7 +239,13 @@ export async function dispatch(ctx, st, endpoint, payload) {
 	if (endpoint === "stage.mark") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		return { ok: true, stage: markStage(st, sessionId, String(p.mode ?? "pentest"), String(p.stage ?? ""), String(p.state ?? "")) };
+		const mode = String(p.mode ?? "pentest");
+		const base = TAXONOMIES[mode];
+		if (base && !base.pending) {
+			const bad = validateStageRef(taxonomyWithCaps(st, base, mode), p.stage);
+			if (bad) throw new Error(bad);
+		}
+		return { ok: true, stage: markStage(st, sessionId, mode, String(p.stage ?? ""), String(p.state ?? "")) };
 	}
 	if (endpoint === "coverage.clear") {
 		const sessionId = String(p.sessionId ?? "");
@@ -281,7 +314,8 @@ export async function dispatch(ctx, st, endpoint, payload) {
 	if (endpoint === "caps.import") {
 		if (!Array.isArray(p.capabilities)) throw new Error("capabilities 数组必填");
 		if (p.capabilities.length > 200) throw new Error("单次导入上限 200 条");
-		// 悬挂检查：item 行的所属主类须为内置或本次导入/库内自定义主类
+		// 悬挂/撞车检查：item 所属主类须内置或本次导入/库内自定义；自定义主类/子类标识
+		// 不得与该模式内置 key 相同——同 key 在合并类目里会互相遮蔽、矩阵重复计数。
 		const batchCats = new Map();
 		for (const row of p.capabilities) {
 			const m = String(row?.mode ?? "");
@@ -298,11 +332,20 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		for (const row of p.capabilities) {
 			const m = String(row?.mode ?? "");
 			const base = TAXONOMIES[m];
-			if (base && !base.pending && String(row?.kind) === "item") {
+			const kind = String(row?.kind ?? "");
+			const label = String(row?.label ?? "(无名)");
+			if (base && !base.pending && kind === "category") {
+				const key = String(row?.cat ?? "");
+				if (base.categories.some((c) => c.id === key)) { skippedPre.push({ name: label, reason: `主类标识与内置主类相同：${key}（同 key 会互相遮蔽，请换标识）` }); continue; }
+			}
+			if (base && !base.pending && kind === "item") {
 				const cat = String(row?.cat ?? "");
-				const okBuiltin = base.categories.some((c) => c.id === cat);
+				const ik = String(row?.item ?? "");
+				const hit = base.categories.find((c) => c.id === cat);
+				if (hit && hit.items.some((i) => i.id === ik)) { skippedPre.push({ name: label, reason: `子类标识与内置子类相同：${cat}/${ik}（同 key 会互相遮蔽，请换标识）` }); continue; }
+				const okBuiltin = !!hit;
 				const okCustom = (batchCats.get(m) || new Set()).has(cat);
-				if (!okBuiltin && !okCustom) { skippedPre.push({ name: String(row?.label ?? "(无名)"), reason: `所属主类不存在：${cat}` }); continue; }
+				if (!okBuiltin && !okCustom) { skippedPre.push({ name: label, reason: `所属主类不存在：${cat}` }); continue; }
 			}
 			checked.push(row);
 		}
@@ -349,7 +392,21 @@ export async function dispatch(ctx, st, endpoint, payload) {
 	if (endpoint === "methods.import") {
 		if (!Array.isArray(p.methods)) throw new Error("methods 数组必填");
 		if (p.methods.length > METHOD_LIMITS.importBatch) throw new Error(`单次导入上限 ${METHOD_LIMITS.importBatch} 条`);
-		return { ok: true, ...importMethods(st, p.methods, ATLAS_MODES) };
+		// 导入与保存同规：逐行过 validateMethod（结构硬校验不被导入旁路），坏行跳过说明原因
+		const taxCache = {};
+		const checked = [];
+		const skippedV = [];
+		for (const row of p.methods) {
+			const m = String(row?.mode ?? "");
+			const base = TAXONOMIES[m];
+			if (!base || base.pending) { checked.push(row); continue; }
+			if (!taxCache[m]) taxCache[m] = taxonomyWithCaps(st, base, m);
+			const v = validateMethod(String(row?.name ?? ""), row?.graph, taxCache[m]);
+			if (v.errors.length) { skippedV.push({ name: String(row?.name ?? "(无名)"), reason: `结构问题：${v.errors[0]}` }); continue; }
+			checked.push(row);
+		}
+		const r = importMethods(st, checked, ATLAS_MODES);
+		return { ok: true, imported: r.imported, skipped: skippedV.concat(r.skipped) };
 	}
 	if (endpoint === "methods.run") {
 		const sessionId = String(p.sessionId ?? "");
@@ -421,6 +478,11 @@ function apply(ctx) {
 			const session = sessionOf(ctx, exec);
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅专业模式会话内可用（当前会话未挂专业模式）" });
 			try {
+				const base = TAXONOMIES[session.mode];
+				if (base && !base.pending) {
+					const bad = validateCoverageRef(taxonomyWithCaps(theStore(), base, session.mode), args.key);
+					if (bad) return Promise.resolve({ ok: false, error: bad });
+				}
 				const cell = markCell(theStore(), session.id, session.mode, args.key, { state: args.state, reason: args.reason, findingRefs: args.findingRefs, target: args.target });
 				return Promise.resolve({ ok: true, key: cell.key, state: cell.state });
 			} catch (e) {
@@ -444,6 +506,11 @@ function apply(ctx) {
 			const session = sessionOf(ctx, exec);
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅专业模式会话内可用" });
 			try {
+				const base = TAXONOMIES[session.mode];
+				if (base && !base.pending) {
+					const bad = validateStageRef(taxonomyWithCaps(theStore(), base, session.mode), args.stage);
+					if (bad) return Promise.resolve({ ok: false, error: bad });
+				}
 				const stage = markStage(theStore(), session.id, session.mode, args.stage, args.state);
 				return Promise.resolve({ ok: true, stage: stage.stage, state: stage.state });
 			} catch (e) {
@@ -479,7 +546,7 @@ function apply(ctx) {
 		},
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
-			render: (_a, v) => [{ type: "text", text: v.ok ? (v.targets ? `本会话目标 ${v.targets.length} 个：${v.targets.map((t) => t.label).join("、")}` : `目标已登记：${v.label}（${v.kindLabel}）`) : `目标操作失败：${v.error}` }]
+			render: (_a, v) => [{ type: "text", text: v.ok ? (v.targets ? `本会话目标 ${v.targets.length} 个：${v.targets.map((t) => t.label).join("、")}` : (v.removed != null ? `目标已移除：序号 ${v.removed}` : `目标已登记：${v.label}（${v.kindLabel}）`)) : `目标操作失败：${v.error}` }]
 		},
 		execute(args, exec) {
 			const session = sessionOf(ctx, exec);
@@ -545,7 +612,11 @@ function apply(ctx) {
 				res.end(text);
 			};
 			if (!isTrustedRequest(req, trustedHosts())) { res.writeHead(403); res.end("forbidden"); return; }
+			let csrfPath = "";
+			try { csrfPath = new URL(req.url ?? "/", "http://x").pathname; } catch { csrfPath = ""; }
+			if (req.method === "GET" && csrfPath === ROUTE_PATH + "/csrf") { send(200, { token: CSRF_TOKEN }); return; }
 			if (req.method !== "POST") { res.writeHead(405); res.end("method not allowed"); return; }
+			if (!checkCsrf(req, CSRF_TOKEN)) { res.writeHead(403); res.end("csrf token missing or invalid"); return; }
 			let endpoint = "";
 			try { endpoint = decodeURIComponent(new URL(req.url ?? "/", "http://x").pathname.slice(ROUTE_PATH.length)).replace(/^\/+/, ""); } catch { endpoint = ""; }
 			if (endpoint === "") { res.writeHead(404); res.end("not found"); return; }
