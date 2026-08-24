@@ -1304,4 +1304,23 @@ await ok("autoLight 端到端 IR：type=webshell 正常命中、type=横向 纠�
 	st.close();
 });
 
+// ===== 链路边类型学：五型落库 / 未知回落 / 生成文案带类型词 =====
+await ok("链路边类型学：edgeType 落库、未知回落未分类、chain-gen 文案带五型词", () => {
+	const st = openStore(":memory:");
+	addChainNode(st, "et-1", "attack-defense", { id: "web1", label: "边界 Web", kind: "entry" });
+	addChainNode(st, "et-1", "attack-defense", { id: "dc1", label: "域控", kind: "dc", major: true });
+	const e = addChainEdge(st, "et-1", "attack-defense", { src: "web1", dst: "dc1", label: "凭据复用", edgeType: "exploits" });
+	assert.equal(e.edgeType, "exploits");
+	const e2 = addChainEdge(st, "et-1", "attack-defense", { src: "web1", dst: "dc1", label: "旧边" });
+	assert.equal(e2.edgeType, "", "缺省=未分类（旧调用兼容）");
+	const e3 = addChainEdge(st, "et-1", "attack-defense", { src: "web1", dst: "dc1", label: "坏型", edgeType: "bogus" });
+	assert.equal(e3.edgeType, "", "未知类型回落未分类（不抛错）");
+	const list = listChain(st, "et-1", "attack-defense");
+	assert.ok(list.edges.every((x) => "edgeType" in x), "listChain 返回 edgeType 字段");
+	const msg = triggerMessage(TAXONOMIES["attack-defense"], { level: "chain-gen" });
+	assert.match(msg, /discovered_on/);
+	assert.match(msg, /edgeType/);
+	st.close();
+});
+
 console.log(`\n${passed} passed`);

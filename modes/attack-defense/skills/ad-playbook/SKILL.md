@@ -1,7 +1,7 @@
 ---
 name: ad-playbook
 description: 攻防评估模式作战手册：Agentic Red Teaming 定位（AEV 持续验证）、阶段编排（侦察/突破/横向/持久化/报告+复测闭环）、外网打点作战流程（hunter 测绘联动/入口面价值提级序/登陆口 JS 专线）、内网攻防作战流程（常见端口侦察+蜜罐甄别/服务线弱口令+锁定策略探测/被动凭据线（同广播域投毒中继）/SSH·Windows·SMB·数据库落点线/框架 EXP/DevOps 与邮件·OA·VPN 高价值线/隔离突破 C 段→B 段/域攻纵深分级（BloodHound→Roasting→ADCS→委派→DCSync）/堡垒机与安防设备优先/横向痕迹管理（目标侧定向清痕+本地台账留痕双轨）/穷尽终止+机器可读黑板与操作痕迹台账）、防御验证（detection gap）、AI 应用红队（Garak/PyRIT/Promptfoo 工具矩阵）、验证与评分、MITRE ATT&CK 映射、证据收集规范与报告模板。
-tools: nmap, fscan, nuclei
+tools: nmap, fscan, nuclei, netexec, crackmapexec, impacket
 ---
 
 # 攻防评估作战手册
@@ -64,8 +64,8 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 | 登陆口 JS 专线 | Chrome MCP（复用 pentest §3 专线） | webdriver 消指纹链 → 静态拉 JS |
 | web 侧利用/认证后交互 | burpsuite/yakit MCP（会话态保真） | curl 带凭据（登记无拦截损失）→ POC 脚本 |
 | 内网段发现/存活 | **按监测姿态分叉**（下表） | — |
-| 内网横向/执行 | **kali MCP 重武器库**（netexec/impacket 全家/evil-winrm/responder） | 本机工具（附录 A-2）→ 脚本 → 诚实降级 |
-| 域攻 | kali MCP（bloodhound_collect → kerberoast 线 → impacket_secretsdump） | 本机 impacket 套件 → 手工协议 |
+| 内网横向/执行 | 本机封装优先（scanner-tools：netexec_scan / crackmapexec_scan / impacket_suite——描述带各自六节点阶梯）→ **kali MCP 重武器库**（netexec/impacket 全家/evil-winrm/responder） | 脚本 → 诚实降级 |
+| 域攻 | kali MCP（bloodhound_collect → kerberoast 线 → impacket_secretsdump） | 本机 impacket_suite 封装（secretsdump/GetUserSPNs/GetNPUsers 模块）→ 手工协议 |
 | 隧道/枢纽 | chisel（kali MCP chisel_tunnel/本机） | socat_relay → proxychains → 脚本 |
 | 防御验证（detection gap） | 目标侧证据请求清单（用户确认制） | 日志/告警样本离线分析 |
 

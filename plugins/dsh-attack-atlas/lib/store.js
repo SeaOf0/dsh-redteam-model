@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS chain_edges (
 	src        TEXT NOT NULL,
 	dst        TEXT NOT NULL,
 	label      TEXT NOT NULL DEFAULT "",
+	edge_type  TEXT NOT NULL DEFAULT "",
 	created_at TEXT NOT NULL,
 	PRIMARY KEY (session_id, mode, src, dst, label)
 );
@@ -109,6 +110,7 @@ export function openStore(dbPath) {
 	db.exec(SCHEMA);
 	try { db.exec("ALTER TABLE coverage ADD COLUMN target TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移（列已存在） */ }
 	try { db.exec("ALTER TABLE chain_nodes ADD COLUMN finding_ref TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移（列已存在） */ }
+	try { db.exec("ALTER TABLE chain_edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移（列已存在） */ }
 	return {
 		db,
 		close() { db.close(); }
@@ -204,22 +206,33 @@ export function addChainNode(st, sessionId, mode, { id, label, kind = "host", se
 	return { id: nid, label: l, kind: k, major: !!major, findingRef: fr };
 }
 
-export function addChainEdge(st, sessionId, mode, { src, dst, label = "" }) {
+/** 链路边类型学（黑板关系边五型）：类型化边让拓扑可按边语义聚合检索，label 仍是自由补充细节。
+ *  空串=未分类（旧数据兼容）。 */
+export const CHAIN_EDGE_TYPES = {
+	"discovered_on": "在…发现",
+	"exploits": "利用",
+	"enables": "使可行",
+	"depends_on": "前置依赖",
+	"leads_to": "导致"
+};
+
+export function addChainEdge(st, sessionId, mode, { src, dst, label = "", edgeType = "" }) {
 	const a = clean(src, 60), b = clean(dst, 60), l = clean(label, 80);
 	if (!a || !b) throw new Error("src/dst required");
+	const et = Object.hasOwn(CHAIN_EDGE_TYPES, String(edgeType ?? "")) ? String(edgeType) : "";
 	for (const n of [a, b]) {
 		const hit = st.db.prepare("SELECT id FROM chain_nodes WHERE session_id = ? AND mode = ? AND id = ?").get(String(sessionId), String(mode), n);
 		if (!hit) throw new Error(`边引用未登记节点：${n}（先 add-node）`);
 	}
-	st.db.prepare("INSERT INTO chain_edges (session_id, mode, src, dst, label, created_at) VALUES (?, ?, ?, ?, ?, ?)\n" +
-		"ON CONFLICT (session_id, mode, src, dst, label) DO UPDATE SET label = excluded.label")
-		.run(String(sessionId), String(mode), a, b, l, now());
-	return { src: a, dst: b, label: l };
+	st.db.prepare("INSERT INTO chain_edges (session_id, mode, src, dst, label, edge_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)\n" +
+		"ON CONFLICT (session_id, mode, src, dst, label) DO UPDATE SET label = excluded.label, edge_type = excluded.edge_type")
+		.run(String(sessionId), String(mode), a, b, l, et, now());
+	return { src: a, dst: b, label: l, edgeType: et };
 }
 
 export function listChain(st, sessionId, mode) {
 	const nodes = st.db.prepare("SELECT id, label, kind, seg, note, major, finding_ref AS findingRef, created_at AS createdAt FROM chain_nodes WHERE session_id = ? AND mode = ? ORDER BY created_at, id").all(String(sessionId), String(mode));
-	const edges = st.db.prepare("SELECT src, dst, label FROM chain_edges WHERE session_id = ? AND mode = ? ORDER BY created_at").all(String(sessionId), String(mode));
+	const edges = st.db.prepare("SELECT src, dst, label, edge_type AS edgeType FROM chain_edges WHERE session_id = ? AND mode = ? ORDER BY created_at").all(String(sessionId), String(mode));
 	return { nodes, edges };
 }
 

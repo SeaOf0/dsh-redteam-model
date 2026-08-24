@@ -15,7 +15,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, removeCap, exportCaps, importCaps } from "./store.js";
+import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, CHAIN_EDGE_TYPES, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, removeCap, exportCaps, importCaps } from "./store.js";
 import { TAXONOMIES, ATLAS_MODES, locate } from "./taxonomy.js";
 import { validateMethod, methodRunMessage, inferTargetKind, METHOD_LIMITS } from "./method.js";
 
@@ -94,7 +94,7 @@ export function triggerMessage(taxonomy, payload) {
 		return [
 			"[AttackAtlas·链路拓扑生成] 请依据本会话整体上下文（evidence-index 攻击图 links、已获权限/凭据、突破路径）登记攻击链拓扑：",
 			`① redteam_atlas_chain add-node 逐个登记节点（kind：${Object.entries(taxonomy.chainKinds || {}).map(([id, m]) => id + " " + m.label).join("/") || "entry 入口/host 主机/segment 网段关口/bastion 堡垒机/dc 域控/cred 凭据"}；重大成果节点 major=true；seg 填网段如 10.1.1.x）`,
-			"② add-edge 登记边（label：获取权限/凭据复用/隔离突破/密码抓取/域控获取…）；多入口/无拓扑按实际登记，不虚构。",
+			"② add-edge 登记边——优先带 edgeType 类型化（discovered_on 在…发现 / exploits 利用 / enables 使可行 / depends_on 前置依赖 / leads_to 导致），label 补动作细节（获取权限/凭据复用/隔离突破/密码抓取/域控获取…）；多入口/无拓扑按实际登记，不虚构。",
 			"登记即自动成图（「链路拓扑图」弹窗实时刷新）。"
 		].join("\n");
 	}
@@ -605,7 +605,7 @@ export async function dispatch(ctx, st, endpoint, payload) {
 	if (endpoint === "chain.edge") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		return { ok: true, edge: addChainEdge(st, sessionId, String(p.mode ?? "pentest"), { src: p.src, dst: p.dst, label: p.label }) };
+		return { ok: true, edge: addChainEdge(st, sessionId, String(p.mode ?? "pentest"), { src: p.src, dst: p.dst, label: p.label, edgeType: p.edgeType }) };
 	}
 	if (endpoint === "chain.list") {
 		const sessionId = String(p.sessionId ?? "");
@@ -1098,7 +1098,8 @@ function apply(ctx) {
 			findingRef: { type: "string", description: "关联战果 finding id（redteam_finding_register 返回的 id，如 attack-defense-3）——链路节点与「redteam 成果」页互链；无关联省略" },
 			src: { type: "string", description: "边起点节点 id（action=add-edge 必填）" },
 			dst: { type: "string", description: "边终点节点 id" },
-			edgeLabel: { type: "string", description: "边动作标签（获取权限/凭据复用/隔离突破…）" }
+			edgeLabel: { type: "string", description: "边动作标签（获取权限/凭据复用/隔离突破…）" },
+			edgeType: { type: "string", enum: ["discovered_on", "exploits", "enables", "depends_on", "leads_to"], description: "边类型（推荐填）：discovered_on 在…发现 / exploits 利用 / enables 使可行 / depends_on 前置依赖 / leads_to 导致——类型化边让拓扑图与攻击链复盘可按边语义聚合" }
 		},
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
@@ -1112,8 +1113,8 @@ function apply(ctx) {
 				if (args.action === "list") return Promise.resolve({ ok: true, chain: listChain(theStore(), session.id, session.mode) });
 				if (args.action === "clear") { clearChain(theStore(), session.id, session.mode); return Promise.resolve({ ok: true, what: "链路已清空" }); }
 				if (args.action === "add-node") { const n = addChainNode(theStore(), session.id, session.mode, { id: args.id, label: args.label, kind: args.kind, seg: args.seg, note: args.note, major: args.major, findingRef: args.findingRef }); return Promise.resolve({ ok: true, what: `节点 ${n.label}（${chainKindLabel(n.kind)}${n.major ? "·重大" : ""}${n.findingRef ? `·关联成果 ${n.findingRef}` : ""}）` }); }
-				const e = addChainEdge(theStore(), session.id, session.mode, { src: args.src, dst: args.dst, label: args.edgeLabel });
-				return Promise.resolve({ ok: true, what: `边 ${e.src} → ${e.dst}${e.label ? "（" + e.label + "）" : ""}` });
+				const e = addChainEdge(theStore(), session.id, session.mode, { src: args.src, dst: args.dst, label: args.edgeLabel, edgeType: args.edgeType });
+				return Promise.resolve({ ok: true, what: `边 ${e.src} → ${e.dst}${e.edgeType ? "（" + CHAIN_EDGE_TYPES[e.edgeType] + "）" : ""}${e.label ? "·" + e.label : ""}` });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
 			}

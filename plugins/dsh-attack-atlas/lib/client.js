@@ -615,12 +615,14 @@ function ChainModal(props) {
 							var a = g.pos[e.src], b = g.pos[e.dst];
 							if (!a || !b) return null;
 							var gold = (g.byId[e.dst] || {}).major;
+							var typeColor = ({ "discovered_on": "#38d4ff", "exploits": "#ff6b6b", "enables": "#2ecc8f", "depends_on": "#b48cff", "leads_to": "#ff9f43" })[e.edgeType];
 							var x1 = a.x + g.W, y1 = a.y + g.H / 2, x2 = b.x, y2 = b.y + g.H / 2;
 							var mx = (x1 + x2) / 2;
 							var d = "M" + x1 + "," + y1 + " C" + mx + "," + y1 + " " + mx + "," + y2 + " " + x2 + "," + y2;
+							var typeLabel = e.edgeType ? ({ "discovered_on": "在…发现", "exploits": "利用", "enables": "使可行", "depends_on": "前置依赖", "leads_to": "导致" })[e.edgeType] : "";
 							return React.createElement("g", { key: "e" + i },
-								React.createElement("path", { d: d, fill: "none", stroke: gold ? "#f5c542" : "rgba(120,170,220,.55)", strokeWidth: gold ? 1.8 : 1.3, markerEnd: "url(#" + (gold ? "dsh-ata-arrow-gold" : "dsh-ata-arrow") + ")" }),
-								e.label ? React.createElement("text", { x: mx, y: (y1 + y2) / 2 - 6, textAnchor: "middle", fontSize: 10, fill: gold ? "#ffe9ad" : "#8fb4d9", stroke: "rgba(6,17,36,.9)", strokeWidth: 3, paintOrder: "stroke" }, e.label) : null);
+								React.createElement("path", { d: d, fill: "none", stroke: typeColor || (gold ? "#f5c542" : "rgba(120,170,220,.55)"), strokeWidth: gold ? 1.8 : 1.3, markerEnd: "url(#" + (gold ? "dsh-ata-arrow-gold" : "dsh-ata-arrow") + ")" }),
+								(typeLabel || e.label) ? React.createElement("text", { x: mx, y: (y1 + y2) / 2 - 6, textAnchor: "middle", fontSize: 10, fill: typeColor || (gold ? "#ffe9ad" : "#8fb4d9"), stroke: "rgba(6,17,36,.9)", strokeWidth:  3, paintOrder: "stroke" }, (typeLabel ? "◆" + typeLabel : "") + (e.label ? (typeLabel ? "·" : "") + e.label : "")) : null);
 						}),
 						g.nodes.map(function (n) {
 							var p = g.pos[n.id];
