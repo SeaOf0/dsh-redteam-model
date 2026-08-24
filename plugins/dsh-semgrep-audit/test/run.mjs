@@ -69,14 +69,16 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	const r = runSemgrep({
 		workspace: ws, target, layer: "builtin-java",
 		spawnFn: (bin, args) => ({ status: 0, stdout: semgrepOut, args }),
-		fsMod: fs, refsCandidates: [refs]
+		fsMod: fs, refsCandidates: [refs], hasBinFn: () => true
 	});
 	ok("运行：产物 JSON 落盘 + 证据行 + 对账双写", r.ok && r.total === 1 && r.reconciled === 1 && fs.existsSync(path.join(ws, "artifacts", "scans")) && fs.readFileSync(path.join(ws, "evidence-index.md"), "utf8").includes("semgrep scan --json"));
 	ok("运行：证据编号自增格式", /^E\d+$/.test(r.evidenceId));
-	const r2 = runSemgrep({ workspace: ws, target, layer: "custom", rulesPath: "/no/such.yml", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: [refs] });
+	const r2 = runSemgrep({ workspace: ws, target, layer: "custom", rulesPath: "/no/such.yml", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: [refs], hasBinFn: () => true });
 	ok("运行：custom 规则路径不存在拒绝", r2.ok === false && r2.error.includes("规则路径不存在"));
-	const r3 = runSemgrep({ workspace: ws, target, layer: "builtin-java", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: ["/none"] });
+	const r3 = runSemgrep({ workspace: ws, target, layer: "builtin-java", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: ["/none"], hasBinFn: () => true });
 	ok("运行：refs 未定位拒绝并提示 custom 兜底", r3.ok === false && r3.error.includes("layer=custom"));
+	const r4 = runSemgrep({ workspace: ws, target, layer: "builtin-java", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: [refs], hasBinFn: () => false });
+	ok("运行：缺装拒绝走三级兜底提示（检测制）", r4.ok === false && r4.error.includes("绝不自动装"));
 	fs.rmSync(ws, { recursive: true, force: true });
 }
 

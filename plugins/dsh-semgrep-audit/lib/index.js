@@ -125,10 +125,10 @@ export function appendReconcile(fsMod, workspace, rows) {
 	return rows.length;
 }
 
-/** 运行核心（spawn 可注入供测试）。 */
-export function runSemgrep({ workspace, target, layer = "builtin-java", rulesPath, extraArgs, spawnFn, fsMod, refsCandidates, cap }) {
+/** 运行核心（spawn/fs/二进制检测均可注入供测试）。 */
+export function runSemgrep({ workspace, target, layer = "builtin-java", rulesPath, extraArgs, spawnFn, fsMod, refsCandidates, cap, hasBinFn }) {
 	const fsx = fsMod ?? fs;
-	if (!hasBin("semgrep")) return { ok: false, error: BIN_HINT };
+	if (!(hasBinFn ?? hasBin)("semgrep")) return { ok: false, error: BIN_HINT };
 	const refsDir = findRefsDir(refsCandidates);
 	if (layer !== "custom" && !refsDir) return { ok: false, error: "未定位到 code-audit refs/（三层规则集随预设分发）——请用 layer=custom + rules_path 指定规则路径，或检查预设部署布局" };
 	if (layer === "custom" && !rulesPath) return { ok: false, error: "layer=custom 必填 rules_path（规则文件或目录）" };

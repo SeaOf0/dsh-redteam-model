@@ -302,7 +302,7 @@ export const TOOL_DEFS = {
 		guard: { active: true, targetParam: "target" }
 	},
 	impacket: {
-		id: "impacket", bin: "impacket", bins: ["impacket-{module}", "{module}.py"], name: "impacket_suite", kind: "ad-exec", positional: "target",
+		id: "impacket", bin: "impacket", bins: ["impacket-{module}", "{module}.py"], name: "impacket_suite", kind: "ad-exec", positional: "target", moduleParam: "module",
 		summary: "Impacket AD toolkit (local; module selectable: secretsdump / psexec / wmiexec / smbexec / atexec / GetUserSPNs / GetNPUsers; binary auto-resolves between 'impacket-<module>' and '<module>.py' install layouts). Credential-first doctrine: use obtained creds/hashes, DCSync single-request over bulk logins; lateral-execution modules leave traces — op-trace ledger applies. Requires the target registered in the asset baseline.",
 		hint: "AD 重兵器套件：secretsdump 凭据直取（DCSync 单请求优于批量登录）、psexec/wmiexec/smbexec/atexec 横向执行（痕迹管理纪律适用）、GetUserSPNs/GetNPUsers Roasting 线起点；双安装名自动解析",
 		params: {
@@ -407,6 +407,7 @@ export function buildArgs(def, params = {}) {
 	const known = new Set(["workspace", "extra",
 		...(def.positional ? [def.positional] : []),
 		...(def.prefixParam ? [def.prefixParam] : []),
+		...(def.moduleParam ? [def.moduleParam] : []),
 		...Object.keys(def.args?.flags ?? {}),
 		...Object.keys(def.args?.combined ?? {}),
 		...Object.keys(def.args?.switches ?? {})]);
@@ -448,6 +449,12 @@ export function buildArgs(def, params = {}) {
 		if (NO_SHELL_META.test(s)) throw new Error(`extra 含 shell 元字符，拒绝`);
 		argv.push(...s.split(/\s+/).filter(Boolean));
 		audit.push(`extra: ${s}（显式附加参数留痕）`);
+	}
+	if (def.moduleParam) {
+		const mv = params[def.moduleParam];
+		if (mv === undefined || mv === "") throw new Error(`参数 ${def.moduleParam} 必填`);
+		const allowed = def.params?.[def.moduleParam]?.enum;
+		if (allowed && !allowed.includes(String(mv))) throw new Error(`未知 ${def.moduleParam}：${mv}（合法：${allowed.join("/")}）`);
 	}
 	if (def.prefixParam) {
 		const pv = params[def.prefixParam];

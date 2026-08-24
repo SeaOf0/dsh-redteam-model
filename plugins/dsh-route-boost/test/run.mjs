@@ -311,7 +311,7 @@ console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pas
 	const overTools = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase, refsHits: ["web"], gates: GATES, maxChars: 200, negated: true, tools: { total: 5, ok: 3, missing: ["a", "b"] } });
 	ok("budget drops tools line before tail lines when tight", overTools.dropped.includes("tools") && overTools.text.length <= 200);
 	const deps = scanSkillDeps("pentest");
-	ok("scanSkillDeps reads playbook tools frontmatter", deps.has("nmap") && deps.has("sqlmap") && deps.size === 5);
+	ok("scanSkillDeps reads playbook tools frontmatter", deps.has("nmap") && deps.has("sqlmap") && deps.has("masscan") && deps.has("hydra") && !deps.has("impacket") && deps.size === 13);
 	ok("checkTool: universal binary true, bogus false", checkTool("ls") === true && checkTool("definitely-not-a-real-tool-xyz") === false);
 	const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "rb-acc-"));
 	const tmp = path.join(tmpDir, "injections.jsonl");
