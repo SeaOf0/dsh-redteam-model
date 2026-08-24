@@ -4,7 +4,7 @@
 > Sysmon EventID / EDR 遥测行为 / 现成 Sigma 规则），按 ATT&CK T 编号对齐。
 > 用法：防御验证员判定某条 finding「目标侧检测到没」时，先查本表对应行的「应留痕迹」，再核对目标侧
 > SIEM/EDR 是否具备该日志来源与告警；缺日志来源或未告警 → 记为 gap 或「无法评估」。
-> 覆盖范围：zh-intranet/ 11 篇 payload 主要类目 + offensive/ 域攻防主链。
+> 覆盖范围：zh-intranet/ 12 篇 payload 主要类目 + offensive/ 域攻防主链。
 > 结构：检测侧配对到字段/阈值/规则级，不止名词。
 
 ---

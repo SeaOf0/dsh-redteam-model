@@ -14,4 +14,5 @@
 - 检测侧配对：Dr 寄存器非零遥测（SetThreadContext CONTEXT_DEBUG_REGISTERS 敏感操作）；
   VEH 注册监控；单步异常频次；ETW-TI 断点上下文可见性。
 - 判定表（本地实测后填）：| 引擎 | 结果 | 原文行 |
+- 构建验证记录：2026-08-20 mingw 14.0.0 编译通过（PE32+ GUI x86-64）；运行验证待
   Windows 判定环境。

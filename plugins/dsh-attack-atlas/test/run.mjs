@@ -1,7 +1,7 @@
 // dsh-attack-atlas 离线单测：类目体系完整性（key 唯一/形态合法）+ SQLite 覆盖态
 // （终态白名单/N-A 必附原因/会话×模式隔离/清除）+ 通道纯逻辑（端点分发/派单文案/信任栅栏）。
 import assert from "node:assert/strict";
-import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods } from "../lib/store.js";
+import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, addChainNode, addChainEdge, listChain, clearChain, chainRefIndex, CHAIN_NODE_KINDS, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps } from "../lib/store.js";
 import { TAXONOMIES, ATLAS_MODES, locate, itemsInForm, validateTaxonomy, refPaths } from "../lib/taxonomy.js";
 import fs2 from "node:fs";
 import path2 from "node:path";
@@ -289,9 +289,9 @@ await ok("云体系：18 主类×4 分区×7 阶段×6 形态，chainKinds 在�
 	assert.equal(t.chain, true);
 	assert.deepEqual(validateTaxonomy(), []);
 	for (const k of Object.keys(t.chainKinds)) assert.ok(CHAIN_NODE_KINDS.includes(k), `chainKind ${k} 不在服务端词表`);
-	// 提级序四面与高价值五项
+	// 提级序五面（含 exfil 数据外传）与高价值五项
 	const loot = t.categories.find((c) => c.id === "loot-order");
-	assert.deepEqual(loot.items.map((i) => i.id), ["identity-face", "ctrl-face", "secret-face", "data-face"]);
+	assert.deepEqual(loot.items.map((i) => i.id), ["identity-face", "ctrl-face", "secret-face", "data-face", "exfil"]);
 	assert.equal(t.categories.find((c) => c.id === "hv-cloud").items.length, 5);
 	// 六源齐
 	const six = t.categories.find((c) => c.id === "entry-disc").items.map((i) => i.id);
@@ -1016,9 +1016,9 @@ import { GATE_STAGE as GATE_STAGE_REF } from "../lib/index.js";
 await ok("autoStageFromGate：PASS 级联点亮此前全部阶段；未知门不动", () => {
 	const st = openStore(":memory:");
 	const marked = autoStageFromGate(st, CA, "gate-1", "code-audit", "A2");
-	assert.deepEqual(marked, ["s1", "s2", "s3", "s4"], "A2 过门 → s1-s4 级联 done");
+	assert.deepEqual(marked, ["s1", "s2"], "A2 过门 → s1-s2 级联（s3 条件性、s4 逐 finding 双链门均不凭过门推定）");
 	const cov = getCoverage(st, "gate-1", "code-audit");
-	assert.equal(cov.stages.length, 4);
+	assert.equal(cov.stages.length, 2);
 	assert.ok(cov.stages.every((s) => s.state === "done"));
 	assert.deepEqual(autoStageFromGate(st, CA, "gate-1", "code-audit", "A9"), [], "未知门不动");
 	assert.deepEqual(autoStageFromGate(st, TAXONOMIES["ctf-solver"], "gate-2", "ctf-solver", "flag"), ["s1", "s2", "s3"], "ctf flag 过门 → s1-s3 级联");
@@ -1068,7 +1068,7 @@ await ok("派单三选一按模式图例：ctf/binary/IR 各自词", () => {
 });
 
 
-// ===== 评估批：ref 路由化 / 姿势词 / 级联排除 =====
+// ===== ref 路由化 / 姿势词 / 级联排除 =====
 await ok("sink 类格子 refHint 走 README 路由（不预设语言）", () => {
 	const msg = triggerMessage(CA, { level: "cell", categoryId: "sink-core", itemId: "sqli", formId: "all", targets: [] });
 	assert.match(msg, /refs\/README\.md（按目标语言快速路由/, "sqli 派单不再硬编码 java 手册");
@@ -1084,14 +1084,223 @@ await ok("派单姿势词按模式语态：IR=取证 / av=实验 / ctf=解题", 
 	assert.match(cell("pentest"), /验证姿势执行（最小影响、非破坏性）/, "渗透保持原姿势词");
 });
 
-await ok("级联排除：pentest P2 不点亮 s3 登陆口专线；binary B1 不点亮 s3 动态分析", () => {
+await ok("级联排除：pentest P2 不点亮 s3/s5；binary B1 不点亮 s3/s4（逐条目门不推定阶段整体完成）", () => {
 	const st = openStore(":memory:");
 	const marked = autoStageFromGate(st, TAXONOMIES["pentest"], "nf-1", "pentest", "P2");
 	assert.ok(!marked.includes("s3"), "s3 登陆口专线不凭过门推定完成");
-	assert.ok(marked.includes("s5") && marked.includes("s0"), "目标与此前无条件阶段照常点亮");
+	assert.ok(!marked.includes("s5"), "s5 验证与影响证明不凭单 finding 复核（P2）推定完成");
+	assert.ok(marked.includes("s0") && marked.includes("s4"), "画像与此前无条件阶段照常点亮");
 	const marked2 = autoStageFromGate(st, TAXONOMIES["binary-analysis"], "nf-2", "binary-analysis", "B1");
 	assert.ok(!marked2.includes("s3"), "binary s3 动态分析不凭 B1 推定完成");
-	assert.ok(marked2.includes("s4"), "B1 目标阶段照常");
+	assert.ok(!marked2.includes("s4"), "B1 逐样本还原门不推定 s4 还原破解整体完成");
+	st.close();
+});
+
+await ok("逐条目门阶段由覆盖度终门回填：P3→s5、A3→s4、B2→s4、V4→s5（av V3 仍不点 s5）", () => {
+	const st = openStore(":memory:");
+	assert.ok(autoStageFromGate(st, TAXONOMIES["pentest"], "ff-1", "pentest", "P3").includes("s5"), "P3 覆盖度门级联补齐 s5");
+	assert.ok(autoStageFromGate(st, CA, "ff-2", "code-audit", "A3").includes("s4"), "A3 回填 s4");
+	const b2 = autoStageFromGate(st, TAXONOMIES["binary-analysis"], "ff-3", "binary-analysis", "B2");
+	assert.ok(b2.includes("s4") && !b2.includes("s3"), "B2 回填 s4；binary s3 条件性仍不回填");
+	assert.ok(!autoStageFromGate(st, TAXONOMIES["av-evasion"], "ff-4", "av-evasion", "V3").includes("s5"), "av V3 逐实验配对门不点 s5");
+	assert.ok(autoStageFromGate(st, TAXONOMIES["av-evasion"], "ff-4b", "av-evasion", "V4").includes("s5"), "V4 终门回填 s5");
+	st.close();
+});
+
+import { taxonomyWithCaps } from "../lib/index.js";
+await ok("cap forms 点亮：自定义主类/子类的适用形态并入合并类目（矩阵形态过滤对自定义格生效）", () => {
+	const st = openStore(":memory:");
+	const catKey = saveCap(st, { mode: "pentest", kind: "category", label: "自定义面", forms: "web,api" }).cat;
+	saveCap(st, { mode: "pentest", kind: "item", cat: catKey, label: "自定义格", forms: "api,未知词" });
+	const merged = taxonomyWithCaps(st, TAXONOMIES["pentest"], "pentest");
+	const custCat = merged.categories.find((c) => c.id === catKey);
+	assert.deepEqual(custCat.forms, ["web", "api"], "自定义主类 forms 解析为数组（未知词忽略）");
+	assert.deepEqual(custCat.items[0].forms, ["api"], "自定义子项 forms 生效（供矩阵 item 形态过滤）");
+	assert.ok((merged.formCategories.web || []).includes(catKey) && (merged.formCategories.api || []).includes(catKey), "自定义主类并入 formCategories（形态切换可见）");
+	const again = taxonomyWithCaps(st, TAXONOMIES["pentest"], "pentest");
+	assert.equal(merged.formCategories.web.length, again.formCategories.web.length, "重复合并不重复累积（内置数组不被污染）");
+	st.close();
+});
+
+// ===== pentest：包含规则修正 / autoLight CWE 提取 / stage.mark 归一 / mode 白名单 / 换主类迁移 =====
+await ok("包含规则修正：未授权→access/unauth（前缀优先）、越权→歧义拒、RCE 不再误中 sourcemap", () => {
+	const T = TAXONOMIES.pentest;
+	assert.equal(resolveKey(T, "未授权")?.key, "access/unauth", "前缀命中优先——不再被「LLM API 未授权…」最长包含抢走");
+	const yq = resolveKey(T, "越权");
+	assert.ok(yq?.ambiguous, "越权多命中同长（水平/垂直）——歧义拒报候选，不再静默选 openid 格");
+	assert.ok(JSON.stringify(yq.ambiguous).includes("horiz"), "候选含水平越权");
+	assert.equal(resolveKey(T, "RCE"), null, "短 ASCII 线索词边界匹配——「sourcemap」内嵌 rce 不再误报");
+	assert.equal(resolveKey(T, "XSS")?.key, "injection/xss", "词边界命中的短线索照常工作");
+});
+
+await ok("autoLight：type 内嵌 CWE 一并提取（cwe 字段缺填不绕空）", async () => {
+	const st = openStore(":memory:");
+	const r = await autoLightFromFinding(null, st, "s-cwe", { type: "注入（CWE-89）", title: "注入点" }, { mode: "pentest", findFindingId: async () => "", followup: () => {} });
+	assert.ok(r.marked.includes("injection/sqli"), "type 内嵌 CWE-89 点亮 SQL 注入格");
+	st.close();
+});
+
+await ok("HTTP stage.mark 中文标签归一落库（与工具路径同规，校验/落库不再两套语义）", async () => {
+	const st = openStore(":memory:");
+	const stages = TAXONOMIES.pentest.stages;
+	const last = stages[stages.length - 1];
+	const r = await dispatch(null, st, "stage.mark", { sessionId: "s-st", mode: "pentest", stage: last.label, state: "done" });
+	assert.equal(r.ok, true);
+	const cov = getCoverage(st, "s-st", "pentest");
+	assert.ok(cov.stages.some((s) => s.stage === last.id && s.state === "done"), "中文标签归一到 canonical id 落库");
+	st.close();
+});
+
+await ok("mode 白名单：未知 mode 拒绝并报合法清单（不再落幽灵行）", async () => {
+	const st = openStore(":memory:");
+	await assert.rejects(() => dispatch(null, st, "coverage.get", { sessionId: "s-x", mode: "bogus" }), /未知模式 bogus/);
+	st.close();
+});
+
+await ok("编辑自定义子类换主类：coverage 行随迁不留孤儿", async () => {
+	const st = openStore(":memory:");
+	const cat1 = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "category", label: "临时主类A" });
+	const cat2 = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "category", label: "临时主类B" });
+	const item = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "item", cat: cat1.cat, label: "临时子类" });
+	const oldKey = `${cat1.cat}/${item.item}`;
+	markCell(st, "s-move", "pentest", oldKey, { state: "tested-found", reason: "x" });
+	const moved = await dispatch(null, st, "caps.save", { id: item.id, mode: "pentest", kind: "item", cat: cat2.cat, label: "临时子类" });
+	assert.equal(moved.cat, cat2.cat);
+	const cov = getCoverage(st, "s-move", "pentest");
+	const newKey = `${cat2.cat}/${item.item}`;
+	assert.ok(cov.cells.some((c) => c.key === newKey), "终态行已随迁到新主类");
+	assert.ok(!cov.cells.some((c) => c.key === oldKey), "旧 key 无孤儿行");
+	st.close();
+});
+
+// ===== attack-defense 批：战果词别名 / 序号前缀剥离 / 链路互链 findingRef / 形态列完备 =====
+await ok("ad 战果词别名全表：十个官方战果词全部点亮对应主类", () => {
+	const ad = TAXONOMIES["attack-defense"];
+	const cases = { "入口点": "entry-vec", "数据读取成果": "hv-target", "凭据·密码本": "cred-line", "哈希集(hash map)": "win-chain", "横向立足点": "lateral", "域控成果": "domain-attack", "Webshell 部署": "foothold", "持久化项": "persistence", "内网资产": "host-collect", "检测gap": "defense-verify" };
+	for (const [w, cat] of Object.entries(cases)) assert.equal(resolveKey(ad, w)?.key, cat, `${w} 应别名点亮 ${cat}`);
+});
+await ok("序号前缀剥离：ad entry-vec 标签带序号，SQL/SSRF 词边界恢复命中", () => {
+	const ad = TAXONOMIES["attack-defense"];
+	assert.equal(resolveKey(ad, "SQL")?.key, "entry-vec/sqli");
+	assert.equal(resolveKey(ad, "SSRF")?.key, "entry-vec/ssrf");
+});
+await ok("ad autoLight 端到端：官方战果词登记即点亮（不再零点亮、P3 不再哑火）", async () => {
+	const st = openStore(":memory:");
+	const r = await autoLightFromFinding(null, st, "s-ad", { type: "域控成果", title: "DC 权限落袋" }, { mode: "attack-defense", findFindingId: async () => "", followup: () => {} });
+	assert.ok(r.marked.includes("domain-attack"), "域控成果 → domain-attack 主类");
+	st.close();
+});
+await ok("链路互链：节点带 findingRef 往返 + chainRefIndex 反查（成果页互链行数据源）", () => {
+	const st = openStore(":memory:");
+	addChainNode(st, "s-l", "attack-defense", { id: "dc-01", label: "DC01", kind: "dc", major: true, findingRef: "attack-defense-3" });
+	const chain = listChain(st, "s-l", "attack-defense");
+	assert.equal(chain.nodes[0].findingRef, "attack-defense-3");
+	const idx = chainRefIndex(st, "attack-defense");
+	assert.ok(idx["s-l:attack-defense-3"] && idx["s-l:attack-defense-3"][0].nodeId === "dc-01" && idx["s-l:attack-defense-3"][0].major === 1, "反查索引键=会话:findingRef");
+	st.close();
+});
+await ok("ad formCategories 完备：20 主类全部至少归属一个形态列（形态筛选不再漏类）", () => {
+	const ad = TAXONOMIES["attack-defense"];
+	const inForms = new Set(Object.values(ad.formCategories).flat());
+	for (const c of ad.categories) assert.ok(inForms.has(c.id), `主类 ${c.id} 不在任何形态列`);
+});
+
+// ===== code-audit 批：CSRF fuzzy 闸 / 代审别名 / GATE_NO_FILL s3 / A1→s1 =====
+await ok("CSRF 不再经 fuzzy 误点亮 ssrf（短 ASCII 线索禁走全局模糊）", () => {
+	const ca = TAXONOMIES["code-audit"];
+	assert.equal(resolveKey(ca, "CSRF"), null, "code-audit 无 CSRF 格——宁拒不误亮");
+	assert.equal(resolveKey(TAXONOMIES.pentest, "XSS")?.key, "injection/xss", "pentest 词边界命中的短线索不受影响");
+});
+await ok("代审登记词别名：命令注入/文件包含/硬编码前端绕过/组件词全中格子级", () => {
+	const ca = TAXONOMIES["code-audit"];
+	assert.equal(resolveKey(ca, "命令注入")?.key, "sink-core/cmd");
+	assert.equal(resolveKey(ca, "文件包含")?.key, "sink-core/file-rw");
+	assert.equal(resolveKey(ca, "硬编码前端绕过")?.key, "rce-main/hardcoded-rce");
+	assert.equal(resolveKey(ca, "fastjson")?.key, "rce-main/deep-deser");
+	assert.equal(resolveKey(ca, "log4j")?.key, "rce-main/cve-patterns");
+});
+await ok("级联排除：code-audit A2 过门不点亮 s3 动态验证/s4 确证闭环（逐 finding 双链门）；A1=面映射出口点 s1", () => {
+	const st = openStore(":memory:");
+	const marked = autoStageFromGate(st, TAXONOMIES["code-audit"], "nf-ca", "code-audit", "A2");
+	assert.ok(!marked.includes("s3"), "s3 动态验证不凭 A2 推定完成");
+	assert.ok(!marked.includes("s4"), "s4 确证闭环不凭单 finding 双链过门（A2）推定完成");
+	const a1 = autoStageFromGate(st, TAXONOMIES["code-audit"], "nf-ca", "code-audit", "A1");
+	assert.deepEqual(a1, ["s1"], "A1=面映射（s1 出口）——不再把 s2 静态审计一并标 done");
+	st.close();
+});
+
+// ===== cloud-security：战果词别名全表 / exfil 新格 / autoLight 端到端 =====
+await ok("cloud 别名全表：官方 12 路径类型词+AK/SK 族+破歧义词全中", () => {
+	const cl = TAXONOMIES["cloud-security"];
+	const cases = {
+		"凭证泄露利用": "entry-disc", "元数据服务": "entry-disc/imds", "对象存储": "deep-dig/bucket-public",
+		"云数据库": "loot-order/data-face", "权限提升": "deep-dig/iam-deep", "K8s 集群": "k8s-line",
+		"CI-CD": "cicd-line", "持久化": "persist-cloud", "AK/SK": "entry-disc/hardcoded-first",
+		"AccessKey": "entry-disc/hardcoded-first", "子账号接管": "loot-order/ctrl-face", "IAM": "perm-recon",
+		"Secret 泄露": "loot-order/secret-face", "OIDC": "trust-lateral/oidc", "数据外传": "loot-order/exfil"
+	};
+	for (const [w, k] of Object.entries(cases)) assert.equal(resolveKey(cl, w)?.key, k, `${w} 应别名点亮 ${k}`);
+});
+await ok("cloud exfil 语义格新增：loot-order/exfil 存在且 ref/pb 锚点有效", () => {
+	const cl = TAXONOMIES["cloud-security"];
+	const it = cl.categories.find((c) => c.id === "loot-order").items.find((i) => i.id === "exfil");
+	assert.ok(it, "exfil 子项存在");
+	assert.ok(it.pb || it.ref, "锚点非空");
+});
+await ok("cloud autoLight 端到端：官方词登记即点亮（CI-CD 错位/持久化落点修）", async () => {
+	const st = openStore(":memory:");
+	const r1 = await autoLightFromFinding(null, st, "s-cl1", { type: "CI-CD", title: "流水线接管" }, { mode: "cloud-security", findFindingId: async () => "", followup: () => {} });
+	assert.ok(r1.marked.includes("cicd-line"), "CI-CD→cicd-line（不再被 hv-cloud/cicd-hv 抢走）");
+	const r2 = await autoLightFromFinding(null, st, "s-cl2", { type: "凭证泄露利用", title: "AK 泄露" }, { mode: "cloud-security", findFindingId: async () => "", followup: () => {} });
+	assert.ok(r2.marked.includes("entry-disc"), "凭证泄露利用→entry-disc");
+	st.close();
+});
+
+// ===== ctf-solver：模块别名 + autoLight 端到端 =====
+await ok("ctf 模块别名：成果页 type=模块主线词全中格子", () => {
+	const ct = TAXONOMIES["ctf-solver"];
+	assert.equal(resolveKey(ct, "web")?.key, "mod-core/web");
+	assert.equal(resolveKey(ct, "pwn")?.key, "mod-core/pwn");
+	assert.equal(resolveKey(ct, "rev")?.key, "mod-core/reverse");
+	assert.equal(resolveKey(ct, "supply")?.key, "mod-eco/supply");
+	assert.equal(resolveKey(ct, "supply-chain")?.key, "mod-eco/supply");
+	assert.equal(resolveKey(ct, "ad")?.key, "mod-eco/ad-domain");
+	assert.equal(resolveKey(ct, "ai-ml")?.key, "mod-core/ai-ml");
+});
+await ok("autoLight 端到端 ctf：type=web/pwn 点亮模块格（不再静默失效）", async () => {
+	const st = openStore(":memory:");
+	const r1 = await autoLightFromFinding(null, st, "al-ctf1", { title: "题-web", type: "web" }, { mode: "ctf-solver", findFindingId: async () => "" });
+	assert.deepEqual(r1.marked, ["mod-core/web"]);
+	const r2 = await autoLightFromFinding(null, st, "al-ctf2", { title: "题-pwn", type: "pwn" }, { mode: "ctf-solver", findFindingId: async () => "" });
+	assert.deepEqual(r2.marked, ["mod-core/pwn"]);
+	st.close();
+});
+
+// ===== incident-response：别名双轴桥 + autoLight 端到端（含纠偏断言） =====
+await ok("IR 别名双轴桥：persona 链节点词+自然事件词全中，六错位词纠偏", () => {
+	const ir = TAXONOMIES["incident-response"];
+	assert.equal(resolveKey(ir, "入口点")?.key, "card-vuln/exp-anchor", "入口点→卡6 EXP 锚点");
+	assert.equal(resolveKey(ir, "持久化")?.key, "compromise-check", "持久化→失陷排查主类（不再三格歧义拒）");
+	assert.equal(resolveKey(ir, "横向")?.key, "spread-loop/five-dim", "横向→五维扩线（纠偏：原错位勒索卡前兆格）");
+	assert.equal(resolveKey(ir, "横向移动")?.key, "spread-loop/five-dim");
+	assert.equal(resolveKey(ir, "数据外传")?.key, "card-forensics/rebuild", "数据外传→行为重建（纠偏：原错位双勒索格）");
+	assert.equal(resolveKey(ir, "处置清理")?.key, "remediation/checklist");
+	assert.equal(resolveKey(ir, "勒索病毒")?.key, "card-ransom");
+	assert.equal(resolveKey(ir, "挖矿木马")?.key, "compromise-check/backdoor");
+	assert.equal(resolveKey(ir, "日志清除")?.key, "card-forensics/rebuild");
+	assert.equal(resolveKey(ir, "暴力破解")?.key, "card-live/chain-ser");
+	assert.equal(resolveKey(ir, "凭据窃取")?.key, "spread-loop/five-dim");
+	assert.equal(resolveKey(ir, "提权")?.key, "chain-rebuild", "提权→攻击链还原（纠偏：原错位 webshell 伴随格）");
+	assert.equal(resolveKey(ir, "失陷")?.key, "compromise-check", "失陷→失陷排查（纠偏：原错位云实例格）");
+	assert.equal(resolveKey(ir, "IOC")?.key, "ioc-enrich", "IOC→IOC 富化（纠偏：原错位收敛格）");
+	assert.equal(resolveKey(ir, "时间线")?.key, "timeline", "时间线→时间线还原主类（纠偏：原错位报告格）");
+});
+await ok("autoLight 端到端 IR：type=webshell 正常命中、type=横向 纠偏点亮", async () => {
+	const st = openStore(":memory:");
+	const r1 = await autoLightFromFinding(null, st, "al-ir1", { title: "主机A发现 webshell", type: "webshell" }, { mode: "incident-response", findFindingId: async () => "" });
+	assert.deepEqual(r1.marked, ["compromise-check/webshell"]);
+	const r2 = await autoLightFromFinding(null, st, "al-ir2", { title: "横向扩散节点", type: "横向" }, { mode: "incident-response", findFindingId: async () => "" });
+	assert.deepEqual(r2.marked, ["spread-loop/five-dim"], "横向不再点亮 card-ransom/pre-lateral");
 	st.close();
 });
 

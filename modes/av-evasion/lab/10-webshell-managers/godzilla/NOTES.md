@@ -15,6 +15,7 @@
 - 检测侧配对：Cookie 通行证结构模型；回传 base64+XOR 包型；AES-ECB 模式特征（同明文
   同密文统计）；马静态结构族指纹；流量解密取证（密钥可得即解，Java payload 可反编译还原）。
 - 判定表（本地实测后填）：| 引擎 | 结果 | 原文行 |
+- 验证记录：2026-08-20 `php -l php-payload-demo.php` 语法检查通过（PHP 8.5.9，期间修复
   注释内字面 PHP 标签导致的解析错误）；本机 `php -S 127.0.0.1` 协议回环冒烟通过——
   首包 200 + 下发 PHPSESSID/sid 通行证；业务包（AES-128-ECB 加密命令 + 会话 Cookie）
   → 回传解码 md5 校验头匹配、XOR 还原出 `godzilla-smoke-ok`；另验证无 X-G 头请求被

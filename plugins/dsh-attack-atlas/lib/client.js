@@ -8,21 +8,32 @@ var React = require("react");
 var useState = React.useState, useEffect = React.useEffect, useCallback = React.useCallback, useRef = React.useRef;
 
 var dshCsrf = {};
-/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。 */
+/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。
+ *  token 缓存遇 403 即失效重取一次——宿主重启轮换 token 后已开标签页自愈，不再永久 403。 */
 function csrfOf(base) {
 	if (!dshCsrf[base]) dshCsrf[base] = fetch(base + "/csrf").then(function (r) { return r.json(); }).then(function (r) { return r && r.token ? r.token : ""; }).catch(function () { return ""; });
 	return dshCsrf[base];
 }
+function postJson(tok, endpoint, payload) {
+	return fetch("/dsh-attack-atlas/" + endpoint, {
+		method: "POST",
+		headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
+		body: JSON.stringify(payload || {})
+	});
+}
+function parseResp(r) {
+	return r.text().then(function (t) {
+		try { return JSON.parse(t); } catch { throw new Error("HTTP " + r.status + (t ? "\uff1a" + String(t).slice(0, 60) : "")); }
+	});
+}
 function api(endpoint, payload) {
 	return csrfOf("/dsh-attack-atlas").then(function (tok) {
-		return fetch("/dsh-attack-atlas/" + endpoint, {
-			method: "POST",
-			headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
-			body: JSON.stringify(payload || {})
-		}).then(function (r) {
-			return r.text().then(function (t) {
-				try { return JSON.parse(t); } catch { throw new Error("HTTP " + r.status + (t ? "\uff1a" + String(t).slice(0, 60) : "")); }
-			});
+		return postJson(tok, endpoint, payload).then(function (r) {
+			if (r.status === 403) {
+				delete dshCsrf["/dsh-attack-atlas"];
+				return csrfOf("/dsh-attack-atlas").then(function (tok2) { return postJson(tok2, endpoint, payload); }).then(parseResp);
+			}
+			return parseResp(r);
 		});
 	});
 }
@@ -45,7 +56,7 @@ var STATE_META = {
 	"budget-stop": { label: "预算耗尽", cls: "is-budget" }
 };
 var STAGE_META = { active: { label: "进行中", cls: "is-active" }, done: { label: "完成", cls: "is-done" } };
-var KIND_LABEL = { domain: "域名", web: "Web 站点", ip: "IP/主机", api: "API 服务", miniprogram: "小程序", android: "Android", ios: "iOS", desktop: "桌面客户端", component: "组件/中间件", cloud: "云资产", ai: "AI 服务", other: "其他" };
+var KIND_LABEL = { domain: "域名", web: "Web 站点", ip: "IP/主机", api: "API 服务", miniprogram: "小程序", android: "Android", ios: "iOS", desktop: "桌面客户端", component: "组件/中间件", cloud: "云资产", ai: "AI 服务", repo: "源码仓库", sample: "样本", payload: "载荷", webshell: "WebShell", loader: "加载器", memshell: "内存马", c2: "C2 通道", host: "主机", case: "案件", challenge: "题目", account: "云账号", tenant: "租户", cluster: "集群", other: "其他" };
 
 function esc(s) { return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 function fmtTime(s) { return s ? String(s).replace("T", " ").slice(0, 16) : ""; }
@@ -445,7 +456,7 @@ function MatrixView(props) {
 				taxonomy.chain ? React.createElement("button", {
 					type: "button", className: "dsh-ata-chainbtn", onClick: props.openChain || function () {}
 				}, "链路拓扑图") : null)),
-		React.createElement(TargetStrip, { targets: props.targets || [] }),
+		React.createElement(TargetStrip, { mode: taxonomy.id, targets: props.targets || [] }),
 		React.createElement("div", { className: "dsh-ata-panel" },
 			React.createElement("div", { className: "dsh-ata-stages" },
 				(taxonomy.stages || []).map(function (s) {
@@ -621,13 +632,17 @@ function ChainModal(props) {
 								React.createElement("text", { x: 12, y: 42, fontSize: 10.5, fill: "#9db9d8" }, meta.label + (n.seg ? " · " + n.seg : "") + (n.note ? " · " + String(n.note).slice(0, 12) : "")),
 								n.major ? React.createElement("g", null,
 									React.createElement("rect", { x: g.W - 44, y: 8, width: 36, height: 17, rx: 8, fill: "rgba(245,197,66,.2)", stroke: "#f5c542", strokeWidth: 1 }),
-									React.createElement("text", { x: g.W - 26, y: 20, textAnchor: "middle", fontSize: 10, fill: "#ffe9ad", fontWeight: 700 }, "重大")) : null);
-						}))),
-			React.createElement("div", { className: "dsh-ata-chainlegend" },
-				Object.keys(KINDS).map(function (k) {
-					return React.createElement("span", { key: k }, React.createElement("i", { style: { display: "inline-block", width: 10, height: 10, borderRadius: 2, marginRight: 4, background: KINDS[k].fill, border: "1px solid " + KINDS[k].stroke, verticalAlign: "-1px" } }), KINDS[k].label);
-				}),
-				React.createElement("span", { style: { color: "#f5c542" } }, "金框=重大成果 · 金边=通向重大成果"))));
+									React.createElement("text", { x: g.W - 26, y: 20, textAnchor: "middle", fontSize: 10, fill: "#ffe9ad", fontWeight: 700 }, "重大")) : null,
+								n.findingRef ? React.createElement("g", null, // 战果互链：关联「redteam 成果」页 finding（反向在成果页 Detail 显示链路节点）
+									React.createElement("rect", { x: g.W - 40, y: g.H - 20, width: 32, height: 14, rx: 7, fill: "rgba(90,180,255,.18)", stroke: "rgba(120,200,255,.75)", strokeWidth: 1 }),
+									React.createElement("text", { x: g.W - 24, y: g.H - 9.5, textAnchor: "middle", fontSize: 9, fill: "#bfe3ff" }, "#" + String(n.findingRef).split("-").pop())) : null);
+							}))),
+				React.createElement("div", { className: "dsh-ata-chainlegend" },
+					Object.keys(KINDS).map(function (k) {
+						return React.createElement("span", { key: k }, React.createElement("i", { style: { display: "inline-block", width: 10, height: 10, borderRadius: 2, marginRight: 4, background: KINDS[k].fill, border: "1px solid " + KINDS[k].stroke, verticalAlign: "-1px" } }), KINDS[k].label);
+					}),
+					React.createElement("span", { style: { color: "#f5c542" } }, "金框=重大成果 · 金边=通向重大成果"),
+					React.createElement("span", { style: { color: "#bfe3ff" } }, "蓝标=关联成果"))));
 }
 
 //#region 自定义工作方法论（MethodModal）
@@ -1396,10 +1411,18 @@ function CapabilityModal(props) {
 
 function TargetStrip(props) {
 	var targets = props.targets || [];
+	// 分模式锚定词（与服务端 MODE_ANCHOR 对齐——避免 ctf 题面/云基线挂渗透通用文案）
+	var anchor = props.mode === "ctf-solver"
+		? { word: "对象锚定", hint: "未登记题目——模型侧 redteam_atlas_target 登记题目/赛局（与 challenge-board 题面登记同步）后，双击派单自动带题面上下文" }
+		: props.mode === "cloud-security"
+		? { word: "目标锚定", hint: "未登记云目标——模型侧 redteam_atlas_target 登记（与 cloud-assets.md 测绘基线同步）后，双击派单自动带目标上下文" }
+		: props.mode === "incident-response"
+		? { word: "范围锚定", hint: "未登记调查对象——模型侧 redteam_atlas_target 登记受侵主机/案件（与证据保全清单同步）后，双击派单自动带案件上下文" }
+		: { word: "目标锚定", hint: "未登记目标——模型侧 redteam_atlas_target 登记（与资产清单基线同步）后，双击派单自动带目标上下文" };
 	return React.createElement("div", { className: "dsh-ata-panel dsh-ata-targets" },
-		React.createElement("span", { className: "dsh-ata-tgt-label" }, "目标锚定"),
+		React.createElement("span", { className: "dsh-ata-tgt-label" }, anchor.word),
 		targets.length === 0
-			? React.createElement("span", { className: "dsh-ata-hint" }, "未登记目标——模型侧 redteam_atlas_target 登记（与资产清单基线同步）后，双击派单自动带目标上下文")
+			? React.createElement("span", { className: "dsh-ata-hint" }, anchor.hint)
 			: targets.map(function (t) {
 				return React.createElement("span", { key: t.seq, className: "dsh-ata-tgt", title: t.note || "" }, t.label, React.createElement("i", null, t.kindLabel || ""));
 			}));
@@ -1461,12 +1484,12 @@ function Popover(props) {
 		rec.reason ? React.createElement("div", { className: "dsh-ata-pop-row" }, "原因：", esc(rec.reason)) : null,
 		rec.findingRefs ? React.createElement("div", { className: "dsh-ata-pop-row" }, "关联 finding：", esc(rec.findingRefs)) : null,
 		rec.updatedAt ? React.createElement("div", { className: "dsh-ata-pop-row" }, "更新：", fmtTime(rec.updatedAt)) : null,
-		pop.ref ? React.createElement("div", { className: "dsh-ata-pop-row" }, pop.ref.indexOf("pentest:") === 0 ? "知识手册：pentest refs/" + esc(pop.ref.slice(8)) : "知识手册：refs/" + esc(pop.ref)) : (pop.pb ? React.createElement("div", { className: "dsh-ata-pop-row" }, "打法出处：playbook ", esc(pop.pb)) : null),
+		pop.ref ? React.createElement("div", { className: "dsh-ata-pop-row" }, pop.ref.indexOf("pentest:") === 0 ? "知识手册：pentest refs/" + esc(pop.ref.slice(8)) : (pop.ref === "README.md" ? "知识手册：refs/README.md（按目标语言快速路由——语言类格子不预设语言）" : "知识手册：refs/" + esc(pop.ref))) : (pop.pb ? React.createElement("div", { className: "dsh-ata-pop-row" }, "打法出处：playbook ", esc(pop.pb)) : null),
 		React.createElement("div", { className: "dsh-ata-markrow" },
 			React.createElement("button", { type: "button", className: "dsh-ata-mark", onClick: function () { mark("tested-found"); } }, (props.shortLabels || {}).found || "有发现"),
 			React.createElement("button", { type: "button", className: "dsh-ata-mark", onClick: function () { mark("tested-clear"); } }, (props.shortLabels || {}).clear || "未命中"),
-			React.createElement("button", { type: "button", className: "dsh-ata-mark", onClick: function () { mark("na"); } }, "不具备"),
-			React.createElement("button", { type: "button", className: "dsh-ata-mark", onClick: function () { mark("budget-stop"); } }, "预算停"),
+			React.createElement("button", { type: "button", className: "dsh-ata-mark", onClick: function () { mark("na"); } }, (props.shortLabels || {}).na || "不具备"),
+			React.createElement("button", { type: "button", className: "dsh-ata-mark", onClick: function () { mark("budget-stop"); } }, (props.shortLabels || {}).budget || "预算停"),
 			React.createElement("button", { type: "button", className: "dsh-ata-mark is-danger", onClick: function () { props.manualMark(pop.key, "__clear__", ""); } }, "清除")),
 		needReason[0] ? React.createElement("div", null,
 			React.createElement("input", {

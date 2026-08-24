@@ -56,7 +56,7 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 | 盘面 artifacts | KAPE/MFTECmd/PECmd（本地，CSV 进时间线） | kali MCP（镜像外传登记）→ python 近似解析（标注） |
 | 样本静态 | YARA/strings/哈希（本地） | kali MCP（binwalk_analysis 等）→ 协同 binary（生态流转） |
 | 样本动态 | **协同 binary-analysis**（纯隔离沙箱铁则，见虚拟化与沙箱公约） | 无环境→仅静态移交，禁止宿主机运行 |
-| IOC 富化 | TI refs + web_search | dsh-hunter（关联测绘）→ 脚本 |
+| IOC 富化 | TI refs（`refs/knowledge/threat-intel-2026.md`——2026 家族锚点：银狐/Weax-Sorry）+ web_search | dsh-hunter（关联测绘）→ 脚本 |
 
 ## 扩线作战流程（多主机调查循环）
 
@@ -147,10 +147,10 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 | I1 | 证据保全 | `evidence-preservation.md`（保全清单表：保全项/取证命令/哈希/时间戳）+ `evidence-index.md`（≥1 行表格） | 保全清单空/无证据索引 → 不过；保全动作须可追溯 |
 | I2 | 溯源还原 | `attack-timeline.md`（时间线表：时间节点/可疑IP/事件/证据编号，≥3 行） | 时间线节点无证据编号 → 不过；链上断点须标注「未知」 |
 | I3 | 定性 | `compromise-verdict.md`（失陷定性表：对象/类型/证据/结论[confirmed/疑似/排除]） | 定性无证据引用 → 不过；疑似不得进 confirmed |
-| I4 | 处置建议 | `remediation-checklist.md`（清理清单表：项/位置/处置步骤/风险/验证方式） | 清单缺验证方式 → 不过；删除类操作须标注「用户确认后执行」 |
-| I5 | 报告 | 报告文件（`reports/incident-report-<id>.md`，stage_gate 的 file 参数传绝对路径） | 六字段齐 + 时间线表 + 恶意文件/持久化清单 + 处置建议引用 |
+| I4 | 处置建议 | `remediation-checklist.md`（清理清单表：项/位置/处置步骤/风险/验证方式/用户确认，≥1 行、每行 ≥4 格） | 清单缺验证方式 → 不过；删除类操作须标注「用户确认后执行」 |
+| I5 | 报告 | 报告文件（`reports/incident-report-<id>.md`，stage_gate 的 file 参数传绝对路径；含字面标记 `时间线`、`失陷原因`、`ATT&CK`、`处置建议`、`证据索引`） | 六字段齐 + 时间线表 + 恶意文件/持久化清单 + 处置建议引用 |
 
-> **结构校验走运行时门禁工具**：开工门禁清单优先看 route-boost 信封（已含门禁与 canonical 文件名）；信封缺失或不确定时再调 `gates_list`（mode=incident-response）读门禁清单与
+> **结构校验走运行时门禁工具**：开工门禁清单优先看 route-boost 信封（含门禁 id 与标题，canonical 文件名经 gates_list 取）；信封缺失或不确定时再调 `gates_list`（mode=incident-response）读门禁清单与
 > canonical 文件名；产物齐后调 `stage_gate(mode, stage, workspace[, file])` 做结构校验（判定自动落
 > `<workspace>/gate-log.md`）。**校验物与标记以上表为准，不要去找插件源码文件。** 结构 PASS ≠
 > 全过——manual 项（语义）由复核员判定。
@@ -280,7 +280,7 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 | 处置建议 | remediation-checklist.md（项/位置/处置步骤/风险/验证方式，删除类标「用户确认后执行」） | 清单缺验证方式 → 不过 |
 | 报告 | 六字段 + 时间线表 + 失陷原因 + 影响范围 + 恶意文件/持久化清单 + ATT&CK + 处置建议引用 | 收到未带 gate-pass 的条目 → 退回 |
 
-> **结构校验走运行时门禁工具**：开工门禁清单优先看 route-boost 信封（已含门禁与 canonical 文件名）；信封缺失或不确定时再调 `gates_list`（mode=incident-response）读门禁清单与
+> **结构校验走运行时门禁工具**：开工门禁清单优先看 route-boost 信封（含门禁 id 与标题，canonical 文件名经 gates_list 取）；信封缺失或不确定时再调 `gates_list`（mode=incident-response）读门禁清单与
 > canonical 文件名；产物齐后调 `stage_gate(mode, stage, workspace[, file])` 做结构校验（判定自动落
 > `<workspace>/gate-log.md`）。I1-I4 传 workspace，I5 传报告文件（file 相对路径按工作区解析）。
 > **校验物与标记以本手册「五门门禁」表为准，不要去找插件源码文件。**
@@ -294,9 +294,10 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 ### 覆盖台账
 
 - **AttackAtlas 图谱联动（覆盖台账的 UI 面）**：「AttackAtlas」标签页按本手册结构展示——五战场分区（保全排查/场景作战卡/溯源还原/取证深线/处置交付）× 22 战术列 × 六阶段带 × 三形态（Windows/Linux/云上）。
-- **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
+- **任务口径（用户指定优先）**：用户显式指定调查范围（如「只查 webshell 和持久化」「只查这台主机昨天到今天」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补做不欠账，转全流程须用户明示；用户未指定具体项（仅给主机/全量委托）时，按本模式全流程矩阵推进。
   覆盖台账与阶段终态落盘时同步调 `redteam_coverage_mark`（查实有证据=tested-found、已查未命中=tested-clear、不适用附原因=na、未查让位=budget-stop），阶段推进调 `redteam_coverage_stage`（s1 保全…s6 报告）；key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。阶段门 stage_gate 判定 PASS 后，对应阶段及其此前阶段自动回写 done（级联点亮）；无门阶段可手动 redteam_coverage_stage 推进补记。
   调查对象（受害主机/网段/云环境）调 `redteam_atlas_target` 登记，多对象终态带 target 参数逐对象回写。
+- **战役记忆沉淀（IR 特化）**：家族/威胁指纹→fingerprint、排查配方与处置手法→tactic、取证工具可用性→tooling、检测规则时效情报→detect、复盘教训→lesson（`campaign_memory_write`，target_kind=案件号——多案件同目录不串场）；接案/换案件先 `campaign_memory_search` 检索历史家族指纹与排查配方。
 - **链路拓扑图（攻击链/感染链还原的可视面）**：演习攻击者链路与蠕虫感染链逐节点登记 `redteam_atlas_chain`（节点型：attacker 攻击者/infra C2·基础设施/entry 失陷入口/host 失陷主机/cred 滥用凭据/pivot 跳板·横向/exfil 外传·扩散；重大成果节点 major=true；边 label 写动作：利用/爆破/凭据复用/扩散/外传）。时间线逐节点闭合时同步登记——拓扑即攻击链还原的图形化交付物，多入口/多感染源按实际画不虚构。
 
 `coverage.md`：调查面 = 主机 × 排查面矩阵；**排查面枚举锚定标准清单**，Windows 以 `refs/windows/methodology/security-checklist.md`（0x00–0x36）为准、Linux 以 `refs/linux/cookbook-linux/12-常规安全检查.md`（57 项）+ `refs/linux/` 自写分域（logs/process/persistence/rootkit/webshell）为准，不自行随意枚举；每格终态三选一
@@ -380,5 +381,5 @@ win/mac/linux 命令等价对照见 ecosystem-cooperation「跨平台执行公�
 
 - 附录 A：跨平台执行公约（win/mac/linux 等价表——见 ecosystem-cooperation 技能）。
 - 附录 B：检测/排查脚本交付规范（exp/<finding-id>.py/.yar：默认只读检测、破坏性步骤 flag 关闭、头部注释授权与清理说明）。
-- 附录 C：MCP 兜底清单（TODO，第 9 步补）。
+- 附录 C：MCP 兜底清单（见前文「MCP 通道清单」节）。
 - 附录 D：成果页登记（时间线板式，见 persona「成果登记」节）。

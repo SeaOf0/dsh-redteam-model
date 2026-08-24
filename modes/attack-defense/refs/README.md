@@ -6,7 +6,7 @@
 > 即 `skills/ad-playbook/`）；refs/ 相对 base 目录 = `../../refs/`。
 > 覆盖面：红队演练方法论与治理 / 域渗透（AD/ADCS/Kerberos/NTLM）/ 横向与隧道 / 凭证与 C2 /
 > 检测工程（Sigma/YARA/Suricata/ATT&CK 映射）/ 威胁狩猎与情报（H 域 + STIX/TAXII/MISP）/
-> 事件响应取证 / AI 应用红队 / 中文内网 payload 域 / 趋势。共 62 篇 md。
+> 事件响应取证 / AI 应用红队 / 中文内网 payload 域 / 趋势。共 63 篇 md。
 
 ## 快速路由（按评估阶段找目录）
 
@@ -16,8 +16,8 @@
 | 突破与提权 | `offensive/`（initial-access / privilege-escalation / reverse-shell） |
 | 域渗透 | `offensive/`（AD 系 6 篇）+ `zh-intranet/`（域渗透 payload） |
 | 横向/隧道/凭证 | `offensive/`（lateral 系 / tunneling / credential）+ `zh-intranet/` |
-| 防御验证（detection gap） | `defense/`（检测工程 4 篇 + 狩猎 2 篇）+ `defense/ir-*` |
-| 情报与 IOC 关联 | `defense/`（TI 域 8 篇） |
+| 防御验证（detection gap） | `defense/`（检测工程 5 篇 + 狩猎 2 篇）+ `defense/ir-*` |
+| 情报与 IOC 关联 | `defense/`（威胁情报 6 篇） |
 | AI 应用红队 | `ai/`（3 篇）+ trends 的 Agentic Top 10 节 |
 | 单机落点信息收集（已控主机，横向前置） | `zh-intranet/intranet-host-collect.md`（W/L 模块库+触发表+凭证发散） |
 | 内网后渗透（中文 payload 大全） | `zh-intranet/`（12 篇 payload 库） |
@@ -58,7 +58,7 @@
 | lateral-movement.md | 横向移动技术总解 | 横向阶段入口 |
 | windows-lateral-movement.md / linux-lateral-movement.md | Windows/Linux 横向专项（335/348 行） | 对应平台 |
 | tunneling-pivoting.md | 隧道与枢纽（343 行） | 网络打通 |
-| credential-harvesting.md | 凭证窃取（174 行） | 凭证面 |
+| credential-harvesting.md | 凭证窃取（214 行） | 凭证面 |
 | bastion-jumpserver.md | 堡垒机 / JumpServer 攻击面（组件架构/CVE/凭据库/检测） | 堡垒机为跳板或目标时 |
 
 ### defense/（防御侧，22 篇）
@@ -128,21 +128,21 @@
 
 - **offensive 前 9 篇（red-team-engagement/initial-access/privilege-escalation/lateral-movement/
   active-directory-security/evasion-techniques/c2-infrastructure/phishing-campaign/social-engineering）**：
-  ，按原文收录。
-- **defense/ir-* 7 篇**：。
+  按原文收录。
+- **defense/ir-* 7 篇**：按原文收录。
 - **defense 威胁情报 6 篇（threat-hunting/threat-modeling/threat-actor-profiling/
-  threat-intel-platform/ioc-management/dark-web-monitoring）**：内容整理收录
-  H-威胁情报 分域（全量）。
+  threat-intel-platform/ioc-management/dark-web-monitoring）**：内容整理收录，
+  覆盖 H-威胁情报分域全量。
 - **offensive 域/横向/隧道/凭证/操作 10 篇 + defense 检测工程与 TI 工程 8 篇 + ai/ 3 篇**：
-  与 开源安全知识库，按原文收录。
+  按原文收录。
 - **offensive/red-team-command-doctrine**：用户自有治理技能（原 runtime skill）随预设分发一份——
   治理技能注册来源确认以此方式落地（refs 只读副本，
   runtime 注册另行处理）。
 - **zh-intranet/ 12 篇**：内容整理收录，按原文收录；
-  「免杀与规避」一篇按生态边界未收——av-evasion 领域）。
+  「免杀与规避」一篇按生态边界未收（归 av-evasion 领域）。
 - **zh-intranet/intranet-host-collect.md**：自写（2026-08-19 补单机落点收集缺口），
   覆盖此前的「已控主机全量收集 SOP + 必做清单 + 触发表 + 凭证发散闭环」零覆盖项。
-- **trends/**：playbook 自建（自建），条目联网核实并附来源链接。
+- **trends/**：playbook 自建，条目联网核实并附来源链接。
 - 本目录随预设打包分发；第三方来源文件的许可注记见各 README。
 - 与 playbook 的关系：速查卡（playbook）→ 深度手册（refs/）→ 证据落盘（任务工作区，见
   ecosystem-cooperation 技能「产物落盘与交接约定」）。

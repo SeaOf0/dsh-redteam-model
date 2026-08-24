@@ -24,6 +24,12 @@ export const SERVER_PRESETS: readonly ServerPreset[] = [
     json: '{\n  "mcpServers": {\n    "kali": {\n      "type": "http",\n      "url": "http://<kali-ip>:8765/mcp",\n      "disabled": true\n    }\n  }\n}',
   },
   {
+    id: 'webshell',
+    label: 'Webshell MCP',
+    description: 'webshell 管理器 MCP（连接/命令执行/文件/数据库/载荷插件，与 dsh-webshell-mgr 同核）。默认关闭：把 <dsh-webshell-mgr-path> 替换为 dsh-webshell-mgr 插件目录的绝对路径后开启；dsh 会话内优先用宿主原生 webshell_* 模型工具，本服务面向外部 harness',
+    json: '{\n  "mcpServers": {\n    "webshell": {\n      "command": "node",\n      "args": ["<dsh-webshell-mgr-path>/mcp/server.mjs"],\n      "disabled": true\n    }\n  }\n}',
+  },
+  {
     id: 'everything',
     label: 'Everything',
     description: 'MCP 官方测试服务器，含 echo/add 等工具，适合验证链路',

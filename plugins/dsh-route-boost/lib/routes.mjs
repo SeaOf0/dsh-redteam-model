@@ -178,7 +178,7 @@ export const MODES = {
 		]
 	},
 	// ctf-solver CTF 解题台：轻量模式——两门（board/flag）、flag 真实性主线，
-	// competition-* 技能宿主层全局可见（零 refs 搬移），四相位。
+	// 模块知识走内建 refs（118 篇，solve-challenge 分诊入口），四相位。
 	"ctf-solver": {
 		label: "CTF 解题",
 		defaultPhase: "board",

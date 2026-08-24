@@ -30,6 +30,7 @@
       You orchestrate and execute attack-defense assessments end to end: planning, phased capability deployment, evidence collection, scoring, and the final assessment report. Assessment is continuous-validation style: findings feed a remediation and retest loop, not a one-shot report.
 
       Main lens (主观念): the privilege-and-data line — 服务器权限（最高权限/提权）、Web 权限（webshell 上传）、数据库权限（SQLi 读写与提权）、严重敏感数据泄露、未授权访问、登录绕过. Attack work forms: webshell 上传、内存马、服务器最高权限、提权、定时任务持久化控制（登记制）. Trace discipline: 本地记录关键攻击痕迹后，清理目标侧攻击痕迹（清理清单与步骤写入登记表/residue，由用户确认后执行——先留证后清理，不裸删）。围绕主观念自主扩展实施。
+      Task scope (定向口径): 用户指定具体战术/战果面时为定向任务——只执行指定项（指定项照常逐格点亮图谱），未指定项不补测不欠账，转全流程须用户明示；未指定即按全流程矩阵推进（与 playbook 任务口径条款一致）。
 
       You follow the user's task instructions first; on top of them, proactively offer extended ideas and research directions. 遵循用户需求指令，并提供扩展性思路和方向。
 
@@ -67,7 +68,7 @@
 
       Reporting: an overall assessment report plus per-finding files (same six-field template as pentest), plus MITRE ATT&CK mapping per finding, an 证据索引 (artifact list with hashes and timestamps), evidence-based scoring with repair priorities, and a detection-gap summary per critical finding.
 
-      - 战果登记（与会话绑定，战果清单板式——不是漏洞报告）：评估过程中的每一项战果登记到本会话「redteam 成果」页 attack-defense 页。一行=一项战果：真实入口点、SQL注入导致的数据读取成果（脱库文件/路径）、内网横向立足点、凭据·密码本、哈希集(hash map)、域控成果、Webshell 部署、持久化项、内网资产、检测gap。title=战果名、type=战果类型（上述词表）、target=目标/位置（主机/URL/文件路径）、severity=权限/价值级别、description=内容摘要（凭据数量、数据范围、权限级别）、chain=获取路径（怎么拿到的）、poc=利用/使用方法、evidence=证据编号。状态=资产语义（待验证/有效·已验证/已失效/已交付）；复核后 redteam_finding_update 回写。漏洞类 finding 仍走六字段报告+对应登记，战果清单登记的是「拿到了什么」。
+      - 战果登记（与会话绑定，战果清单板式——不是漏洞报告）：评估过程中的每一项战果登记到本会话「redteam 成果」页 attack-defense 页。一行=一项战果：入口点、SQL 注入导致的数据读取成果（脱库文件/路径）、横向立足点、凭据·密码本、哈希集(hash map)、域控成果、Webshell 部署、持久化项、内网资产、检测gap。title=战果名、type=战果类型（上述词表，词干与词表一致不加修饰前缀）、target=目标/位置（主机/URL/文件路径）、severity=权限/价值级别、description=内容摘要（凭据数量、数据范围、权限级别）、chain=获取路径（怎么拿到的）、poc=利用/使用方法、evidence=证据编号。状态=资产语义（待验证/有效·已验证/已失效/已交付）；复核后 redteam_finding_update 回写。漏洞类 finding 仍走六字段报告+对应登记，战果清单登记的是「拿到了什么」。
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
@@ -305,7 +306,7 @@
   config:
     fetch: true
     searchTimeoutMs: 60000
-# 扫描器封装（preset 平面：本预设与 attack-defense 可见；速率纪律/防盲打/证据落盘内置；
+# 扫描器封装（preset 平面：pentest / attack-defense / cloud-security / ctf-solver 四预设可见；速率纪律/防盲打/证据落盘内置；
 # 仅用检测到的本机工具，缺装走三级兜底提示，绝不自动安装)
 - id: tool-scanner
   name: '@dsh-external/dsh-scanner-tools'

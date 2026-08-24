@@ -23,14 +23,21 @@ export function hasBin(bin) {
 	return probe.status === 0;
 }
 
-/** target host must appear in assets.md (active scans only). Returns {ok, hint}. */
+/** target host must appear in the baseline file (active scans only). Returns {ok, hint, baseline}.
+ *  基线文件按预设双候选探测：assets.md（pentest/攻防）或 cloud-assets.md（cloud-security C1）——
+ *  任一存在即按其校验；两个都无才拒绝。 */
 export function checkRegistered(fsMod, workspace, target) {
-	const text = (() => { try { return fsMod.readFileSync(path.join(workspace, "assets.md"), "utf8"); } catch { return ""; } })();
-	if (!text) return { ok: false, hint: "工作区无 assets.md——先完成侦察阶段（Gate P1 资产基线）再主动扫描" };
+	const baselines = ["cloud-assets.md", "assets.md"]; // cloud 前置：云会话的基线是 cloud-assets.md
+	let text = "", used = "";
+	for (const f of baselines) {
+		try { text = fsMod.readFileSync(path.join(workspace, f), "utf8"); } catch { text = ""; }
+		if (text) { used = f; break; }
+	}
+	if (!text) return { ok: false, hint: "工作区无 assets.md / cloud-assets.md 资产基线——先完成测绘阶段（pentest Gate P1 / cloud Gate C1）再主动扫描" };
 	const host = String(target).replace(/^https?:\/\//, "").split("/")[0].split(":")[0];
 	return text.includes(host)
 		? { ok: true, hint: "" }
-		: { ok: false, hint: `目标 ${host} 未登记在 assets.md——防盲打：先登记资产（侦察组回填）再主动扫描` };
+		: { ok: false, hint: `目标 ${host} 未登记在 ${used}——防盲打：先登记资产（测绘组回填基线文件）再主动扫描` };
 }
 
 function ensureDirs(workspace) {
@@ -125,7 +132,7 @@ const httpxParse = (raw) => {
 		if (!line.trim().startsWith("{")) continue;
 		try { out.push(JSON.parse(line)); } catch { /* 忽略 */ }
 	}
-	return { __writeRaw: JSON.stringify(out, null, 2), __hits: [], __summary: { alive: out.length }, __summaryText: `存活 ${out.length}；探测未登记资产属侦察行为，结果请回填 assets.md` };
+	return { __writeRaw: JSON.stringify(out, null, 2), __hits: [], __summary: { alive: out.length }, __summaryText: `存活 ${out.length}；探测未登记资产属测绘行为，结果请回填资产基线（assets.md / cloud-assets.md）` };
 };
 
 const ffufParse = (_raw, proc) => {

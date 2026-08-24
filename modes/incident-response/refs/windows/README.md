@@ -13,6 +13,7 @@
 |---|---|
 | 接手事件、跑处置流程 | `methodology/incident-flow.md`（七步闭环） |
 | 处置收尾/日常体检 | `methodology/security-checklist.md`（0x00–0x36 清单） |
+| 盘面 artifacts 取证 | `methodology/disk-artifacts.md`（痕迹不足/日志被清除时按优先序重建） |
 | 日志分析、Event ID 判疑 | `logs/windows-eventid-detection.md` |
 | 还原时间线 | `logs/timeline-building.md` |
 | 疑似 webshell / 内存马 | `webshell/webshell-detection.md` + `webshell/memory-shell.md` |
@@ -31,11 +32,12 @@
 |---|---|---|
 | README.md | 本索引 | 每次进入本库 |
 
-### methodology/（2 篇）
+### methodology/（3 篇）
 
 | 文件 | 内容 | 何时读 |
 |---|---|---|
 | incident-flow.md | 七步闭环总方法论（固定证据→确定 IOC→定位样本→处理进程→删除文件→善后→体检），每步给命令与证据登记要求 | 接手任何 Windows 事件，先读定流程 |
+| disk-artifacts.md | 盘面 artifacts 取证（$MFT/注册表/预取等优先序，痕迹不足或日志被清除时重建行为） | 证据不足/日志缺失时 |
 | security-checklist.md | 常规安全检查总纲（0x00–0x36 全量排查面：杀毒白名单/近期活动工件/证书/账户与隐藏账户/登录/启动项/计划任务与隐藏任务/网络/IPC/进程/环境变量与 CLR/补丁/日志/命令历史/PowerShell 三件套/服务与隐藏服务/RDP/DLL 检查与 KnownDLLs/WMI/最近文件/敏感文件夹/ADS/系统完整性 sfc/BITS/浏览器取证/屏保/NetSh/辅助功能后门/AppCertDlls/AppInit/Shimming/IFEO/COM/Password Filter/Network Provider/Winsock NSP/Defender 日志/防火墙放行/PATHEXT/Sandbox 与空格路径） | 处置收尾体检或巡检 |
 
 ### logs/（2 篇）
@@ -95,9 +97,9 @@
 
 ## 计数
 
-- md 文件总数：**18 篇**
+- md 文件总数：**19 篇**
 - 根目录：1 篇（README.md）
-- methodology/：2 篇
+- methodology/：3 篇
 - logs/：2 篇
 - webshell/：2 篇
 - malware/：2 篇

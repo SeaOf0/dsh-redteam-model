@@ -17,4 +17,5 @@
 - 判定表（本地实测后填）：| 引擎 | 结果 | 原文行 |
 - 变体登记：mode 0/1/2（深度递增的 ret 补丁）+ mode 3（选择性钩子）；
   「断 EtwpEventRegister 回调」未落地（见 refs/techniques/AMSI_ETW_BYPASS.md）。
+- 构建验证记录：2026-08-20 mingw 14.0.0 编译通过（PE32+ GUI x86-64）；运行验证待
   Windows 判定环境。

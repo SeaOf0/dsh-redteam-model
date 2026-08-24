@@ -12,13 +12,22 @@ function csrfOf(base) {
 	if (!dshCsrf[base]) dshCsrf[base] = fetch(base + "/csrf").then(function (r) { return r.json(); }).then(function (r) { return r && r.token ? r.token : ""; }).catch(function () { return ""; });
 	return dshCsrf[base];
 }
+function postJson(tok, endpoint, payload) {
+	return fetch("/dsh-hunter/" + endpoint, {
+		method: "POST",
+		headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
+		body: JSON.stringify(payload || {})
+	});
+}
 function api(endpoint, payload) {
 	return csrfOf("/dsh-hunter").then(function (tok) {
-		return fetch("/dsh-hunter/" + endpoint, {
-			method: "POST",
-			headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
-			body: JSON.stringify(payload || {})
-		}).then(function (r) { return r.json(); });
+		return postJson(tok, endpoint, payload).then(function (r) {
+			if (r.status === 403) {
+				delete dshCsrf["/dsh-hunter"]; // token 失效（宿主重启轮换）——重取一次再发
+				return csrfOf("/dsh-hunter").then(function (tok2) { return postJson(tok2, endpoint, payload); }).then(function (r2) { return r2.json(); });
+			}
+			return r.json();
+		});
 	});
 }
 

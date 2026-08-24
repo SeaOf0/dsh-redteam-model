@@ -5,7 +5,7 @@ description: 九模式共用的独立复核员模板：交叉复核子代理的 
 
 # 独立复核员模板（independent-review）
 
-> 位置：`plugins/dsh-redteam-model/shared/skills/`，五个预设共同加载。
+> 位置：`plugins/dsh-redteam-model/shared/skills/`，九预设共同加载（八专业模式 + redteam light 通用模式）。
 
 ## 复核员的独立性规则（构造 prompt 时必须遵守）
 
@@ -21,6 +21,12 @@ description: 九模式共用的独立复核员模板：交叉复核子代理的 
    **编号**（evidence-index 编号/file:line）+ 产物哈希 + 与主链的差异清单（如有）；
    **禁止回传证据全文/大段原文**——父会话需要时按编号读盘核对。证据本体已在盘上，
    回传全文只消耗上下文不增加信息。
+
+## light 语义（redteam light 通用模式派单时的复核裁剪）
+
+light 通用模式（研究员总控）按「confirmed 级才复核」派单：partial/unknown 级浅做结论不派
+复核员（带等级标注直接进总结）；被路由任务的专业强门禁由对应专业模式的 gate 负责，本技能
+不代行。八专业模式沿用全量复核语义不变。
 
 ## 复核员 prompt 模板（总控派工时套用）
 

@@ -1,24 +1,34 @@
 window.__ModuleLoader__.load({ id: "@dsh-external/dsh-redteam-results", factory: (require) => {
 var module = { exports: {} }; var exports = module.exports;
-// dsh-redteam-results client — 会话标签页「redteam 成果」：七模式侧栏 + 渗透/代审成果页。
-// 会话隔离：数据按 sessionId 读写；模式隔离由服务端 (session_id, mode) 双键强制。
+// dsh-redteam-results client — 会话标签页「redteam 成果」：九模式侧栏 + 各模式成果页（板式按模式分型）。
+// 会话隔离：数据按 sessionId 读写；模式隔离由服务端 (session_id, mode) 双键强制；模式页为跨会话聚合视图。
 "use strict";
 var React = require("react");
 var useState = React.useState, useEffect = React.useEffect, useCallback = React.useCallback, useRef = React.useRef;
 
 var dshCsrf = {};
-/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。 */
+/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。
+ *  token 缓存遇 403 即失效重取一次——宿主重启轮换 token 后已开标签页自愈，不再永久 403。 */
 function csrfOf(base) {
 	if (!dshCsrf[base]) dshCsrf[base] = fetch(base + "/csrf").then(function (r) { return r.json(); }).then(function (r) { return r && r.token ? r.token : ""; }).catch(function () { return ""; });
 	return dshCsrf[base];
 }
+function postJson(tok, endpoint, payload) {
+	return fetch("/dsh-redteam-results/" + endpoint, {
+		method: "POST",
+		headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
+		body: JSON.stringify(payload || {})
+	});
+}
 function api(endpoint, payload) {
 	return csrfOf("/dsh-redteam-results").then(function (tok) {
-		return fetch("/dsh-redteam-results/" + endpoint, {
-			method: "POST",
-			headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
-			body: JSON.stringify(payload || {})
-		}).then(function (r) { return r.json(); });
+		return postJson(tok, endpoint, payload).then(function (r) {
+			if (r.status === 403) {
+				delete dshCsrf["/dsh-redteam-results"];
+				return csrfOf("/dsh-redteam-results").then(function (tok2) { return postJson(tok2, endpoint, payload); }).then(function (r2) { return r2.json(); });
+			}
+			return r.json();
+		});
 	});
 }
 
@@ -36,7 +46,7 @@ var MODES = [
 var SEVERITY_LABEL = { critical: "严重", high: "高危", medium: "中危", low: "低危" };
 var SEVERITY_ORDER = ["critical", "high", "medium", "low"];
 var STATUS_LABEL = { pending: "待验证", "code-reviewed": "代码侧已复核", verified: "已验证", "false-positive": "误报", fixed: "已修复" };
-var EVIDENCE_LABEL = { confirmed: "已证实", partial: "部分证据", unknown: "未知" };
+var EVIDENCE_LABEL = { impact: "影响已证", confirmed: "已证实", partial: "部分证据", unknown: "未知" };
 var SOURCE_LABEL = { manual: "人工深审", "scan-confirmed": "扫描确认", "scan-false-positive": "扫描误报" };
 var AUDIT_MODE_LABEL = { static: "静态审计", dynamic: "动态·验证成功" };
 // 板式二分：findings=漏洞报告型（渗透/代审）；assets=产物/战果清单型（二进制/攻防/免杀）。
@@ -62,7 +72,7 @@ var MODE_META = {
 	"attack-defense": {
 		archetype: "assets", label: "攻防评估", kindLabel: "战果类型", locLabel: "目标 / 位置",
 		descLabel: "内容摘要（凭据 / 数据 / 权限）", chainLabel: "获取路径（怎么拿到的）", pocTitle: "利用 / 使用方法",
-		groupLabel: "按阶段分组", empty: "本会话暂无攻防评估战果。",
+		groupLabel: "按目标分组", empty: "本会话暂无攻防评估战果。",
 		allName: "ad-loot-", reportName: "ad-loot-", tableTitle: "攻防评估战果清单",
 		typeLabel: "战果类型分布", metaLabels: ["评估范围", "环境", "授权"],
 		kinds: "入口点 / 数据读取成果 / 凭据·密码本 / 哈希集(hash map) / 横向立足点 / 域控成果 / Webshell 部署 / 持久化项 / 内网资产 / 检测gap"
@@ -114,13 +124,14 @@ var BIN_STATUS_LABEL = { pending: "分析中", suspect: "疑似", verified: "已
 var STATUS_OPTIONS_OF = {
 	"av-evasion": ["pending", "verified", "detected"],
 	"ctf-solver": ["pending", "stuck", "verified"],
-	"binary-analysis": ["pending", "suspect", "verified"]
+	"binary-analysis": ["pending", "suspect", "verified"],
+	"attack-defense": ["pending", "verified", "false-positive", "fixed"],
+	"cloud-security": ["pending", "verified", "false-positive", "fixed"]
 };
 var LEDGER_STATUS_LABEL = { pending: "进行中", verified: "已收口", "false-positive": "挂起", fixed: "已路由" };
 var CTF_STATUS_LABEL = { pending: "未解", stuck: "卡点", verified: "已解·flag 验证", "false-positive": "放弃/排除", fixed: "已复盘" };
 var TIMELINE_STATUS_LABEL = { pending: "待复核", "code-reviewed": "复核通过", verified: "已证实", "false-positive": "排除", fixed: "已处置" };
 var CLOUDPATH_STATUS_LABEL = { pending: "待验证", verified: "已证实", "false-positive": "排除", fixed: "已修复" };
-var BINARY_TYPE_VOCAB = "结论类型词表：恶意定性 / 家族识别 / 脱壳还原 / 算法破解 / Key恢复 / 加壳识别 / C2提取 / 后门确认 / 行为能力 / 诱饵排除 / 固件后门";
 
 function fmtTime(iso) {
 	if (!iso) return "";
@@ -183,7 +194,7 @@ function mdReport(f, mode) {
 			"- 任务：" + f.title,
 			"- " + M.kindLabel + "：" + (f.type || "未分类"),
 			"- " + M.locLabel + "：" + (f.target || "（未填写）"),
-			"- 状态：" + ((mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL)[f.status] || f.status) + (mode === "ctf-solver" ? " ｜ 难度：" + (f.type || "-") : " ｜ 优先级：" + (SEVERITY_LABEL[f.severity] || f.severity)) + " ｜ 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel),
+			"- 状态：" + ((mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL)[f.status] || f.status) + (mode === "ctf-solver" ? " ｜ 模块：" + (f.type || "-") : " ｜ 优先级：" + (SEVERITY_LABEL[f.severity] || f.severity)) + " ｜ 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel),
 			"- 登记时间：" + fmtTime(f.createdAt) + (f.verifiedAt ? " ｜ 收口时间：" + fmtTime(f.verifiedAt) : ""),
 			"",
 			"## " + M.descLabel,
@@ -264,50 +275,16 @@ function mdReport(f, mode) {
 			""
 		].join("\n");
 	}
-	if (M && M.archetype === "assets") {
-		return [
-			"# " + M.label + "资产卡片：" + f.title,
-			"",
-			"- 名称：" + f.title,
-			"- " + M.kindLabel + "：" + (f.type || "未分类"),
-			"- " + M.locLabel + "：" + (f.target || "（未填写）") + (f.sampleHash ? "（关联样本 " + f.sampleHash.slice(0, 12) + "…）" : ""),
-			f.family ? "- 家族/变种：" + f.family : "",
-			f.packer ? "- 壳/保护：" + f.packer : "",
-			"- 状态：" + ((mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : ASSET_STATUS_LABEL)[f.status] || f.status) + " ｜ 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel),
-			"- 登记时间：" + fmtTime(f.createdAt) + (f.verifiedAt ? " ｜ 验证时间：" + fmtTime(f.verifiedAt) : ""),
-			"",
-			"## " + M.descLabel,
-			"",
-			f.description || f.summary || "（未填写）",
-			"",
-			"## " + M.chainLabel,
-			"",
-			f.chain || "（未填写）",
-			"",
-			"## " + M.pocTitle,
-			"",
-			f.poc || "（未填写）",
-			f.iocs ? "\n## IOC / 环境结果清单\n\n" + f.iocs + "\n" : "",
-			f.detectionRule ? "\n## 检测规则（YARA/Sigma）\n\n```yara\n" + f.detectionRule + "\n```\n" : "",
-			"",
-			"## 验证记录",
-			"",
-			"- 证据引用：" + (f.evidence || "（未填写）"),
-			"- 复核注记：" + (f.verifyNote || "（未复核）"),
-			""
-		].filter(function (s) { return s !== ""; }).join("\n");
-	}
-	if (mode === "binary-analysis") {
+	if (mode === "binary-analysis") { // 二进制专属报告分支——须在 assets 通用分支之前（binary 的 archetype=assets，否则被遮蔽成死代码）
 		return [
 			"# 二进制分析报告：" + f.title,
 			"",
 			"- 结论标题：" + f.title,
-			"- 结论类型：" + (f.type || "未分类"),
+			"- 产物类型：" + (f.type || "未分类"),
 			"- 样本：" + (f.target || "（未填写）") + (f.sampleHash ? "（SHA256: " + f.sampleHash + "）" : ""),
 			"- 家族/变种：" + (f.family || "未知/未定"),
 			"- 壳/保护：" + (f.packer || "未识别"),
-			"- 判定/形态：" + (f.type || "未标注") + " ｜ 分析结论：" + (BIN_STATUS_LABEL[f.status] || f.status),
-			"- 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel) + " ｜ 状态：" + (STATUS_LABEL[f.status] || f.status),
+			"- 分析结论：" + (BIN_STATUS_LABEL[f.status] || f.status) + " ｜ 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel),
 			"",
 			"## 定性依据（结论摘要）",
 			"",
@@ -336,6 +313,7 @@ function mdReport(f, mode) {
 			"## 处置建议",
 			"",
 			f.fix || "（未填写）",
+			f.retestNote ? "\n## 复测记录\n\n" + f.retestNote + (f.retestAt ? "（" + fmtTime(f.retestAt) + "）" : "") + "\n" : "",
 			"",
 			"## 证据与复核",
 			"",
@@ -343,6 +321,43 @@ function mdReport(f, mode) {
 			"- 复核注记：" + (f.verifyNote || "（未复核）") + (f.verifiedAt ? "（验证时间 " + fmtTime(f.verifiedAt) + "）" : ""),
 			""
 		].join("\n");
+	}
+	if (M && M.archetype === "assets") {
+		return [
+			"# " + M.label + "资产卡片：" + f.title,
+			"",
+			"- 名称：" + f.title,
+			"- " + M.kindLabel + "：" + (f.type || "未分类"),
+			"- " + M.locLabel + "：" + (f.target || "（未填写）") + (f.sampleHash ? "（关联样本 " + f.sampleHash.slice(0, 12) + "…）" : ""),
+			f.family ? "- 家族/变种：" + f.family : "",
+			f.packer ? "- 壳/保护：" + f.packer : "",
+			"- 状态：" + ((mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : ASSET_STATUS_LABEL)[f.status] || f.status) + " ｜ 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel),
+			"- 登记时间：" + fmtTime(f.createdAt) + (f.verifiedAt ? " ｜ 验证时间：" + fmtTime(f.verifiedAt) : ""),
+			"",
+			"## " + M.descLabel,
+			"",
+			f.description || f.summary || "（未填写）",
+			"",
+			"## " + M.chainLabel,
+			"",
+			f.chain || "（未填写）",
+			"",
+			"## " + M.pocTitle,
+			"",
+			f.poc || "（未填写）",
+			mode === "attack-defense" && f.impact ? "- 影响证明：" + f.impact : "",
+			mode === "attack-defense" && (f.baseline || f.diffEvidence || f.markerEcho) ? "\n## 对照三件套\n\n- 基线：" + (f.baseline || "（未填）") + "\n- 差分（翻转）：" + (f.diffEvidence || "（未填）") + "\n- marker 回显：" + (f.markerEcho || "（未填）") + "\n" : "",
+			mode === "attack-defense" && f.requestPkt ? "\n## 完整请求包\n\n```\n" + f.requestPkt + "\n```\n" : "",
+			mode === "attack-defense" && f.responsePkt ? "\n## 关键响应\n\n```\n" + f.responsePkt + "\n```\n" : "",
+			f.iocs ? "\n## IOC / 环境结果清单\n\n" + f.iocs + "\n" : "",
+			f.detectionRule ? "\n## 检测规则（YARA/Sigma）\n\n```yara\n" + f.detectionRule + "\n```\n" : "",
+			"",
+			"## 验证记录",
+			"",
+			"- 证据引用：" + (f.evidence || "（未填写）"),
+			"- 复核注记：" + (f.verifyNote || "（未复核）"),
+			""
+		].filter(function (s) { return s !== ""; }).join("\n");
 	}
 	if (mode === "code-audit") {
 		return [
@@ -354,7 +369,7 @@ function mdReport(f, mode) {
 			"- 问题类型 / RCE 主线归类：" + (f.type || "未分类") + (f.cwe ? " / " + f.cwe : ""),
 			"- 问题所在代码位置（sink 点）：" + (f.target || "（未填写）"),
 			"- 审计形态：" + (AUDIT_MODE_LABEL[f.auditMode] || "未标注（默认静态语义）"),
-			"- 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel) + " ｜ 状态：" + (STATUS_LABEL[f.status] || f.status) + " ｜ 来源：" + (SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin),
+			"- 证据等级：" + (EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel) + " ｜ 状态：" + statusTextForExport(f, mode) + " ｜ 来源：" + (SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin),
 			"",
 			"## 审计链路（entry → sink）",
 			"",
@@ -485,7 +500,11 @@ function mdOverview(meta, stats, rows, mode) {
 		return lines2.join("\n");
 	}
 	var label = MODE_META[mode] ? MODE_META[mode].label : mode;
-	var sorted = rows.slice().sort(function (a, b) { return SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity); });
+	var assetView = MODE_META[mode] && MODE_META[mode].archetype === "assets";
+	var isCtf = mode === "ctf-solver";
+	var sorted = isCtf
+		? rows.slice().sort(function (a, b) { return ["stuck", "pending", "verified"].indexOf(a.status) - ["stuck", "pending", "verified"].indexOf(b.status); })
+		: rows.slice().sort(function (a, b) { return SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity); });
 	var top3 = sorted.slice(0, 3);
 	var lines = [
 		"# " + label + "总览报告",
@@ -493,19 +512,21 @@ function mdOverview(meta, stats, rows, mode) {
 		"- 对象/范围：" + (meta.targetLabel || "（未填写）"),
 		"- 版本：" + (meta.version || "（未填写）") + " ｜ scope：" + (meta.scope || "（未填写）"),
 		LABEL_BY_TYPE_MODES[mode] ? "- 成果总数：" + stats.total : "- 成果总数：" + stats.total + "（严重 " + (stats.bySeverity.critical || 0) + " / 高危 " + (stats.bySeverity.high || 0) + " / 中危 " + (stats.bySeverity.medium || 0) + " / 低危 " + (stats.bySeverity.low || 0) + "）",
-		"- 状态分布：" + Object.keys(LABEL_BY_TYPE_MODES[mode] ? (mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : CTF_STATUS_LABEL) : STATUS_LABEL).map(function (s) { var set = LABEL_BY_TYPE_MODES[mode] ? (mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : CTF_STATUS_LABEL) : STATUS_LABEL; return (set[s] || s) + " " + (stats.byStatus[s] || 0); }).join(" / "),
+		"- 状态分布：" + Object.keys(LABEL_BY_TYPE_MODES[mode] ? (mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : mode === "attack-defense" ? ASSET_STATUS_LABEL : CTF_STATUS_LABEL) : STATUS_LABEL).map(function (s) { var set = LABEL_BY_TYPE_MODES[mode] ? (mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : mode === "attack-defense" ? ASSET_STATUS_LABEL : CTF_STATUS_LABEL) : STATUS_LABEL; return (set[s] || s) + " " + (stats.byStatus[s] || 0); }).join(" / "),
 		"",
 		"## 总体结论",
 		"",
-		stats.total === 0 ? "本会话未登记成果。" : "共 " + stats.total + " 项成果，其中待验证 " + (stats.byStatus.pending || 0) + " 项（结论以验证状态为准，未验证项按疑似处理）。",
+		stats.total === 0 ? "本会话未登记成果。" : isCtf
+			? "共 " + stats.total + " 道题，其中未解 " + (stats.byStatus.pending || 0) + " 项、卡点 " + (stats.byStatus.stuck || 0) + " 项（结论以 flag 验证状态为准）。"
+			: "共 " + stats.total + " 项成果，其中待验证 " + (stats.byStatus.pending || 0) + " 项（结论以验证状态为准，未验证项按疑似处理）。",
 		"",
-		"## Top-3 风险",
+		"## " + (assetView ? "Top-3 成果" : isCtf ? "Top-3 题目（未解/卡点优先）" : "Top-3 风险"),
 		""
 	];
 	if (top3.length === 0) lines.push("（无）");
 	top3.forEach(function (f) { lines.push("- [" + (LABEL_BY_TYPE_MODES[mode] ? (f.type || "未标注") : (SEVERITY_LABEL[f.severity] || f.severity)) + "] " + f.title + "（" + (f.target || "无地址") + "）" + (f.summary ? "—" + f.summary : "")); });
 	lines.push("");
-	lines.push("## 修复路线图（优先级从高到低）");
+	lines.push("## " + (assetView ? "战果清单（交付/复测优先）" : isCtf ? "解题路线图（未解/卡点优先）" : "修复路线图（优先级从高到低）"));
 	lines.push("");
 	if (rows.length === 0) lines.push("（无）");
 	sorted.forEach(function (f, i) {
@@ -522,8 +543,11 @@ function mdTable(rows, title, mode) {
 	var isLedger = M && M.archetype === "ledger";
 	var isTimeline = M && M.archetype === "timeline";
 	var isCloudpath = M && M.archetype === "cloudpath";
+	var isCtf = mode === "ctf-solver";
 	var head = isCloudpath
 		? "| # | 路径 | 类型 | 入口 | 身份 | 权限 | 资源 | 严重度 | 影响证明 |"
+		: isCtf
+		? "| # | 任务 | 模块 | 题目地址 | 状态 | 证据等级 | 结论摘要 | 解题材料 |"
 		: isTimeline
 		? "| # | 攻击时间 | 节点 | 类型 | 主机 | 严重度 | 证据 | 结论 |"
 		: isLedger
@@ -533,18 +557,20 @@ function mdTable(rows, title, mode) {
 		: audit
 		? "| 序号 | 名称 | 等级 | 主线类型 | CWE | sink 位置 | 状态 | 来源 | 简介 |"
 		: "| 序号 | 名称 | 等级 | 类型 | CVSS | 地址 | 状态 | 简介 |";
-	var sep = isCloudpath ? "|---|---|---|---|---|---|---|---|---|" : isTimeline ? "|---|---|---|---|---|---|---|---|" : isLedger ? "|---|---|---|---|---|---|---|---|---|" : (audit || (isAsset && MODE_META[mode] && MODE_META[mode].kinds && false)) ? "|---|---|---|---|---|---|---|---|---|" : isAsset ? "|---|---|---|---|---|---|" : "|---|---|---|---|---|---|---|---|";
+	var sep = isCloudpath ? "|---|---|---|---|---|---|---|---|---|" : isCtf ? "|---|---|---|---|---|---|---|---|" : isTimeline ? "|---|---|---|---|---|---|---|---|" : isLedger ? "|---|---|---|---|---|---|---|---|---|" : audit ? "|---|---|---|---|---|---|---|---|---|" : isAsset ? "|---|---|---|---|---|---|" : "|---|---|---|---|---|---|---|---|";
 	var body = rows.map(function (f) {
 		var cells = isCloudpath
 			? [f.seq, f.title, f.type || "-", (f.entry || "-").replace(/\|/g, "/").slice(0, 30), (f.identity || "-").replace(/\|/g, "/").slice(0, 30), (f.permission || "-").replace(/\|/g, "/").slice(0, 30), (f.resource || f.target || "-").replace(/\|/g, "/").slice(0, 40), SEVERITY_LABEL[f.severity] || f.severity, (f.impact || f.summary || "-").replace(/\|/g, "/").slice(0, 50)]
+			: isCtf
+			? [f.seq, f.title, f.type || "-", f.target || "-", CTF_STATUS_LABEL[f.status] || f.status, EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel, (f.summary || "-").replace(/\|/g, "/").slice(0, 50), (f.poc || "-").replace(/\|/g, "/").slice(0, 50)]
 			: isTimeline
 			? [f.seq, f.timelineAt || "unknown", f.title, f.type || "-", f.target || "-", SEVERITY_LABEL[f.severity] || f.severity, (f.evidence || "-").replace(/\|/g, "/").slice(0, 40), (f.summary || "-").replace(/\|/g, "/").slice(0, 50)]
 			: isLedger
 			? [f.seq, f.title, f.type || "-", f.target || "-", (mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL)[f.status] || f.status, mode === "ctf-solver" ? (f.type || "-") : (SEVERITY_LABEL[f.severity] || f.severity), EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel, (f.summary || "-").replace(/\|/g, "/").slice(0, 50), (f.poc || "-").replace(/\|/g, "/").slice(0, 50)]
 			: isAsset
-			? [f.seq, f.title, f.type || "-", (f.target || "-") + (f.sampleHash ? " (" + f.sampleHash.slice(0, 8) + ")" : ""), ASSET_STATUS_LABEL[f.status] || f.status, (f.summary || f.description || "-").replace(/\|/g, "/").slice(0, 60)]
+			? [f.seq, f.title, f.type || "-", (f.target || "-") + (f.sampleHash ? " (" + f.sampleHash.slice(0, 8) + ")" : ""), (mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : ASSET_STATUS_LABEL)[f.status] || f.status, (f.summary || f.description || "-").replace(/\|/g, "/").slice(0, 60)]
 			: audit
-			? [f.seq, f.title, SEVERITY_LABEL[f.severity] || f.severity, f.type || "-", f.cwe || "-", f.target || "-", STATUS_LABEL[f.status] || f.status, SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin, (f.summary || "-").replace(/\|/g, "/")]
+			? [f.seq, f.title, SEVERITY_LABEL[f.severity] || f.severity, f.type || "-", f.cwe || "-", f.target || "-", statusTextForExport(f, mode), SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin, (f.summary || "-").replace(/\|/g, "/")]
 			: [f.seq, f.title, SEVERITY_LABEL[f.severity] || f.severity, f.type || "-", f.cvss || "-", f.target || "-", STATUS_LABEL[f.status] || f.status, (f.summary || "-").replace(/\|/g, "/")];
 		return "| " + cells.join(" | ") + " |";
 	});
@@ -591,14 +617,34 @@ function htmlReport(meta, stats, rows, mode) {
 	h.push('</style></head><body><div class="page">');
 	h.push('<h1>' + esc(label) + '报告</h1>');
 	h.push('<p class="meta">' + esc(MODE_META[mode] ? MODE_META[mode].metaLabels[0] : "对象") + '：' + esc(meta.targetLabel || "—") + ' ｜ ' + esc(MODE_META[mode] ? MODE_META[mode].metaLabels[1] : "版本") + '：' + esc(meta.version || "—") + ' ｜ scope：' + esc(meta.scope || "—") + '</p>');
-	h.push('<p class="meta">总数 ' + stats.total + '（严重 ' + (stats.bySeverity.critical || 0) + ' / 高危 ' + (stats.bySeverity.high || 0) + ' / 中危 ' + (stats.bySeverity.medium || 0) + ' / 低危 ' + (stats.bySeverity.low || 0) + '）｜ 生成时间 ' + new Date().toLocaleString() + '</p>');
-	h.push('<h2>成果清单</h2><table><tr>' + (mode === "code-audit" ? "<th>#</th><th>名称</th><th>等级</th><th>主线</th><th>CWE</th><th>sink</th><th>状态</th>" : "<th>#</th><th>名称</th><th>等级</th><th>类型</th><th>地址</th><th>状态</th>") + '</tr>');
+	var assetView = MODE_META[mode] && MODE_META[mode].archetype === "assets";
+	var stSet = assetView ? (mode === "av-evasion" ? AV_STATUS_LABEL : mode === "binary-analysis" ? BIN_STATUS_LABEL : ASSET_STATUS_LABEL) : STATUS_LABEL;
+	h.push(assetView
+		? '<p class="meta">成果总数 ' + stats.total + '｜ 生成时间 ' + new Date().toLocaleString() + '</p>'
+		: mode === "ctf-solver"
+		? '<p class="meta">题目总数 ' + stats.total + '（未解 ' + (stats.byStatus.pending || 0) + ' / 卡点 ' + (stats.byStatus.stuck || 0) + ' / 已解 ' + (stats.byStatus.verified || 0) + '）｜ 生成时间 ' + new Date().toLocaleString() + '</p>'
+		: '<p class="meta">总数 ' + stats.total + '（严重 ' + (stats.bySeverity.critical || 0) + ' / 高危 ' + (stats.bySeverity.high || 0) + ' / 中危 ' + (stats.bySeverity.medium || 0) + ' / 低危 ' + (stats.bySeverity.low || 0) + '）｜ 生成时间 ' + new Date().toLocaleString() + '</p>');
+	h.push('<h2>成果清单</h2><table><tr>' + (mode === "code-audit" ? "<th>#</th><th>名称</th><th>等级</th><th>主线</th><th>CWE</th><th>sink</th><th>状态</th><th>来源</th>" : mode === "cloud-security" ? "<th>#</th><th>名称</th><th>等级</th><th>路径类型</th><th>目标资源</th><th>状态</th>" : mode === "ctf-solver" ? "<th>#</th><th>题目</th><th>模块</th><th>题目地址</th><th>状态</th>" : mode === "incident-response" ? "<th>#</th><th>节点</th><th>类型</th><th>主机</th><th>攻击时间</th><th>状态</th>" : assetView ? "<th>#</th><th>名称</th><th>类型</th><th>位置</th><th>状态</th>" : "<th>#</th><th>名称</th><th>等级</th><th>类型</th><th>地址</th><th>状态</th>") + '</tr>');
 	rows.forEach(function (f) {
-		h.push('<tr><td>' + f.seq + '</td><td>' + esc(f.title) + '</td><td><span class="sev" style="background:' + (sevColor[f.severity] || "#888") + '">' + esc(SEVERITY_LABEL[f.severity] || f.severity) + '</span></td><td>' + esc(f.type || "-") + '</td>' + (mode === "code-audit" ? '<td>' + esc(f.cwe || "-") + '</td>' : '') + '<td>' + esc(f.target || "-") + '</td><td>' + esc(STATUS_LABEL[f.status] || f.status) + '</td></tr>');
+		h.push(mode === "cloud-security"
+			? '<tr><td>' + f.seq + '</td><td>' + esc(f.title) + '</td><td><span class="sev" style="background:' + (sevColor[f.severity] || "#888") + '">' + esc(SEVERITY_LABEL[f.severity] || f.severity) + '</span></td><td>' + esc(f.type || "-") + '</td><td>' + esc(f.resource || f.target || "-") + '</td><td>' + esc(statusTextForExport(f, mode)) + '</td></tr>'
+			: mode === "ctf-solver"
+			? '<tr><td>' + f.seq + '</td><td>' + esc(f.title) + '</td><td>' + esc(f.type || "-") + '</td><td>' + esc(f.target || "-") + '</td><td>' + esc(statusTextForExport(f, mode)) + '</td></tr>'
+			: mode === "incident-response"
+			? '<tr><td>' + f.seq + '</td><td>' + esc(f.title) + '</td><td>' + esc(f.type || "-") + '</td><td>' + esc(f.target || "-") + '</td><td>' + esc(f.timelineAt || "-") + '</td><td>' + esc(statusTextForExport(f, mode)) + '</td></tr>'
+			: assetView
+			? '<tr><td>' + f.seq + '</td><td>' + esc(f.title) + '</td><td>' + esc(f.type || "-") + '</td><td>' + esc(f.target || "-") + '</td><td>' + esc(stSet[f.status] || f.status) + '</td></tr>'
+			: '<tr><td>' + f.seq + '</td><td>' + esc(f.title) + '</td><td><span class="sev" style="background:' + (sevColor[f.severity] || "#888") + '">' + esc(SEVERITY_LABEL[f.severity] || f.severity) + '</span></td><td>' + esc(f.type || "-") + '</td>' + (mode === "code-audit" ? '<td>' + esc(f.cwe || "-") + '</td>' : '') + '<td>' + esc(f.target || "-") + '</td><td>' + esc(statusTextForExport(f, mode)) + '</td>' + (mode === "code-audit" ? '<td>' + esc(SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin || "manual") + '</td>' : '') + '</tr>');
 	});
 	h.push('</table>');
 	rows.forEach(function (f) {
-		h.push('<div class="card"><h2>#' + f.seq + ' ' + esc(f.title) + ' <span class="sev" style="background:' + (sevColor[f.severity] || "#888") + '">' + esc(SEVERITY_LABEL[f.severity] || f.severity) + '</span></h2>');
+		h.push(assetView
+			? '<div class="card"><h2>#' + f.seq + ' ' + esc(f.title) + ' <span class="sev" style="background:#3a7d5f">' + esc(f.type || (mode === "binary-analysis" ? "产物" : "战果")) + '</span></h2>'
+			: mode === "ctf-solver"
+			? '<div class="card"><h2>#' + f.seq + ' ' + esc(f.title) + ' <span class="sev" style="background:' + (f.status === "verified" ? "#3a7d5f" : f.status === "stuck" ? "#c2182f" : "#b58a00") + '">' + esc(CTF_STATUS_LABEL[f.status] || f.status) + '</span></h2>'
+			: mode === "incident-response"
+			? '<div class="card"><h2>#' + f.seq + ' ' + esc(f.title) + ' <span class="sev" style="background:' + (f.status === "verified" ? "#3a7d5f" : f.status === "fixed" ? "#3b7dd8" : f.status === "false-positive" ? "#8a8a8f" : "#b58a00") + '">' + esc(TIMELINE_STATUS_LABEL[f.status] || f.status) + '</span></h2>'
+			: '<div class="card"><h2>#' + f.seq + ' ' + esc(f.title) + ' <span class="sev" style="background:' + (sevColor[f.severity] || "#888") + '">' + esc(SEVERITY_LABEL[f.severity] || f.severity) + '</span></h2>');
 		h.push('<div class="md">' + toSimpleHtml(mdReport(f, mode)) + '</div></div>');
 	});
 	h.push('</div></body></html>');
@@ -894,12 +940,18 @@ function installStyles() {
 
 //#endregion
 
-var LABEL_BY_TYPE_MODES = { "av-evasion": 1, "ctf-solver": 1, "binary-analysis": 1 };
+var LABEL_BY_TYPE_MODES = { "av-evasion": 1, "ctf-solver": 1, "binary-analysis": 1, "attack-defense": 1 };
 function Chip(props) {
 	if (props.typeLabel) return React.createElement("span", { className: "dsh-rtr-typechip is-static" }, props.typeLabel);
 	return React.createElement("span", { className: "dsh-rtr-sev dsh-rtr-sev-" + props.severity }, SEVERITY_LABEL[props.severity] || props.severity);
 }
-function StatusChip(props) { return React.createElement("span", { className: "dsh-rtr-st dsh-rtr-st-" + props.status }, (props.binary ? ASSET_STATUS_LABEL : STATUS_LABEL)[props.status] || props.status); }
+function statusTextForExport(f, mode) {
+	if (mode === "code-audit" && f.status === "pending" && f.auditMode !== "dynamic") return "待动态验证";
+	if (mode === "cloud-security") return CLOUDPATH_STATUS_LABEL[f.status] || f.status;
+	if (mode === "ctf-solver") return CTF_STATUS_LABEL[f.status] || f.status;
+	if (mode === "incident-response") return TIMELINE_STATUS_LABEL[f.status] || f.status;
+	return STATUS_LABEL[f.status] || f.status;
+}
 function Btn(props) {
 	return React.createElement("button", {
 		className: "dsh-rtr-btn" + (props.primary ? " is-primary" : "") + (props.danger ? " is-danger" : ""),
@@ -977,9 +1029,11 @@ var SEV_COLORS = { critical: "#c2182f", high: "#ff4d4d", medium: "#d9b00c", low:
 function StatsPanel(props) {
 	var stats = props.stats, total = stats.total || 0;
 	if (props.archetype === "ledger") {
-		var lk = ["pending", "verified", "fixed", "false-positive"];
+		// 状态卡按模式词表出（redteam 台账四态、ctf 三态——不出永远为 0 的幽灵卡，卡点可一键过滤）
+		var stLabel = props.mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL;
+		var lk = props.mode === "ctf-solver" ? ["pending", "stuck", "verified"] : ["pending", "verified", "fixed", "false-positive"];
 		var cards = [{ key: "", label: "任务总数", color: null }].concat(lk.map(function (s) {
-			return { key: s, label: (props.mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL)[s], color: s === "verified" ? "#2f9e63" : s === "fixed" ? "#3b7dd8" : s === "false-positive" ? "#8a8a8f" : "#b58a00" };
+			return { key: s, label: stLabel[s], color: s === "verified" ? "#2f9e63" : s === "stuck" ? "#c2182f" : s === "fixed" ? "#3b7dd8" : s === "false-positive" ? "#8a8a8f" : "#b58a00" };
 		}));
 		return React.createElement("div", { className: "dsh-rtr-stats" },
 			React.createElement("div", { className: "dsh-rtr-cardsrow" }, cards.map(function (c) {
@@ -990,13 +1044,15 @@ function StatsPanel(props) {
 				React.createElement("div", { className: "dsh-rtr-statnum", style: c.color ? { color: c.color } : null }, value));
 			})),
 			React.createElement("div", { className: "dsh-rtr-statextra" },
-				distSection("任务形态分布", (stats.byType || []).map(function (x) { return { key: x.type, label: x.type, count: x.count }; })),
-				distSection("证据等级分布", ["confirmed", "partial", "unknown"].map(function (e) { return { key: e, label: EVIDENCE_LABEL[e] || e, count: (stats.byEvidence ? stats.byEvidence[e] : 0) || 0 }; }).filter(function (i) { return i.count > 0; }))));
+				distSection(props.mode === "ctf-solver" ? "模块分布" : "任务形态分布", (stats.byType || []).map(function (x) { return { key: x.type, label: x.type, count: x.count }; })),
+				distSection("证据等级分布", ["impact", "confirmed", "partial", "unknown"].map(function (e) { return { key: e, label: EVIDENCE_LABEL[e] || e, count: (stats.byEvidence ? stats.byEvidence[e] : 0) || 0 }; }).filter(function (i) { return i.count > 0; }))));
 	}
 	if (props.archetype === "assets") {
-		var stKeys = ["pending", "verified", "false-positive", "fixed"];
+		// 状态卡按模式词表出（binary=suspect 三态、av=detected 三态——不再出永远为 0 的幽灵卡）
+		var stSet = props.mode === "binary-analysis" ? BIN_STATUS_LABEL : props.mode === "av-evasion" ? AV_STATUS_LABEL : ASSET_STATUS_LABEL;
+		var stKeys = props.mode === "binary-analysis" ? ["pending", "suspect", "verified"] : props.mode === "av-evasion" ? ["pending", "verified", "detected"] : ["pending", "verified", "false-positive", "fixed"];
 		var cards = [{ key: "", label: "总数", color: null }].concat(stKeys.map(function (s) {
-			return { key: s, label: ASSET_STATUS_LABEL[s], color: s === "verified" ? "#2f9e63" : s === "false-positive" ? "#8a8a8f" : s === "fixed" ? "#3b7dd8" : "#b58a00" };
+			return { key: s, label: stSet[s], color: s === "verified" ? "#2f9e63" : s === "suspect" ? "#b58a00" : s === "false-positive" ? "#8a8a8f" : s === "fixed" ? "#3b7dd8" : "#b58a00" };
 		}));
 		return React.createElement("div", { className: "dsh-rtr-stats" },
 			React.createElement("div", { className: "dsh-rtr-cardsrow" }, cards.map(function (c) {
@@ -1013,7 +1069,8 @@ function StatsPanel(props) {
 				props.mode !== "binary-analysis" ? distSection(props.mode === "attack-defense" ? "目标分布" : "分布", (stats.byTarget || []).filter(function (x) { return x.target !== "（未填）"; }).map(function (x) { return { key: x.target, label: x.target, count: x.count, onClick: function () { props.onTarget(x.target); } }; })) : null));
 	}
 	if (props.archetype === "timeline") {
-		var stKeys = ["pending", "verified", "false-positive", "fixed"];
+		// 状态卡按模式词表出（IR 默认五态全出——code-reviewed=复核通过有语义，补全五卡不缺过滤面）
+		var stKeys = ["pending", "code-reviewed", "verified", "false-positive", "fixed"];
 		var cards = [{ key: "", label: "节点总数", color: null }].concat(stKeys.map(function (s) {
 			return { key: s, label: TIMELINE_STATUS_LABEL[s], color: s === "verified" ? "#2f9e63" : s === "false-positive" ? "#8a8a8f" : s === "fixed" ? "#3b7dd8" : "#b58a00" };
 		}));
@@ -1044,6 +1101,7 @@ function StatsPanel(props) {
 			})),
 			React.createElement("div", { className: "dsh-rtr-statextra" },
 				distSection(props.typeLabel, (stats.byType || []).map(function (x) { return { key: x.type, label: x.type, count: x.count }; })),
+				distSection("严重度分布", SEVERITY_ORDER.map(function (s) { return { key: s, label: SEVERITY_LABEL[s], count: (stats.bySeverity ? stats.bySeverity[s] : 0) || 0, onClick: function () { props.onSeverity(s); } }; }).filter(function (i) { return i.count > 0; })),
 				distSection("目标资源分布", (stats.byTarget || []).filter(function (x) { return x.target !== "（未填）"; }).map(function (x) { return { key: x.target, label: x.target, count: x.count, onClick: function () { props.onTarget(x.target); } }; }))));
 	}
 	var bars = SEVERITY_ORDER.map(function (s) {
@@ -1070,7 +1128,7 @@ function StatsPanel(props) {
 				})),
 			distSection(props.typeLabel, (stats.byType || []).map(function (t) { return { key: t.type, label: t.type, count: t.count }; })),
 			props.mode === "code-audit" ? distSection("CWE 分布", (stats.byCwe || []).map(function (c) { return { key: c.cwe, label: c.cwe, count: c.count }; })) : null,
-			props.mode === "code-audit" ? distSection("来源", (stats.bySource || []).map(function (c) { return { key: c.source, label: SOURCE_LABEL[c.source] || c.source, count: c.count }; })) : null,
+			(props.mode === "code-audit" || props.mode === "pentest") ? distSection("来源", (stats.bySource || []).map(function (c) { return { key: c.source, label: SOURCE_LABEL[c.source] || c.source, count: c.count }; })) : null,
 			props.mode === "code-audit" ? distSection("审计形态", (stats.byAuditMode || []).map(function (c) { return { key: c.auditMode, label: AUDIT_MODE_LABEL[c.auditMode] || c.auditMode, count: c.count }; })) : null,
 			props.mode === "binary-analysis" ? distSection("家族分布", (stats.byFamily || []).map(function (c) { return { key: c.family, label: c.family, count: c.count }; })) : null,
 			props.mode === "binary-analysis" ? distSection("壳/保护分布", (stats.byPacker || []).map(function (c) { return { key: c.packer, label: c.packer, count: c.count }; })) : null,
@@ -1114,7 +1172,7 @@ function Detail(props) {
 				React.createElement("span", null, meta.kindLabel, React.createElement("b", null, f.type || "未分类")),
 				React.createElement("span", null, meta.locLabel, React.createElement("b", null, f.target || "未填写")),
 				React.createElement("span", null, "状态", React.createElement("b", null, (mode === "ctf-solver" ? CTF_STATUS_LABEL : LEDGER_STATUS_LABEL)[f.status] || f.status)),
-				React.createElement("span", null, "优先级", React.createElement("b", null, SEVERITY_LABEL[f.severity] || f.severity)),
+				mode === "ctf-solver" ? null : React.createElement("span", null, "优先级", React.createElement("b", null, SEVERITY_LABEL[f.severity] || f.severity)),
 				React.createElement("span", null, "证据等级", React.createElement("b", null, EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel)),
 				React.createElement("span", null, "登记时间", React.createElement("b", null, fmtTime(f.createdAt))),
 				f.verifiedAt ? React.createElement("span", null, "收口时间", React.createElement("b", null, fmtTime(f.verifiedAt))) : null),
@@ -1133,19 +1191,27 @@ function Detail(props) {
 			React.createElement("div", { className: "dsh-rtr-fields" },
 				React.createElement("span", null, meta.kindLabel, React.createElement("b", null, f.type || "未分类")),
 				React.createElement("span", null, meta.locLabel, React.createElement("b", { style: { fontFamily: "monospace" } }, f.target || "未填写")),
-				React.createElement("span", null, "状态", React.createElement("b", null, ASSET_STATUS_LABEL[f.status] || f.status)),
+				React.createElement("span", null, "状态", React.createElement("b", null, statusLabelSetFor("assets", mode)[f.status] || f.status)),
 				React.createElement("span", null, "证据等级", React.createElement("b", null, EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel)),
 				f.sampleHash ? React.createElement("span", null, "关联样本", React.createElement("b", { style: { fontFamily: "monospace" } }, f.sampleHash.slice(0, 16) + "…")) : null,
 				f.family ? React.createElement("span", null, "家族", React.createElement("b", null, f.family)) : null,
 				f.packer ? React.createElement("span", null, "壳", React.createElement("b", null, f.packer)) : null,
 				React.createElement("span", null, "登记时间", React.createElement("b", null, fmtTime(f.createdAt))),
 				f.verifiedAt ? React.createElement("span", null, "验证时间", React.createElement("b", null, fmtTime(f.verifiedAt))) : null),
+			mode === "binary-analysis" && f.impact ? Block({ title: "能力与危害" }, f.impact) : null,
 			f.description || f.summary ? Block({ title: meta.descLabel }, f.description || f.summary) : null,
 			f.chain ? Block({ title: meta.chainLabel }, f.chain) : null,
 			f.poc ? Block({ title: meta.pocTitle }, f.poc) : null,
+			mode === "attack-defense" && (f.baseline || f.diffEvidence) ? React.createElement("div", { className: "dsh-rtr-duo" },
+				React.createElement("div", null, React.createElement("h4", { style: { margin: "0 0 4px", fontSize: 12, color: "#8a8a8f" } }, "对照三件套 · 基线"), React.createElement("pre", null, f.baseline || "（未填）")),
+				React.createElement("div", null, React.createElement("h4", { style: { margin: "0 0 4px", fontSize: 12, color: "#8a8a8f" } }, "差分（翻转）"), React.createElement("pre", null, f.diffEvidence || "（未填）"))) : null,
+			mode === "attack-defense" && f.markerEcho ? Block({ title: "marker 逐字回显" }, f.markerEcho) : null,
+			mode === "attack-defense" && f.requestPkt ? Block({ title: "完整请求包" }, f.requestPkt) : null,
+			mode === "attack-defense" && f.responsePkt ? Block({ title: "关键响应" }, f.responsePkt) : null,
 			f.iocs ? Block({ title: mode === "av-evasion" ? "环境 / 引擎效果清单" : "IOC 清单" }, f.iocs) : null,
 			f.detectionRule ? Block({ title: "检测规则（YARA/Sigma）" }, f.detectionRule) : null,
 			f.evidence ? Block({ title: "证据引用" }, f.evidence) : null,
+			f.chainNodes && f.chainNodes.length ? Block({ title: "链路节点（AttackAtlas 互链）" }, f.chainNodes.map(function (n) { return n.label + "（" + n.kind + (n.major ? "·重大成果" : "") + "）"; }).join("\n")) : null,
 			f.fix ? Block({ title: mode === "binary-analysis" ? "处置建议" : "备注" }, f.fix) : null,
 			f.verifyNote ? Block({ title: "验证记录" }, f.verifyNote) : null,
 			React.createElement("div", { className: "dsh-rtr-rowactions" },
@@ -1190,7 +1256,7 @@ function Detail(props) {
 				React.createElement("span", null, "登记时间", React.createElement("b", null, fmtTime(f.createdAt))),
 				f.verifiedAt ? React.createElement("span", null, "验证时间", React.createElement("b", null, fmtTime(f.verifiedAt))) : null),
 			(f.entry || f.identity || f.permission || f.resource) ? React.createElement("div", { className: "dsh-rtr-block" },
-				React.createElement("h4", null, "攻击路径链（身份→权限→资源→影响）"),
+				React.createElement("h4", null, "攻击路径链（入口→身份→权限→资源→影响）"),
 				React.createElement("div", { className: "dsh-rtr-cp-chain" },
 					hop("① 入口凭证/身份", f.entry),
 					hop("② 利用身份", f.identity),
@@ -1217,12 +1283,12 @@ function Detail(props) {
 			binary && f.packer ? React.createElement("span", null, "壳", React.createElement("b", null, f.packer)) : null,
 			binary && f.sampleHash ? React.createElement("span", null, "SHA256", React.createElement("b", null, f.sampleHash.slice(0, 16) + "…")) : null,
 			audit && f.cwe ? React.createElement("span", null, "CWE", React.createElement("b", null, f.cwe)) : null,
-			!audit && f.cvss ? React.createElement("span", null, "CVSS", React.createElement("b", null, f.cvss.slice(0, 40))) : null,
+			f.cvss ? React.createElement("span", null, "CVSS", React.createElement("b", null, f.cvss.slice(0, 40))) : null,
 			React.createElement("span", null, "证据等级", React.createElement("b", null, EVIDENCE_LABEL[f.evidenceLevel] || f.evidenceLevel)),
 			React.createElement("span", null, audit ? "sink 位置" : "地址", React.createElement("b", null, f.target || "未填写")),
 			React.createElement("span", null, "发现时间", React.createElement("b", null, fmtTime(f.createdAt))),
 			f.verifiedAt ? React.createElement("span", null, "验证时间", React.createElement("b", null, fmtTime(f.verifiedAt))) : null,
-			audit ? React.createElement("span", null, "来源", React.createElement("b", null, SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin)) : null,
+			(audit || mode === "pentest") ? React.createElement("span", null, "来源", React.createElement("b", null, SOURCE_LABEL[f.sourceOrigin] || f.sourceOrigin)) : null,
 			audit && f.auditMode ? React.createElement("span", null, "审计形态", React.createElement("b", { style: f.auditMode === "dynamic" ? { color: "#2f9e63" } : null }, AUDIT_MODE_LABEL[f.auditMode] || f.auditMode)) : null),
 		f.description ? Block({ title: binary ? "定性依据（结论摘要）" : "描述" }, f.description) : null,
 		!audit && f.impact ? Block({ title: binary ? "能力与危害" : "影响证明" }, f.impact) : null,
@@ -1250,8 +1316,9 @@ function Detail(props) {
 		f.evidence ? Block({ title: "证据引用" }, f.evidence) : null,
 		f.fix ? Block({ title: binary ? "处置建议" : "修复建议" }, f.fix) : null,
 		audit && f.patch ? Block({ title: "修复 diff 建议" }, f.patch) : null,
+		f.chainNodes && f.chainNodes.length ? Block({ title: "链路节点（AttackAtlas 互链）" }, f.chainNodes.map(function (n) { return n.label + "（" + n.kind + (n.major ? "·重大成果" : "") + "）"; }).join("\n")) : null,
 		f.verifyNote ? Block({ title: "复核注记" }, f.verifyNote) : null,
-		mode === "pentest" && f.retestNote ? Block({ title: "复测记录" }, f.retestNote + (f.retestAt ? "（" + fmtTime(f.retestAt) + "）" : "")) : null,
+		f.retestNote ? Block({ title: "复测记录" }, f.retestNote + (f.retestAt ? "（" + fmtTime(f.retestAt) + "）" : "")) : null,
 		React.createElement("div", { className: "dsh-rtr-rowactions" },
 			mode === "code-audit" ? React.createElement(Btn, { primary: true, onClick: function () { props.onLiveVerify ? props.onLiveVerify(f) : null; } }, "实测") : null,
 			React.createElement(Btn, { onClick: function () { props.onVerify(f); } }, "发送到会话验证"),
@@ -1271,6 +1338,7 @@ function ModePage(props) {
 	var severity = useState(""); var setSeverity = severity[1];
 	var status = useState(""); var setStatus = status[1];
 	var q = useState(""); var setQ = q[1];
+	var qDraft = useState(""); var setQDraft = qDraft[1];
 	var grouped = useState(false); var setGrouped = grouped[1];
 	var expanded = useState(""); var setExpanded = expanded[1];
 	var selected = useState({}); var setSelected = selected[1];
@@ -1312,14 +1380,14 @@ function ModePage(props) {
 		var token = ++stale.current;
 		setLoading(true);
 		api("findings.groups", { scope: "all", sessionId: sessionId, mode: mode, severity: severity[0], status: status[0], q: q[0], from: rangeIso(range[0], customFrom[0], customTo[0])[0], to: rangeIso(range[0], customFrom[0], customTo[0])[1] })
-			.then(function (res) {
-				if (token !== stale.current) return;
-				var groups = (res || {}).groups || [];
-				setData({
-					rows: [], total: groups.reduce(function (n, g) { return n + g.count; }, 0), page: 1, pages: 1,
-					stats: null, counts: {}, meta: null, groups: groups
-				});
-			})
+				.then(function (res) {
+					if (token !== stale.current) return;
+					var groups = (res || {}).groups || [];
+					setData({
+						rows: [], total: groups.reduce(function (n, g) { return n + g.count; }, 0), page: 1, pages: 1,
+						stats: res.stats || null, counts: {}, meta: res.meta, groups: groups
+					});
+				})
 			.catch(function (e) { if (token === stale.current) setNotice("分组读取失败：" + (e && e.message ? e.message : e)); })
 			.finally(function () { if (token === stale.current) setLoading(false); });
 	}, [sessionId, mode, severity[0], status[0], q[0], range[0], customFrom[0], customTo[0]]);
@@ -1335,25 +1403,40 @@ function ModePage(props) {
 		return function () { clearTimeout(t); };
 	}, [notice]);
 
+	// 搜索防抖：停键 300ms 才触发查询（不再每键一 POST 打全模式表）
+	useEffect(function () {
+		var t = setTimeout(function () { setQ(qDraft[0]); }, 300);
+		return function () { clearTimeout(t); };
+	}, [qDraft[0]]);
+
 	var view = data[0] || {};
 	var rows = view.rows || [];
 	var stats = view.stats || { total: view.total || 0, bySeverity: {}, byStatus: {}, byType: [], byCwe: [], bySource: [], byTarget: [] };
 	var sesMeta = view.meta || { targetLabel: "", version: "", scope: "" };
 	var selectedIds = Object.keys(selected[0]).filter(function (k) { return selected[0][k]; });
 
-	function toggle(f) { setConfirmDel(""); setExpanded(expanded[0] === f.id ? "" : f.id); }
+	// 行唯一键：跨会话视图里 id 只在会话内唯一（每个会话都有一条 pentest-1）——sessionId+id 复合，防 React 重复 key 与勾选/展开串行。
+	function uidOf(f) { return (f.sessionId || sessionId) + ":" + f.id; }
+	function toggle(f) { var u = uidOf(f); setConfirmDel(""); setExpanded(expanded[0] === u ? "" : u); }
 	function onVerify(f) {
 		api("finding.verify", { sessionId: f.sessionId || sessionId, mode: mode, id: f.id })
 			.then(function (r) {
 				if (r && r.ok) { setNotice("验证请求已发送到原会话（# " + f.seq + " " + f.title + "），复核后状态由会话回写"); return; }
 				if (r && r.unreachable) {
-					// 原会话已删/不可达：人工复核兜底——用户确认后直接回写状态与注记
-					var ok = window.confirm(r.error + "\n\n是否人工复核后直接标记？\n确定=标记「已验证」，取消=改标「已失效」，关闭对话框=不做标记");
-					if (!ok && !window.confirm("标记为「已失效（误报）」？")) { setNotice("已取消标记——成果保持原状态"); return; }
-					var status = ok ? "verified" : "false-positive";
-					var note = window.prompt("人工复核结论（写入验证记录）：", "原会话不可达，人工复核" + (ok ? "通过" : "判伪")) || "";
+					// 原会话已删/不可达：人工复核兜底——两段确认三出口（确定=verified / 第二段确定=模式词表内的判伪或重置项 / 取消=不标记）；
+					// 确定项与判伪词均按模式词表取（binary=已定论/疑似、av=过检/被检出、其余=已验证/误报或已失效）。
+					var okSet = statusLabelSetFor(meta.archetype, mode) || STATUS_LABEL;
+					var opts = (STATUS_OPTIONS_OF[mode] || Object.keys(STATUS_LABEL)).filter(function (s) { return s !== "pending"; });
+					var neg = opts.indexOf("false-positive") !== -1 ? "false-positive" : (opts.indexOf("suspect") !== -1 ? "suspect" : (opts.indexOf("stuck") !== -1 ? "stuck" : "pending"));
+					var negText = (okSet[neg] || neg) + "（" + neg + "）";
+					var posText = (okSet.verified || "已验证") + "（verified）";
+					var ok = window.confirm(r.error + "\n\n人工复核后直接标记？\n确定=标记「" + posText + "」，取消=选择其他标记");
+					if (!ok && !window.confirm("标记为「" + negText + "」？\n确定=标记，取消=不做标记")) { setNotice("已取消标记——成果保持原状态"); return; }
+					var status = ok ? "verified" : neg;
+					var statusText = ok ? posText : negText;
+					var note = window.prompt("人工复核结论（写入验证记录）：", "原会话不可达，人工复核" + (ok ? "通过" : (neg === "false-positive" ? "判伪" : neg === "suspect" ? "定疑似" : neg === "stuck" ? "记卡点" : "重置"))) || "";
 					api("finding.mark", { sessionId: f.sessionId || sessionId, id: f.id, status: status, verifyNote: note })
-						.then(function (m) { setNotice(m && m.ok ? "已人工标记 #" + f.seq + " → " + (status === "verified" ? "已验证" : "已失效") : "标记失败：" + ((m && m.error) || "未知")); if (grouped[0]) fetchGroups(); else fetchList({}); })
+						.then(function (m) { setNotice(m && m.ok ? "已人工标记 #" + f.seq + " → " + statusText : "标记失败：" + ((m && m.error) || "未知")); if (props.onRefreshCounts) props.onRefreshCounts(); if (grouped[0]) fetchGroups(); else fetchList({}); })
 						.catch(function (e) { setNotice("标记失败：" + (e && e.message ? e.message : e)); });
 					return;
 				}
@@ -1361,17 +1444,35 @@ function ModePage(props) {
 			})
 			.catch(function (e) { setNotice("验证请求失败：" + (e && e.message ? e.message : e)); });
 	}
+	var LIVE_BUSY = {}; // 实测 in-flight 防重（key=sessionId:id——流水线含搜索+探测，连点会并发跑多条并重复扣平台配额）
 	function onLiveVerify(f) {
 		// 一键实测：调 dsh-hunter 验证流水线（L0 指纹判定/L1 仅授权资产），结果回写 finding。
 		if (mode !== "code-audit") { setNotice("实测仅支持代码审计模式 finding"); return; }
+		var busyKey = (f.sessionId || sessionId) + ":" + f.id;
+		if (LIVE_BUSY[busyKey]) { setNotice("实测进行中——请等待本轮完成（搜索+探测为秒级到分钟级）"); return; }
+		LIVE_BUSY[busyKey] = true;
 		setNotice("实测进行中：搜索资产 → 存活探测 → 指纹校验 →" + (f.auditMode === "dynamic" ? "影响面评估…" : "EXP 验证（L1 仅授权资产）…"));
-		csrfOf("/dsh-hunter").then(function (hTok) {
+		var send = function (tok) {
 			return fetch("/dsh-hunter/verify.live", {
 				method: "POST",
-				headers: hTok ? { "content-type": "application/json", "x-dsh-csrf": hTok } : { "content-type": "application/json" },
+				headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
 				body: JSON.stringify({ sessionId: f.sessionId || sessionId, findingId: f.id, allMode: false })
 			});
-		}).then(function (r) { return r.json(); }).then(function (r) {
+		};
+		var parse = function (r) {
+			return r.text().then(function (t) {
+				try { return JSON.parse(t); } catch { throw new Error("HTTP " + r.status + (t ? "：" + String(t).slice(0, 80) : "")); }
+			});
+		};
+		csrfOf("/dsh-hunter").then(function (hTok) {
+			return send(hTok).then(function (r) {
+				if (r.status === 403) {
+					delete dshCsrf["/dsh-hunter"]; // token 失效（宿主重启轮换）——重取一次再发
+					return csrfOf("/dsh-hunter").then(function (t2) { return send(t2); }).then(parse);
+				}
+				return parse(r);
+			});
+		}).then(function (r) {
 			if (r && r.ok) {
 				setNotice("实测完成（#" + f.seq + "）：" + r.summary
 					+ (r.suggestions && r.suggestions.length ? "｜下一步：" + r.suggestions.join("；") : "")
@@ -1380,18 +1481,29 @@ function ModePage(props) {
 				return;
 			}
 			setNotice("实测失败：" + ((r && r.error) || "未知错误"));
-		}).catch(function (e) { setNotice("实测失败：" + (e && e.message ? e.message : e)); });
+		}).catch(function (e) { setNotice("实测失败：" + (e && e.message ? e.message : e)); })
+			.finally(function () { LIVE_BUSY[busyKey] = false; });
 	}
 	function onDelete(f) {
-		if (confirmDel[0] !== f.id) { setConfirmDel(f.id); return; }
+		var u = uidOf(f);
+		if (confirmDel[0] !== u) { setConfirmDel(u); return; }
 		api("finding.delete", { sessionId: f.sessionId || sessionId, id: f.id })
-			.then(function () { setConfirmDel(""); setNotice("已删除 #" + f.seq + "（统计已同步）"); if (grouped[0]) fetchGroups(); else fetchList({}); })
+			.then(function () { setConfirmDel(""); setNotice("已删除 #" + f.seq + "（统计已同步）"); if (props.onRefreshCounts) props.onRefreshCounts(); if (grouped[0]) fetchGroups(); else fetchList({}); })
 			.catch(function (e) { setNotice("删除失败：" + (e && e.message ? e.message : e)); });
 	}
 	function fetchAllForExport() {
 		var rtx = rangeIso(range[0], customFrom[0], customTo[0]);
-		return api("findings.list", { scope: "all", sessionId: sessionId, mode: mode, page: 1, pageSize: 100, severity: severity[0], status: status[0], q: q[0], from: rtx[0], to: rtx[1] })
-			.then(function (raw) { return (((raw || {}).list || {}).rows) || []; });
+		var acc = [];
+		function pageOf(n) {
+			return api("findings.list", { scope: "all", sessionId: sessionId, mode: mode, page: n, pageSize: 100, severity: severity[0], status: status[0], q: q[0], from: rtx[0], to: rtx[1] })
+				.then(function (raw) {
+					var l = ((raw || {}).list) || {};
+					acc = acc.concat(l.rows || []);
+					if (n < (l.pages || 1)) return pageOf(n + 1); // 翻页取全——导出不受单页 100 条截断
+					return acc;
+				});
+		}
+		return pageOf(1);
 	}
 	function exportAll() {
 		fetchAllForExport().then(function (all) {
@@ -1400,7 +1512,9 @@ function ModePage(props) {
 		});
 	}
 	function exportSelected() {
-		var picked = rows.filter(function (f) { return selected[0][f.id]; });
+		// 分组态从分组条目取行（分组视图 rows 为空——勾选导出不再永远提示先勾选）
+		var pool = grouped[0] ? (view.groups || []).reduce(function (a, g) { return a.concat(g.items); }, []) : rows;
+		var picked = pool.filter(function (f) { return selected[0][uidOf(f)]; });
 		if (picked.length === 0) { setNotice("先勾选要导出的成果"); return; }
 		var text = picked.map(function (f) { return mdReport(f, mode); }).join("\n---\n\n");
 		download(meta.reportName + localDate() + ".md", text);
@@ -1411,13 +1525,13 @@ function ModePage(props) {
 	}
 	function exportOverview() {
 		fetchAllForExport().then(function (all) {
-			download((mode === "code-audit" ? "audit" : "pentest") + "-overview-" + localDate() + ".md", mdOverview(sesMeta, stats, all, mode));
+			download(mode + "-overview-" + localDate() + ".md", mdOverview(sesMeta, stats, all, mode));
 			setNotice("总览报告已导出（MD）");
 		});
 	}
 	function exportHtml() {
 		fetchAllForExport().then(function (all) {
-			download((mode === "code-audit" ? "audit" : "pentest") + "-report-" + localDate() + ".html", htmlReport(sesMeta, stats, all, mode), "text/html");
+			download(mode + "-report-" + localDate() + ".html", htmlReport(sesMeta, stats, all, mode), "text/html");
 			setNotice("报告包已导出（HTML，可浏览器打印成 PDF）");
 		});
 	}
@@ -1429,13 +1543,14 @@ function ModePage(props) {
 
 	var rowEl = function (f) {
 		var meta2 = meta;
+		var uid = uidOf(f);
 		var stLabelSet = statusLabelSetFor(meta2.archetype, mode);
-		return React.createElement("div", { key: f.id, className: "dsh-rtr-row" },
+		return React.createElement("div", { key: uid, className: "dsh-rtr-row" },
 			React.createElement("div", { className: "dsh-rtr-rowhead", onClick: function () { toggle(f); } },
 				React.createElement("input", {
-					type: "checkbox", className: "dsh-rtr-check", checked: !!selected[0][f.id],
+					type: "checkbox", className: "dsh-rtr-check", checked: !!selected[0][uid],
 					onClick: function (e) { e.stopPropagation(); },
-					onChange: function (e) { var next = Object.assign({}, selected[0]); next[f.id] = e.target.checked; setSelected(next); }
+					onChange: function (e) { var next = Object.assign({}, selected[0]); next[uid] = e.target.checked; setSelected(next); }
 				}),
 				React.createElement("span", { className: "dsh-rtr-seq" }, "#" + f.seq),
 				React.createElement(Chip, { severity: f.severity, typeLabel: LABEL_BY_TYPE_MODES[mode] ? (f.type || "未标注") : null }),
@@ -1447,14 +1562,15 @@ function ModePage(props) {
 				React.createElement("span", { className: "dsh-rtr-rowactions", onClick: function (e) { e.stopPropagation(); } },
 					mode === "code-audit" ? React.createElement(Btn, { primary: true, onClick: function () { onLiveVerify(f); } }, "实测") : null,
 					React.createElement(Btn, { onClick: function () { onVerify(f); } }, "验证"),
-					React.createElement(Btn, { danger: true, onClick: function () { onDelete(f); } }, confirmDel[0] === f.id ? "确认删除" : "删除"))),
-			expanded[0] === f.id ? React.createElement(Detail, { f: f, mode: mode, meta: meta, onVerify: onVerify, onLiveVerify: onLiveVerify, onExportOne: exportOne }) : null);
+					React.createElement(Btn, { danger: true, onClick: function () { onDelete(f); } }, confirmDel[0] === uid ? "确认删除" : "删除"))),
+				expanded[0] === uid ? React.createElement(Detail, { f: f, mode: mode, meta: meta, onVerify: onVerify, onLiveVerify: onLiveVerify, onExportOne: exportOne }) : null);
 	};
 
 	var tlItem = function (f) {
 		var stSet = statusLabelSetFor(meta.archetype, mode);
-		var open = expanded[0] === f.id;
-		return React.createElement("div", { key: f.id, className: "dsh-rtr-tl-item" },
+		var uid = uidOf(f);
+		var open = expanded[0] === uid;
+		return React.createElement("div", { key: uid, className: "dsh-rtr-tl-item" },
 			React.createElement("div", { className: "dsh-rtr-tl-rail" },
 				React.createElement("span", { className: "dsh-rtr-tl-dot" }),
 				React.createElement("span", { className: "dsh-rtr-tl-line" })),
@@ -1463,9 +1579,9 @@ function ModePage(props) {
 				React.createElement("div", { className: "dsh-rtr-tl-card" },
 					React.createElement("div", { className: "dsh-rtr-rowhead", onClick: function () { toggle(f); } },
 						React.createElement("input", {
-							type: "checkbox", className: "dsh-rtr-check", checked: !!selected[0][f.id],
+							type: "checkbox", className: "dsh-rtr-check", checked: !!selected[0][uid],
 							onClick: function (e) { e.stopPropagation(); },
-							onChange: function (e) { var next = Object.assign({}, selected[0]); next[f.id] = e.target.checked; setSelected(next); }
+							onChange: function (e) { var next = Object.assign({}, selected[0]); next[uid] = e.target.checked; setSelected(next); }
 						}),
 						React.createElement("span", { className: "dsh-rtr-seq" }, "#" + f.seq),
 						React.createElement("span", { className: "dsh-rtr-typechip is-static" }, f.type || "未分类"),
@@ -1474,7 +1590,7 @@ function ModePage(props) {
 						React.createElement("span", { className: "dsh-rtr-title" }, f.title),
 						React.createElement("span", { className: "dsh-rtr-rowactions", onClick: function (e) { e.stopPropagation(); } },
 							React.createElement(Btn, { onClick: function () { onVerify(f); } }, "验证"),
-							React.createElement(Btn, { danger: true, onClick: function () { onDelete(f); } }, confirmDel[0] === f.id ? "确认删除" : "删除"))),
+							React.createElement(Btn, { danger: true, onClick: function () { onDelete(f); } }, confirmDel[0] === uid ? "确认删除" : "删除"))),
 					React.createElement("div", { className: "dsh-rtr-tl-meta", onClick: function () { toggle(f); } },
 						React.createElement("span", null, "主机 ", React.createElement("b", null, f.target || "（未填）")),
 						React.createElement("span", null, "证据 ", React.createElement("b", null, f.evidence || "（未填）")),
@@ -1484,19 +1600,20 @@ function ModePage(props) {
 
 	var cpItem = function (f) {
 		var stSet = statusLabelSetFor(meta.archetype, mode);
-		var open = expanded[0] === f.id;
+		var uid = uidOf(f);
+		var open = expanded[0] === uid;
 		var hop = function (label, value) {
 			return React.createElement("span", { className: "dsh-rtr-cp-hop", title: value || "" },
 				React.createElement("i", null, label),
 				React.createElement("b", null, (value || "（未填）").slice(0, 120)));
 		};
-		return React.createElement("div", { key: f.id, className: "dsh-rtr-cp-item" },
+		return React.createElement("div", { key: uid, className: "dsh-rtr-cp-item" },
 			React.createElement("div", { className: "dsh-rtr-cp-card" },
 				React.createElement("div", { className: "dsh-rtr-rowhead", onClick: function () { toggle(f); } },
 					React.createElement("input", {
-						type: "checkbox", className: "dsh-rtr-check", checked: !!selected[0][f.id],
+						type: "checkbox", className: "dsh-rtr-check", checked: !!selected[0][uid],
 						onClick: function (e) { e.stopPropagation(); },
-						onChange: function (e) { var next = Object.assign({}, selected[0]); next[f.id] = e.target.checked; setSelected(next); }
+						onChange: function (e) { var next = Object.assign({}, selected[0]); next[uid] = e.target.checked; setSelected(next); }
 					}),
 					React.createElement("span", { className: "dsh-rtr-seq" }, "#" + f.seq),
 					React.createElement("span", { className: "dsh-rtr-typechip is-static" }, f.type || "未分类"),
@@ -1505,7 +1622,7 @@ function ModePage(props) {
 					React.createElement("span", { className: "dsh-rtr-title" }, f.title),
 					React.createElement("span", { className: "dsh-rtr-rowactions", onClick: function (e) { e.stopPropagation(); } },
 						React.createElement(Btn, { onClick: function () { onVerify(f); } }, "验证"),
-						React.createElement(Btn, { danger: true, onClick: function () { onDelete(f); } }, confirmDel[0] === f.id ? "确认删除" : "删除"))),
+						React.createElement(Btn, { danger: true, onClick: function () { onDelete(f); } }, confirmDel[0] === uid ? "确认删除" : "删除"))),
 				React.createElement("div", { className: "dsh-rtr-cp-chain", onClick: function () { toggle(f); } },
 					hop("入口", f.entry),
 					hop("身份", f.identity),
@@ -1519,13 +1636,25 @@ function ModePage(props) {
 	if (loading[0]) {
 		listBody = React.createElement("div", { className: "dsh-rtr-skel" }, "读取成果数据…");
 	} else if (meta.archetype === "cloudpath") {
-		var cpRows = rows.slice().sort(function (a, b) { return SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity); });
-		listBody = cpRows.length === 0
-			? React.createElement("div", { className: "dsh-rtr-empty" },
-				meta.empty, React.createElement("br", null),
-				rangeHint(range[0]), React.createElement("br", null),
-				"会话内模型会把攻击路径通过 redteam_finding_register 登记到这里（也可让模型补登记：\"把攻击路径登记到成果页\"）。")
-			: React.createElement("div", { className: "dsh-rtr-cp" }, cpRows.map(cpItem));
+		// 分组态：按路径类型分组渲染（此前 cloudpath 分支不消费 groups——点分组必现假空态）
+		if (grouped[0]) {
+			var cpGroups = view.groups || [];
+			listBody = cpGroups.length === 0
+				? React.createElement("div", { className: "dsh-rtr-empty" }, meta.empty, React.createElement("br", null), rangeHint(range[0]))
+				: cpGroups.map(function (g) {
+					return React.createElement("div", { key: g.target },
+						React.createElement("div", { className: "dsh-rtr-grouphead" }, g.target, React.createElement("span", { className: "dsh-rtr-count" }, g.count + " 条")),
+						React.createElement("div", { className: "dsh-rtr-cp" }, g.items.map(cpItem)));
+				});
+		} else {
+			var cpRows = rows.slice().sort(function (a, b) { return SEVERITY_ORDER.indexOf(a.severity) - SEVERITY_ORDER.indexOf(b.severity); });
+			listBody = cpRows.length === 0
+				? React.createElement("div", { className: "dsh-rtr-empty" },
+					meta.empty, React.createElement("br", null),
+					rangeHint(range[0]), React.createElement("br", null),
+					"会话内模型会把攻击路径通过 redteam_finding_register 登记到这里（也可让模型补登记：\"把攻击路径登记到成果页\"）。")
+				: React.createElement("div", { className: "dsh-rtr-cp" }, cpRows.map(cpItem));
+		}
 	} else if (meta.archetype === "timeline") {
 		var chronoRows = rows.slice().sort(cmpTimeline);
 		listBody = chronoRows.length === 0
@@ -1574,7 +1703,7 @@ function ModePage(props) {
 			React.createElement("select", { className: "dsh-rtr-select", value: status[0], onChange: function (e) { setStatus(e.target.value); } },
 				React.createElement("option", { value: "" }, "全部状态"),
 				(STATUS_OPTIONS_OF[mode] || Object.keys(STATUS_LABEL)).map(function (s) { return React.createElement("option", { key: s, value: s }, statusLabelSetFor(meta.archetype, mode)[s] || STATUS_LABEL[s] || s); })),
-			React.createElement("input", { className: "dsh-rtr-search", placeholder: "搜索名称/简介/地址/CWE", value: q[0], onChange: function (e) { setQ(e.target.value); } }),
+			React.createElement("input", { className: "dsh-rtr-search", placeholder: "搜索名称/简介/地址/CWE", value: qDraft[0], onChange: function (e) { setQDraft(e.target.value); } }),
 			meta.archetype !== "timeline" ? React.createElement(Btn, { onClick: function () { setGrouped(!grouped[0]); } }, grouped[0] ? "平铺视图" : meta.groupLabel) : null,
 			React.createElement("span", { className: "dsh-rtr-spacer" }),
 			React.createElement(Btn, { onClick: exportOverview }, "导出总览（MD）"),
@@ -1596,6 +1725,7 @@ var SCR_MODE_VOCAB = ["redteam", "attack-defense", "pentest", "code-audit", "av-
 
 function BigScreen(props) {
 	var data = useState(null); var setData = data[1];
+	var err = useState(""); var setErr = err[1];
 	var clock = useState(""); var setClock = clock[1];
 	var range = useState("today"); var setRange = range[1];
 	var customFrom = useState(""); var setCustomFrom = customFrom[1];
@@ -1607,8 +1737,8 @@ function BigScreen(props) {
 	var load = useCallback(function () {
 		var rt = rangeIso(range[0], customFrom[0], customTo[0]);
 		api("ledger.overview", { scope: "all", from: rt[0], to: rt[1] })
-			.then(function (res) { setData((res || {}).overview || null); })
-			.catch(function () { setData(null); });
+			.then(function (res) { setErr(""); setData((res || {}).overview || null); })
+			.catch(function (e) { setData(null); setErr(e && e.message ? e.message : String(e)); });
 	}, [range[0], customFrom[0], customTo[0]]);
 	useEffect(function () {
 		load();
@@ -1639,19 +1769,24 @@ function BigScreen(props) {
 	if (ov === null) {
 		return React.createElement("div", { className: "dsh-rtr-screen", ref: scrRef },
 			React.createElement("div", { className: "dsh-scr-inner" },
-				React.createElement("div", { className: "dsh-scr-empty" }, "正在接入全局数据…")));
+				React.createElement("div", { className: "dsh-scr-empty" }, err[0] ? "全局数据读取失败：" + err[0] + "（15 秒后自动重试）" : "正在接入全局数据…")));
 	}
 	var numCard = function (v, label, cls) { return React.createElement("div", { className: "dsh-scr-num " + (cls || "") }, React.createElement("b", null, v), React.createElement("span", null, label)); };
 	var total = ov.total || 0;
 	var maxMode = Math.max(1, ...SCR_MODE_VOCAB.map(function (m) { return (ov.byMode[m] || 0); }));
 	var sevOrder = ["critical", "high", "medium", "low"];
 	var sevColors = { critical: "#c2182f", high: "#ff4d4d", medium: "#ffdd33", low: "#3a9dff" };
-	var sevTotal = sevOrder.reduce(function (n, s) { return n + (ov.bySeverity[s] || 0); }, 0) || 1;
-	var sevMax = Math.max.apply(null, sevOrder.map(function (s) { return ov.bySeverity[s] || 0; })) || 1;
+	// 风险口径：严重度统计只计漏洞型四模式（渗透/代审/应急/云）——binary/av 等产物型的默认 medium 不混入漏洞等级口径
+	var SEV_SCOPE_MODES = { "pentest": 1, "code-audit": 1, "incident-response": 1, "cloud-security": 1 };
+	var sevScoped = { critical: 0, high: 0, medium: 0, low: 0 };
+	for (const f of (ov.recent || [])) if (SEV_SCOPE_MODES[f.mode] && sevScoped[f.severity] !== undefined) sevScoped[f.severity] += 1;
+	var sevSource = (ov.recent || []).some(function (f) { return SEV_SCOPE_MODES[f.mode]; }) ? sevScoped : ov.bySeverity;
+	var sevTotal = sevOrder.reduce(function (n, s) { return n + (sevSource[s] || 0); }, 0) || 1;
+	var sevMax = Math.max.apply(null, sevOrder.map(function (s) { return sevSource[s] || 0; })) || 1;
 	var acc = 0;
 	var donutStops = sevOrder.map(function (s) {
 		var from = acc / sevTotal * 100;
-		acc += ov.bySeverity[s] || 0;
+		acc += sevSource[s] || 0;
 		return sevColors[s] + " " + from.toFixed(1) + "% " + (acc / sevTotal * 100).toFixed(1) + "%";
 	}).join(",");
 	var stRows = ov.recent || [];
@@ -1667,7 +1802,7 @@ function BigScreen(props) {
 	];
 	var orbitParts = [];
 	satSpecs.forEach(function (t, ti) {
-		var n = Math.min(6, t.key === "risk" ? (ov.bySeverity.critical || 0) + (ov.bySeverity.high || 0) : (ov.byStatus[t.key] || 0));
+		var n = Math.min(6, t.key === "risk" ? (sevSource.critical || 0) + (sevSource.high || 0) : (ov.byStatus[t.key] || 0));
 		orbitParts.push(React.createElement("div", { key: "track-" + t.key, className: "dsh-scr-orbittrack", style: { "--r": t.r + "px" } }));
 		for (var i = 0; i < n; i++) {
 			orbitParts.push(React.createElement("div", {
@@ -1707,7 +1842,10 @@ function BigScreen(props) {
 						React.createElement("div", { className: "dsh-scr-herotag" }, "GLOBAL OPS · " + (ov.sessions || 0) + " 会话")),
 				React.createElement("div", { className: "dsh-scr-heronums" },
 					numCard(ov.byStatus.pending || 0, "进行中·待验证", "is-warn"),
-					numCard((ov.bySeverity.critical || 0) + (ov.bySeverity.high || 0), "严重+高危", "is-bad"))),
+					numCard((function () { // 严重+高危只计漏洞型模式（渗透/代审/应急/云）——ad 权限价值级/av 检出等不混入漏洞等级口径
+						var FM = { "pentest": 1, "code-audit": 1, "incident-response": 1, "cloud-security": 1 };
+						return (ov.recent || []).reduce(function (n, f) { return n + (FM[f.mode] && (f.severity === "critical" || f.severity === "high") ? 1 : 0); }, 0);
+					})(), "严重+高危（漏洞型）", "is-bad"))),
 			React.createElement("div", { className: "dsh-scr-grid" },
 				React.createElement("div", { style: { display: "flex", flexDirection: "column", gap: 14 } },
 					React.createElement("div", { className: "dsh-scr-panel" },
@@ -1720,8 +1858,8 @@ function BigScreen(props) {
 						})),
 					React.createElement("div", { className: "dsh-scr-panel" },
 						React.createElement("h4", null, "状态分布"),
-						["pending", "verified", "false-positive", "fixed"].map(function (s, i) {
-							var names = { pending: "待验证·进行中", verified: "已验证·有效", "false-positive": "证伪·失效", fixed: "已交付·路由" };
+						["pending", "suspect", "verified", "detected", "stuck", "false-positive", "fixed"].map(function (s, i) {
+							var names = { pending: "待验证·进行中", suspect: "疑似·未定论", verified: "已验证·有效", detected: "被检出", stuck: "卡点", "false-positive": "证伪·失效", fixed: "已交付·路由" };
 							return React.createElement("div", { key: s, className: "dsh-scr-bar" },
 								React.createElement("span", { className: "lbl" }, names[s].slice(0, 7)),
 								React.createElement("span", { className: "track" }, React.createElement("span", { style: { display: "block", width: ((ov.byStatus[s] || 0) / Math.max(1, total) * 100) + "%", height: "100%", borderRadius: 4, background: i === 1 ? "#36f1b0" : i === 2 ? "#8fb4d9" : i === 3 ? "#3a9dff" : "#ffc93c" } })),
@@ -1755,23 +1893,23 @@ function BigScreen(props) {
 							React.createElement("div", { className: "dsh-scr-b3stage" },
 								React.createElement("div", { className: "dsh-scr-b3floor" }),
 								sevOrder.map(function (s, si) {
-									var v = Math.max(0.04, (ov.bySeverity[s] || 0) / sevMax);
+									var v = Math.max(0.04, (sevSource[s] || 0) / sevMax);
 									return React.createElement("div", { key: "b3-" + s, className: "dsh-scr-b3slot", style: { "--x": (si * 3.2 - 4.8) + "em", color: sevColors[s], "--v": v.toFixed(3) } },
 										React.createElement("div", { className: "dsh-scr-b3bar" },
 											React.createElement("i"), React.createElement("i"), React.createElement("i"), React.createElement("i")),
-										React.createElement("div", { className: "dsh-scr-b3num" }, String(ov.bySeverity[s] || 0)));
+										React.createElement("div", { className: "dsh-scr-b3num" }, String(sevSource[s] || 0)));
 								}))),
 						React.createElement("div", { className: "dsh-scr-legend" }, sevOrder.map(function (s) {
-							return React.createElement("span", { key: s }, React.createElement("i", { style: { background: sevColors[s] } }), SEVERITY_LABEL[s] + " " + (ov.bySeverity[s] || 0));
+							return React.createElement("span", { key: s }, React.createElement("i", { style: { background: sevColors[s] } }), SEVERITY_LABEL[s] + " " + (sevSource[s] || 0));
 						}))),
 					React.createElement("div", { className: "dsh-scr-panel", style: { flex: 1 } },
 						React.createElement("h4", null, "证据等级分布"),
-						["confirmed", "partial", "unknown"].map(function (e, i) {
-							var names = { confirmed: "已证实", partial: "部分证据", unknown: "未知" };
+						["impact", "confirmed", "partial", "unknown"].map(function (e, i) {
+							var names = { impact: "影响已证", confirmed: "已证实", partial: "部分证据", unknown: "未知" };
 							var v = ov.byEvidence[e] || 0;
 							return React.createElement("div", { key: e, className: "dsh-scr-bar" },
 								React.createElement("span", { className: "lbl" }, names[e]),
-								React.createElement("span", { className: "track" }, React.createElement("span", { style: { display: "block", width: (v / Math.max(1, total) * 100) + "%", height: "100%", borderRadius: 4, background: i === 0 ? "#36f1b0" : i === 1 ? "#ffc93c" : "#8fb4d9" } })),
+								React.createElement("span", { className: "track" }, React.createElement("span", { style: { display: "block", width: (v / Math.max(1, total) * 100) + "%", height: "100%", borderRadius: 4, background: ["#36f1b0", "#7ce8ff", "#ffc93c", "#8fb4d9"][i] } })),
 								React.createElement("span", { className: "val" }, v));
 						}))))));
 }
@@ -1789,12 +1927,11 @@ function ResultsView(props) {
 	var mode = useState(props.defaultMode || "__ledger__"); var setMode = mode[1];
 	var counts = useState({}); var setCounts = counts[1];
 
-	useEffect(function () {
+	var refreshCounts = useCallback(function () {
 		if (!sessionId) return;
-		api("counts.all", {})
-			.then(function (raw) { setCounts(((raw || {}).counts) || {}); })
-			.catch(function () {});
+		api("counts.all", {}).then(function (raw) { setCounts(((raw || {}).counts) || {}); }).catch(function () {});
 	}, [sessionId]);
+	useEffect(function () { refreshCounts(); }, [refreshCounts]);
 
 	if (!sessionId) {
 		return React.createElement("div", { className: "dsh-rtr-skel" }, "等待会话上下文…（新建会话后本页自动绑定该会话的成果数据）");
@@ -1816,9 +1953,9 @@ function ResultsView(props) {
 				}, m.label, React.createElement("span", { className: "dsh-rtr-count" }, (counts[0] || {})[m.id] || 0));
 			})),
 		React.createElement("div", { className: "dsh-rtr-main" },
-			mode[0] === "__ledger__"
-				? React.createElement(BigScreen, { sessionId: sessionId })
-				: React.createElement(ModePage, { sessionId: sessionId, mode: mode[0] })));
+				mode[0] === "__ledger__"
+					? React.createElement(BigScreen, { sessionId: sessionId })
+					: React.createElement(ModePage, { sessionId: sessionId, mode: mode[0], onRefreshCounts: refreshCounts })));
 }
 
 function apply(ctx) {

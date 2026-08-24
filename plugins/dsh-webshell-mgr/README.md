@@ -37,8 +37,8 @@ redteam / pentest / attack-defense / av-evasion / ctf-solver 五模式放行。
 | cmd-eval | 一句话 eval（PHP） | pass 参数名 + 口令 | cmd + eval 片段（结构化全量） | 蚁剑默认马同形 |
 | cmd-system | 口令门+命令参数马 | 口令参数 + 命令参数 | cmd（文件/数据库走命令翻译） | 通用兜底 |
 | behinder | 冰蝎型 PHP（AES-128-ECB） | key=md5(密码)[0:16] | cmd + eval 片段（桥接载荷） | 桥接 payload 赋予完整 eval 能力；信封不带 assert\| 前缀（PHP8 兼容） |
-| behinder-java | 冰蝎型 JSP/Java 内存马（AES-128-ECB + 编译载荷） | key=md5(密码)[0:16] | cmd + 原生列目录 + b64 读写 + JDBC 数据库 + 内存马卸载 | 请求体=b64(AES-ECB(class 字节))；自有反射载荷族 + 常量池实参注入 + 类名随机化；连冰蝎型 JSP 文件马与同协议内存马（与原版冰蝎默认马互操作） |
-| behinder-aspx | 冰蝎型 ASPX/IIS Module 内存马（AES-128-ECB + 程序集载荷） | key=md5(密码)[0:16] | cmd + 原生列目录 + b64 读写 | 请求体=raw AES-ECB(U.dll 程序集)；实参走 X-W-P 头（k=b64;k=b64，不进默认访问日志）；连冰蝎型 ASPX/ASHX 文件马与 IIS Module 型内存马（与原版冰蝎默认 aspx 马互操作） |
+| behinder-java | 冰蝎型 JSP/Java 内存马（AES-128-ECB + 编译载荷） | key=md5(密码)[0:16] | cmd + 原生列目录 + b64 读写 + JDBC 数据库 + 内存马卸载 | 请求体=b64(AES-ECB(class 字节))；自有反射载荷族 + 常量池实参注入 + 类名随机化；连冰蝎型 JSP 文件马与同协议内存马（实测连原版冰蝎默认马） |
+| behinder-aspx | 冰蝎型 ASPX/IIS Module 内存马（AES-128-ECB + 程序集载荷） | key=md5(密码)[0:16] | cmd + 原生列目录 + b64 读写 | 请求体=raw AES-ECB(U.dll 程序集)；实参走 X-W-P 头（k=b64;k=b64，不进默认访问日志）；连冰蝎型 ASPX/ASHX 文件马与 IIS Module 型内存马（实测连原版冰蝎默认 aspx 马） |
 | godzilla-java | 哥斯拉型 JSP/Java 内存马（JAVA_AES_BASE64 + 会话态 dispatcher） | password=POST 字段名，secret_key=密钥源（key=md5(secretKey)[0:16]） | cmd + 原生列目录 + b64 读写（大文件字节流分块）+ 交互终端 + HTTP 隧道 | 请求体=pass=b64(AES(gzip(Parameter 序列化)))；响应 md5 定位符包裹；自有 WsmG dispatcher（equals 三连注入 + toString 执行；t.*/e.* 隧道与终端会话态） |
 | godzilla | 哥斯拉型（PHP_XOR_BASE64） | password=POST 字段名，secret_key=密钥源（key=md5(secretKey)[0:16]） | cmd + eval 片段（桥接载荷） | 参数序列化 key+\x02+int32LE+value；md5 定位符回传 |
 | behinder-mod | av-lab 魔改冰蝎 | password=X-T 值，secret_key=盐 | cmd | UA 池 + nonce 协商 + CTR 分块异或 |
@@ -106,7 +106,7 @@ MEMSHELL-OK）→ 删除引导文件（先备份，trash 不 rm）→ 以 behind
 
 - 仅授权测试环境使用——工具描述与本文档口径一致；
 - 连接凭据明文落 `~/.dsh/webshell-mgr/webshell.db`（一次性作战凭据不加密落盘；彻底清除时删库文件，
-  需要彻底清除时删库文件并 VACUUM）；
+  教训同 hunter 的 VACUUM 记录）；
 - 路由走同源信任栅栏（loopback / trustedHosts + Origin 同源校验）；
 - 删除连接不删目标上的马（清痕由会话按模式纪律执行，op_log 供对账）。
 
@@ -119,11 +119,11 @@ MEMSHELL-OK）→ 删除引导文件（先备份，trash 不 rm）→ 以 behind
 | PHP 连接（eval/AES/XOR） | ✅ | ✅ | ✅ | 七通道全覆盖 |
 | PHP5 后缀识别 | ✅ | ✅ | ✅ | suffixLang 归一 |
 | JSP 文件马（自研加密） | ✅ | — | — | dsh-aes + cmd-system |
-| JSP 冰蝎协议 | ✅ | ✅ | ✅ | behinder-java 编译载荷管线（自有反射载荷 + 常量池实参注入 + 类名随机化）；与原版冰蝎默认 JSP 马互操作 |
-| JSP 哥斯拉协议 | ✅ | ✅ | ✅ | godzilla-java 会话态 dispatcher（WsmG）+ Parameter 序列化 + gzip 载荷层；生成马全链路支持 |
+| JSP 冰蝎协议 | ✅ | ✅ | ✅ | behinder-java 编译载荷管线（自有反射载荷 + 常量池实参注入 + 类名随机化）；已实测连原版冰蝎默认 JSP 马 |
+| JSP 哥斯拉协议 | ✅ | ✅ | ✅ | godzilla-java 会话态 dispatcher（WsmG）+ Parameter 序列化 + gzip 载荷层；实测生成马全链路 |
 | ASPX 文件马（自研加密） | ✅ | — | — | dsh-aes + cmd-system |
-| ASPX 冰蝎协议 | ✅ | ✅ | ✅ | behinder-aspx 程序集管线（U.dll + X-W-P 头实参）；与原版冰蝎默认 aspx 马互操作 |
-| ASPX 哥斯拉协议（CSHAP_AES_BASE64 同型） | ✅ | ✅ | ✅ | godzilla-aspx 通道（AES-CBC IV=key + md5 标记 + gzip/Parameter 层 + UG 会话态 dispatcher）；自有模板（原版 aspx 马互操作未验证——如实标注）；全链路支持 |
+| ASPX 冰蝎协议 | ✅ | ✅ | ✅ | behinder-aspx 程序集管线（U.dll + X-W-P 头实参）；实测连原版冰蝎默认 aspx 马（mono 宿主） |
+| ASPX 哥斯拉协议（CSHAP_AES_BASE64 同型） | ✅ | ✅ | ✅ | godzilla-aspx 通道（AES-CBC IV=key + md5 标记 + gzip/Parameter 层 + UG 会话态 dispatcher）；自有模板（原版 aspx 马互操作未验证——如实标注）；mono 宿主实测全链 |
 | ASP 经典（VBScript） | ✅ | ✅ | ✅ | cmd-system 通道（WScript.Shell 重定向 + FSO 读取，Windows/IIS 专属）；asp-basic 生成器；**无本机 ASP 宿主——仅静态验证**（如实标注） |
 | ASHX/ASMX | △ | — | ✅ | 同 ASPX 协议（后缀已识别）；冰蝎/哥斯拉协议依赖 ASPX 管线 |
 | 内存马 PHP | △ | — | — | kind=mem 已预留；PHP-FPM 场景可用现有协议 |
@@ -131,31 +131,31 @@ MEMSHELL-OK）→ 删除引导文件（先备份，trash 不 rm）→ 以 behind
 | 内存马 Java（Controller/Valve 型） | ✅ | ✅ | ✅ | X-C 触发型用 dsh-mem 连接；冰蝎协议型用 behinder-java 连接；注入器归免杀对抗模式自产（连接侧全支持） |
 | 内存马 ASPX（IIS Module） | ✅ | — | — | dsh-mem 通道（X-C 头触发 + b64 回显；Module 型 stderr 段原文兼容） |
 | 内存马注入 | ✅ | ✅ | ✅ | jsp-mem-filter 引导器（生成器产；上传→访问→删引导文件三步） |
-| 内存马卸载 | ✅ | ✅ | ✅ | WsmMemUnload 载荷（Filter 三注册面移除）+ UI 卸载按钮 + webshell_mem_unload 工具；引导器 x-n 属性自动定位；注入→连接→卸载→断连全闭环 |
+| 内存马卸载 | ✅ | ✅ | ✅ | WsmMemUnload 载荷（Filter 三注册面移除）+ UI 卸载按钮 + webshell_mem_unload 工具；引导器 x-n 属性自动定位；实测注入→连接→卸载→断连闭环 |
 | 文件管理（全操作） | ✅ | ✅ | ✅ | 含文本编辑/时间戳伪造/远程下载/复制 |
 | 大文件断点续传 | ✅ | ✅ | ✅ | WsmRead 范围读（RANGE offset/len/total 元数据）+ 写侧分块追加（behinder-java）；godzilla-java 字节流 128KB 分块 |
-| ZIP 压缩/解压 | ✅ | ✅ | ✅ | WsmZip 载荷（java.util.zip，behinder-java）+ file.action zip/unzip；目录级往返 |
+| ZIP 压缩/解压 | ✅ | ✅ | ✅ | WsmZip 载荷（java.util.zip，behinder-java）+ file.action zip/unzip；实测 3 条目往返 |
 | 数据库 PHP（PDO） | ✅ | ✅ | ✅ | mysql/pgsql/sqlite/mssql 原生 |
-| 数据库 JSP（JDBC） | ✅ | ✅ | ✅ | WsmDb 载荷（纯 JDK）+ 档案→JDBC 映射（mysql/mssql/pgsql/oracle）；目标应用自带驱动 jar 即可；MySQL 8 全链路支持 |
-| 数据库 ASPX | ✅ | ✅ | ✅ | U 载荷 db op（反射 ADO.NET，目标 bin/GAC 驱动即可）；sqlite 往返 + affected 计数 |
+| 数据库 JSP（JDBC） | ✅ | ✅ | ✅ | WsmDb 载荷（纯 JDK）+ 档案→JDBC 映射（mysql/mssql/pgsql/oracle）；目标应用自带驱动 jar 即可；实测 MySQL 8 全链路 |
+| 数据库 ASPX | ✅ | ✅ | ✅ | U 载荷 db op（反射 ADO.NET，目标 bin/GAC 驱动即可）；sqlite 实测往返 + affected |
 | Oracle | ✅（JDBC） | ✅ | ✅ | PHP PDO 无 Oracle（目标机限制）；behinder-java JDBC 支持 oracle（档案映射已含） |
-| 应用内连接池凭据收集 | ✅ | — | ✅ | WsmEnumDb（Tomcat JNDI resources + context-param 过滤）；JNDI 资源全凭据提取；db.action enum |
-| SOCKS 代理（目标侧） | ✅ | ✅ | ✅ | WsmSocks（纯 JDK 无鉴权 CONNECT，lambda 单类交付）；标准 SOCKS5 客户端可穿代理 |
-| 端口转发 | ✅ | ✅ | ✅ | WsmFwd（监听→目标中继）；数据库客户端可穿转发查询 |
-| HTTP 隧道 | ✅ | — | ✅ | WsmG t.* ops + 本地 SOCKS5 监听（tunnel.js）——全部流量封装 web 请求，目标不开新端口；数据库协议流量可穿越 |
-| 反向连接/反弹 shell | ✅ | ✅ | — | WsmReverse（回连+sh 双泵）；回连后交互式读写 |
+| 应用内连接池凭据收集 | ✅ | — | ✅ | WsmEnumDb（Tomcat JNDI resources + context-param 过滤）；实测 jdbc/dvwa 全凭据提取；db.action enum |
+| SOCKS 代理（目标侧） | ✅ | ✅ | ✅ | WsmSocks（纯 JDK 无鉴权 CONNECT，lambda 单类交付）；curl 实测穿代理 |
+| 端口转发 | ✅ | ✅ | ✅ | WsmFwd（监听→目标中继）；mysql 客户端实测穿转发查询 |
+| HTTP 隧道 | ✅ | — | ✅ | WsmG t.* ops + 本地 SOCKS5 监听（tunnel.js）——全部流量封装 web 请求，目标不开新端口；MySQL 握手包实测穿越 |
+| 反向连接/反弹 shell | ✅ | ✅ | — | WsmReverse（回连+sh 双泵）；监听器实测 id/echo 往返 |
 | 命令执行 | ✅ | ✅ | ✅ | 行缓冲虚拟终端 |
 | 交互式终端 | ✅ | ✅ | ✅ | WsmG e.* ops 会话终端（持久 /bin/sh 管道、状态跨命令、UI 交互模式轮询）——非 TTY 特性（无 job control/全屏程序），godzilla-java 通道 |
 | 流量伪装（C2 Profile） | ✅ | — | ✅ | 连接级 profile JSON：uas 轮换 + headers 附加 + 响应 strip 剖离（四编译载荷通道生效）；表单内联编辑 + 保存校验 |
 | UA 池/Referer 随机 | ✅ | ✅ | — | profile.uas 逐请求轮换（behinder-java/aspx、godzilla-java/aspx 四通道）；显式头优先 |
 | 载荷插件体系 | ✅ | ✅ | ✅ | 声明式（最安全）；三方为编译产物 |
-| 多 shell 批量操作 | ✅ | ✅ | — | UI 批量执行（多选连接 + 同命令 + 结果表）+ conn.batch 路由 + webshell_batch_exec 工具；多连接并发 |
+| 多 shell 批量操作 | ✅ | ✅ | — | UI 批量执行（多选连接 + 同命令 + 结果表）+ conn.batch 路由 + webshell_batch_exec 工具；实测双连接 |
 | MCP 服务 | ✅ | — | — | 本插件独有 |
 | 模型工具面（AI 自操作） | ✅ | — | — | 本插件独有 |
 | C2 回连载荷上传 | ✅ | △ | △ | file write + exec 已通；无专用 C2 profile |
 | 凭据收集（浏览器/SSH/配置） | ✅ | △ | ✅ | 经 exec/file 命令式；哥斯拉有 SharpWeb 等专用插件 |
 | 权限提升（Potato 系列） | ✅（通道） | — | ✅ | 上传+执行管线就绪（file write + exec + op_log 台账）；载荷本体归攻防/免杀模式产（模式层定位——管理器不内置提权二进制） |
-| 截屏 | ✅ | — | ✅ | WsmShot（AWT Robot → PNG base64，headless 明确报错）；file.action shot 产物落 generated/；PNG 产物落盘 |
+| 截屏 | ✅ | — | ✅ | WsmShot（AWT Robot → PNG base64，headless 明确报错）；file.action shot 产物落 generated/；实测 630KB 真图 |
 
 ### 关键架构差距
 
@@ -176,9 +176,9 @@ JSP 通道与 PHP 的本质差异在载荷交付方式——PHP 走 `eval()` 文
   ClassLoader 重复 defineClass 的 LinkageError）；
 - 线协议：`POST body = base64(AES-128-ECB(class 字节))`，key=md5(口令)[0:16]，
   外加 X-T:1 标记头（内存马 Filter 的门控凭据，对文件马无影响）；
-- 支持链路：自产 jsp-behinder 文件马全操作 / jsp-mem-filter Filter 内存马（删引导
-  文件后存活、业务流量不受门控外影响）/ X-C 型 Filter 内存马 / 原版冰蝎默认 JSP 马
-  （自有载荷经其 defineClass 管线执行）。
+- 本地实测四链路：自产 jsp-behinder 文件马全操作 / jsp-mem-filter Filter 内存马
+  （删引导文件后存活、业务流量不受门控外影响）/ X-C 型 Filter 内存马 / **原版冰蝎
+  默认 JSP 马**（自有载荷经其 defineClass 管线执行成功）。
 
 已落地矩阵（Java + .NET 两侧）：
 
@@ -190,7 +190,7 @@ JSP 通道与 PHP 的本质差异在载荷交付方式——PHP 走 `eval()` 文
 
 - ASPX 哥斯拉协议（CSHAP_AES 会话态 + .NET 模板管线）；
 - ASPX 数据库（.NET DbProvider 管线）与 ASPX 内存马注入器（Module 注册引导器）；
-- Spring Controller / Valve / Listener 型注入器（连接侧全支持；注入器归免杀对抗模式自产）。
+- Spring Controller / Valve / Listener 型注入器（连接侧已支持，注入侧归免杀对抗模式自产）。
 
 ## 测试
 
@@ -199,7 +199,7 @@ javapatch 补丁往返/behinder-java 线协议自洽/dsh-mem 段解码）
 + PHP 回路烟测（本机有 php 时：九通道识别→执行→文件→数据库→插件全链路；av-lab 两匹魔改马
 字节级互通；冰蝎/哥斯拉形态马以生成器产物验证协议）。
 
-Java 侧端到端验证：behinder-java 文件马（probe/cmd/
+Java 侧端到端验证（本地 Tomcat 9 实测，2026-08-21）：behinder-java 文件马（probe/cmd/
 ls/b64 读写含 NUL 与中文往返/delete）、Filter 内存马（注入→任意路径连接→删引导文件存活→
 业务流量无头透传回归）、X-C 型 Filter 内存马（cmd/ls/read 命令翻译）、原版冰蝎默认 JSP 马
 互操作（rebeyond 口令）。

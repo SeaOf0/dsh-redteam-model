@@ -24,6 +24,7 @@
   3. 配置侧：全量 URL 模式（/*）Filter 审计（业务应用极少注册全量 Filter）；
   4. JVM 层：非磁盘类加载审计（匿名 Filter 类无 jar 来源）；内存 dump 与部署描述符比对。
 - 判定表（本地实测后填）：| RASP/EDR | 结果 | 原文行 |
+- 构建/语法验证记录：2026-08-20 javac 1.8 解析检查——无语法错误；报错全部为缺失依赖
   jar 的符号（servlet-api/catalina 未提供：ServletContext/Filter/FilterDef/FilterMap/
   StandardContext/ApplicationFilterConfig/Context 共 7 个，无一处指向自身代码）；完整
   编译与运行时验证未做（无 Tomcat 环境），判定表留待本地实测后填。

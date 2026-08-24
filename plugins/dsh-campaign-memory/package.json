@@ -1,7 +1,7 @@
 {
 	"name": "@dsh-external/dsh-campaign-memory",
 	"version": "1.1.2",
-	"description": "Campaign memory for the nine security presets: model-side write/search/get/list/remove tools storing raw content (credentials stay in their own local vaults, memories carry pointers only), a marker-tagged per-workspace recall block injected into every assembly (fresh workspace starts clean; cross-workspace recall is an explicit search with provenance labels), preview-capped retrieval with on-demand full-text fetch, usage-ranked with expiry for detection fingerprints, a loopback RPC surface, and a per-session tab for browsing, searching and curating memories.",
+	"description": "Campaign memory for the nine security presets: model-side write/search/get/list/remove tools storing raw content verbatim (credentials may be stored as-is or as pointers to existing local vaults), a marker-tagged per-workspace recall block injected into every assembly (fresh workspace starts clean; cross-workspace recall is an explicit search with provenance labels), preview-capped retrieval with on-demand full-text fetch, usage-ranked with expiry for detection fingerprints, a loopback web channel, and a per-session tab for browsing, searching and curating memories.",
 	"keywords": [
 		"deepseek",
 		"deepseek-harness",

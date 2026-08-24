@@ -41,7 +41,7 @@ reverse/crypto/forensics/misc/ai-ml/osint/malware + solve-challenge 分诊入口
 
 | 门 | 结构校验物（canonical） | 语义（manual，总控/复核员判定） |
 |---|---|---|
-| board 题面登记 | challenge-board.md（含标记：题名/模块/线索，≥1 行表，每行 ≥3 格）+ evidence-index.md（≥1 行表） | 每行线索已梳理、模块判定合理 |
+| board 题面登记 | challenge-board.md（含标记：题名/模块/线索，≥1 行表，每行 ≥3 格）+ evidence-index.md（含字面标记 `tool-plane`、`MCP`，且 ≥1 行表） | 每行线索已梳理、模块判定合理 |
 | flag 台账收口 | flag-ledger.md（含标记：flag/验证/状态，≥1 行表，每行 ≥4 格） | 每个「已解」flag 带验证证据；未解标卡点 |
 
 ## 模块路由表（题面特征 → refs 模块）
@@ -71,7 +71,7 @@ reverse/crypto/forensics/misc/ai-ml/osint/malware + solve-challenge 分诊入口
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
 
 - 「AttackAtlas」标签页按本手册结构展示——三分区（题型模块/赛制作战卡/纪律与台账）× 9 战术列 × 四阶段带（题面登记→模块路由解题→flag 验证台账→复盘报告）× 三赛制形态（Jeopardy/AWD/KotH）。
-- 题目格与赛制线落终态时同步调 `redteam_coverage_mark`（已解 flag 验证=tested-found、已试卡点附原因=tested-clear、不适用无此类题=na、未开让位=budget-stop）；阶段推进调 `redteam_coverage_stage`（s1…s4）；题目/赛局调 `redteam_atlas_target` 登记，多题逐题 target 参数回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。阶段门 stage_gate 判定 PASS 后，对应阶段及其此前阶段自动回写 done（级联点亮）；无门阶段可手动 redteam_coverage_stage 推进补记。登记 finding 时 type 填题目难度（easy/medium/hard/insane）或题目模块；等级字段不展示可省略。
+- 题目格与赛制线落终态时同步调 `redteam_coverage_mark`（已解 flag 验证=tested-found、已试卡点附原因=tested-clear、不适用无此类题=na、未开让位=budget-stop）；阶段推进调 `redteam_coverage_stage`（s1…s4）；题目/赛局调 `redteam_atlas_target` 登记，多题逐题 target 参数回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。阶段门 stage_gate 判定 PASS 后，对应阶段及其此前阶段自动回写 done（级联点亮）；无门阶段可手动 redteam_coverage_stage 推进补记。登记 finding 时 type 填题目模块（web/pwn/reverse/crypto/misc/forensics/ai-ml/osint/malware/mobile/ad-domain/cloud/supply——与图谱自动点亮对齐）；难度写入标题或 summary；等级字段不展示可省略。
 
 ## 解题纪律
 
@@ -169,5 +169,5 @@ searchsploit——宿主须可达，不可自配）；**附件=未知文件**：
 
 ## 附录
 
-- refs 知识库总索引见 `refs/README.md`（118 篇 + 分诊入口；MIT 许可证随附 refs/LICENSE）。
+- refs 知识库总索引见 `refs/README.md`（118 篇（含分诊入口）；MIT 许可证随附 refs/LICENSE）。
 - 跨平台执行公约（win/mac/linux 等价表，见 ecosystem-cooperation）。

@@ -47,7 +47,7 @@
 | windows/knowledge/ | 知识库索引（awesome-incident-response/ATT&CK/LOLBAS…） | 扩展检索 |
 
 > 说明：Windows 侧文档为**自写原创方法论**——主题域参照公开应急响应资料
-> https://book.noptrace.com/ ），因该仓库无开源许可证（保留所有权利），正文不照抄、自写实现级内容。
+> （https://book.noptrace.com/ ），因该仓库无开源许可证（保留所有权利），正文不照抄、自写实现级内容。
 
 ### linux/（Linux 侧，cookbook 原文 + 自写方法论）
 

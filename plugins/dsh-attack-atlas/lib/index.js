@@ -159,21 +159,32 @@ function modeOfSession(ctx, sessionId) {
 }
 
 /** 合并类目：内置 taxonomy 副本 + 本模式自定义主类/子类（key 同构；_cap 携带自定义元数据）。
- *  方法论的校验/定位/信封全部走合并版——自定义模块自动被认得。 */
-function taxonomyWithCaps(st, taxonomy, mode) {
+ *  方法论的校验/定位/信封全部走合并版——自定义模块自动被认得。
+ *  自定义项的适用形态（forms 串）解析为数组并入合并树：矩阵形态过滤/形态切换对自定义格同样生效。 */
+function capFormsOf(taxonomy, raw) {
+	const ids = new Set((taxonomy.forms || []).map((f) => f.id));
+	return String(raw ?? "").split(/[,，;；\s]+/).map((s) => s.trim()).filter((s) => ids.has(s));
+}
+export function taxonomyWithCaps(st, taxonomy, mode) {
 	const caps = listCaps(st, mode);
 	const itemsByCat = {};
 	for (const c of caps) if (c.kind === "item") (itemsByCat[c.cat] = itemsByCat[c.cat] || []).push(c);
-	const capItemNode = (i) => ({ id: i.item, label: i.label, ref: i.ref || undefined, pb: i.pb || undefined, _cap: i });
+	const capItemNode = (i) => {
+		const fs = capFormsOf(taxonomy, i.forms);
+		return { id: i.item, label: i.label, ref: i.ref || undefined, pb: i.pb || undefined, ...(fs.length ? { forms: fs } : {}), _cap: i };
+	};
 	const categories = taxonomy.categories.map((c) => {
 		const extra = (itemsByCat[c.id] || []).map(capItemNode);
 		return extra.length ? { ...c, items: c.items.concat(extra) } : c;
 	});
+	const formCategories = { ...(taxonomy.formCategories || {}) };
 	for (const c of caps) {
 		if (c.kind !== "category") continue;
-		categories.push({ id: c.cat, label: c.label, desc: c.descr, _cap: c, items: (itemsByCat[c.cat] || []).map(capItemNode) });
+		const fs = capFormsOf(taxonomy, c.forms);
+		for (const f of fs) formCategories[f] = [...(formCategories[f] || []), c.cat]; // 克隆追加，不污染内置数组
+		categories.push({ id: c.cat, label: c.label, desc: c.descr, ...(fs.length ? { forms: fs } : {}), _cap: c, items: (itemsByCat[c.cat] || []).map(capItemNode) });
 	}
-	return { ...taxonomy, categories };
+	return { ...taxonomy, categories, formCategories };
 }
 
 //#region 词典治理：标签等价与报错带候选
@@ -184,7 +195,9 @@ const FUZZY_MARGIN = 1.25; // 最佳与次佳须拉开倍率（防歧义误亮�
 const FUZZY_INCOV = 0.6;   // 输入侧 bigram 覆盖率：垃圾串只零星命中即拒（ghost-cat 类假阳性）
 
 function normLabel(s) {
-	return String(s ?? "").toLowerCase().normalize("NFKC").replace(LABEL_STRIP, "");
+	// 剥行首序号前缀（"9 SQL 注入"→"sql注入"）：部分体系标签带列表序号，序号非语义且破坏词边界匹配；
+	// 仅剥 1-2 位数字+分隔符（空白/./、），不误伤 0day/2FA 这类前缀无分隔符的语义数字。
+	return String(s ?? "").toLowerCase().normalize("NFKC").replace(/^\d{1,2}[\s.、．]+/, "").replace(LABEL_STRIP, "");
 }
 function bigramSet(s) {
 	const set = new Set();
@@ -235,6 +248,20 @@ export function resolveKey(taxonomy, input) {
 	if (!raw) return null;
 	const norm = normLabel(raw);
 	if (!norm) return null;
+	// 模式词表别名（如 ad 战果词「域控成果」→domain-attack 主类）：结果名词与技法标签的桥接，
+	// 别名与标签同源维护（taxonomy.aliases）——mark/sync/自动点亮全入口同享。值支持主类 id 或 cat/item。
+	for (const [aliasKey, ref] of Object.entries(taxonomy.aliases ?? {})) {
+		if (normLabel(aliasKey) === norm) {
+			if (String(ref).includes("/")) {
+				const [cId, iId] = String(ref).split("/");
+				const c = taxonomy.categories.find((x) => x.id === cId);
+				if (c?.items.some((it) => it.id === iId)) return { key: String(ref), catId: cId, itemId: iId, via: "alias" };
+			} else {
+				const c = taxonomy.categories.find((x) => x.id === ref);
+				if (c) return { key: c.id, catId: c.id, via: "alias" };
+			}
+		}
+	}
 	if (raw.includes("/")) {
 		const idx = raw.indexOf("/");
 		const catId = raw.slice(0, idx), itemIdRaw = raw.slice(idx + 1);
@@ -256,17 +283,42 @@ export function resolveKey(taxonomy, input) {
 	for (const it of allItems) if (normLabel(it.label) === norm) return { ...it, via: "label" };
 	const catExact = taxonomy.categories.find((c) => normLabel(c.label) === norm);
 	if (catExact) return { key: catExact.id, catId: catExact.id, via: "label" };
-	const hits = allItems.filter((it) => { const l = normLabel(it.label); return l.includes(norm) || norm.includes(l); });
-	const catHits = taxonomy.categories.filter((c) => { const l = normLabel(c.label); return l.includes(norm) || norm.includes(l); });
+	// 包含命中判定：短 ASCII 线索（≤4 字符）要求词边界匹配——防 "RCE" 经 "sourcemap" 这类
+	// 嵌入子串误报（边界两侧不得是字母数字）；中文线索不受影响。
+	const shortAscii = /^[a-z0-9]{1,4}$/.test(norm);
+	const tokenHit = (label) => {
+		const l = normLabel(label);
+		if (l.includes(norm)) {
+			if (!shortAscii) return true;
+			let i = l.indexOf(norm);
+			while (i !== -1) {
+				const before = i === 0 ? "" : l[i - 1];
+				const after = i + norm.length >= l.length ? "" : l[i + norm.length];
+				if (!/[a-z0-9]/.test(before) && !/[a-z0-9]/.test(after)) return true;
+				i = l.indexOf(norm, i + 1);
+			}
+			return false;
+		}
+		return norm.includes(l);
+	};
+	const hits = allItems.filter((it) => tokenHit(it.label));
+	const catHits = taxonomy.categories.filter((c) => tokenHit(c.label));
 	if (hits.length === 1) return { ...hits[0], via: "contains" };
 	if (hits.length > 1) {
-		// 最长标签优先：更具体的包含胜出（「深度反序列化」→ rce-main/deep-deser 而非 sink-core/deser）；
-		// 同长才是真歧义（「上传」命中多个上传格）。
-		const byLen = [...hits].sort((a, b) => normLabel(b.label).length - normLabel(a.label).length);
-		if (normLabel(byLen[0].label).length > normLabel(byLen[1].label).length) return { ...byLen[0], via: "contains" };
+		// 多命中取舍：前缀命中优先（标签以线索开头=最贴题，如「未授权」→「未授权访问…」而非
+		// 「LLM API 未授权与密钥泄露」）；其后取最短标签（最简释义）；同长才是真歧义
+		// （「上传」命中多个上传格）——歧义拒并报候选，不静默选边。
+		const prefixed = hits.filter((it) => normLabel(it.label).startsWith(norm));
+		const pool = prefixed.length ? prefixed : hits;
+		if (pool.length === 1) return { ...pool[0], via: "contains" };
+		const byLen = [...pool].sort((a, b) => normLabel(a.label).length - normLabel(b.label).length);
+		if (normLabel(byLen[0].label).length < normLabel(byLen[1].label).length) return { ...byLen[0], via: "contains" };
 		return { ambiguous: byLen.slice(0, 6).map((h) => ({ key: h.key, catId: h.catId, itemId: h.itemId })) };
 	}
 	if (catHits.length === 1) return { key: catHits[0].id, catId: catHits[0].id, via: "contains" };
+	// 短 ASCII 线索（≤4 字符）禁走全局模糊：bigram Dice 会跨词误中（CSRF↔SSRF 得 0.667 过阈）——
+	// 词边界闸只在包含级，模糊级没有；短词宁拒不猜（命中靠 contains/别名/全等已足够）。
+	if (shortAscii) return null;
 	const bi = bestOf(allItems, norm);
 	const bc = bestOf(taxonomy.categories.map((c) => ({ key: c.id, catId: c.id, label: c.label })), norm);
 	if (bi.ok && (!bc.best || bi.best.score >= bc.best.score)) return { key: bi.best.key, catId: bi.best.catId, itemId: bi.best.itemId, via: "fuzzy" };
@@ -471,6 +523,10 @@ function readBody(req) {
 /** 通道端点分发（纯逻辑，供路由与测试复用）。 */
 export async function dispatch(ctx, st, endpoint, payload) {
 	const p = payload ?? {};
+	// 模式白名单：mode 形参只认八专业模式（未知 mode 直接拒并报合法清单——不落永不渲染的幽灵行）
+	if (p.mode !== undefined && String(p.mode) !== "" && !ATLAS_MODES.includes(String(p.mode))) {
+		throw new Error(`未知模式 ${p.mode}（合法：${ATLAS_MODES.join("、")}）`);
+	}
 	if (endpoint === "taxonomy.get") {
 		return {
 			modes: ATLAS_MODES.map((m) => ({ id: m, label: MODE_LABELS[m], pending: !!TAXONOMIES[m]?.pending })),
@@ -512,8 +568,12 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		const mode = String(p.mode ?? "pentest");
 		const base = TAXONOMIES[mode];
 		if (base && !base.pending) {
-			const bad = validateStageRef(taxonomyWithCaps(st, base, mode), p.stage);
+			const tax = taxonomyWithCaps(st, base, mode);
+			const bad = validateStageRef(tax, p.stage);
 			if (bad) throw new Error(bad);
+			// 校验接受中文标签，落库须 canonical id——与工具路径（redteam_coverage_stage）同规，防「校验放行落库被拒」
+			const stageId = resolveStageId(tax, p.stage) || String(p.stage ?? "");
+			return { ok: true, stage: markStage(st, sessionId, mode, stageId, String(p.state ?? "")) };
 		}
 		return { ok: true, stage: markStage(st, sessionId, mode, String(p.stage ?? ""), String(p.state ?? "")) };
 	}
@@ -540,7 +600,7 @@ export async function dispatch(ctx, st, endpoint, payload) {
 	if (endpoint === "chain.node") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		return { ok: true, node: addChainNode(st, sessionId, String(p.mode ?? "pentest"), { id: p.id, label: p.label, kind: p.kind, seg: p.seg, note: p.note, major: !!p.major }) };
+		return { ok: true, node: addChainNode(st, sessionId, String(p.mode ?? "pentest"), { id: p.id, label: p.label, kind: p.kind, seg: p.seg, note: p.note, major: !!p.major, findingRef: p.findingRef }) };
 	}
 	if (endpoint === "chain.edge") {
 		const sessionId = String(p.sessionId ?? "");
@@ -734,11 +794,19 @@ export async function dispatch(ctx, st, endpoint, payload) {
 
 /** 门 id → 阶段 id（八模式）。流程带顺序语义：过门凭据蕴含此前阶段已完成，
  *  少门模式（pentest 3 门/7 阶段等）靠级联补齐，未设门阶段留手动。 */
-export /** 级联不点亮的阶段（条件性阶段——点亮须自身凭据，过门不蕴含完成）：pentest s3 登陆口专线（无帐密才走）、binary s3 动态分析（无动态环境即 N-A）。 */
-const GATE_NO_FILL = { pentest: ["s3"], "binary-analysis": ["s3"] };
+export /** 级联不点亮的阶段（按 `mode/gate` 键控，只列级联范围触及该阶段的门），两类：
+ *  ①条件性阶段（点亮须自身凭据，任何门都不推定）——pentest s3 登陆口专线（无帐密才走）、binary s3 动态分析（无动态环境即 N-A）、code-audit s3 动态验证（纯静态审计即 N-A）；
+ *  ②逐条目门的阶段（仅逐条目门不推定，覆盖度终门照常补齐）——pentest s5（P2 逐 finding 复核门；P3 补齐）、code-audit s4（A2 逐 finding 双链门；A3 补齐）、binary s4（B1 逐样本还原门；B2 补齐）、av s5（V3 逐实验配对门；V4 补齐）：
+ *  首条目过门不蕴含阶段整体完成，整体完成由覆盖度终门级联补齐。 */
+const GATE_NO_FILL = {
+	"pentest/P2": ["s3", "s5"], "pentest/P3": ["s3"],
+	"code-audit/A2": ["s3", "s4"], "code-audit/A3": ["s3"],
+	"binary-analysis/B1": ["s3", "s4"], "binary-analysis/B2": ["s3"],
+	"av-evasion/V3": ["s5"]
+};
 export const GATE_STAGE = {
 	pentest: { "P1": "s1", "P2": "s5", "P3": "s6" },
-	"code-audit": { "A1": "s2", "A2": "s4", "A3": "s5" },
+	"code-audit": { "A1": "s1", "A2": "s4", "A3": "s5" },
 	"binary-analysis": { "B0": "s1", "B1": "s4", "B2": "s5" },
 	"attack-defense": { "recon": "s1", "breach": "s2", "lateral": "s3", "persistence": "s4", "report": "s5" },
 	"av-evasion": { "V1": "s2", "V2": "s4", "V3": "s5", "V4": "s6" },
@@ -760,7 +828,7 @@ export function autoStageFromGate(st, taxonomy, sessionId, mode, gateId) {
 	const idx = stages.findIndex((s) => s.id === target);
 	if (idx < 0) return [];
 	const marked = [];
-	const noFill = GATE_NO_FILL[mode] ?? [];
+	const noFill = GATE_NO_FILL[`${mode}/${gateId}`] ?? [];
 	for (let i = 0; i <= idx; i++) {
 		if (noFill.includes(stages[i].id)) continue; // 条件性阶段不凭过门推定完成
 		try {
@@ -773,14 +841,15 @@ export function autoStageFromGate(st, taxonomy, sessionId, mode, gateId) {
 
 //#endregion
 
-//#region finding 自动点亮与覆盖提醒
+//#region finding 自动点亮（P1）与覆盖提醒（P3）
 
 /** 常用 CWE → 类目语义标签（与体系子项标签对齐后再走 resolveKey；未收录返回 ""，保守跳过）。 */
 const CWE_LABELS = {
 	78: "命令执行", 77: "命令注入", 89: "SQL 注入", 79: "XSS", 22: "路径穿越", 918: "SSRF",
 	611: "XXE", 502: "反序列化", 674: "反序列化", 94: "代码注入", 917: "表达式注入", 915: "表达式注入",
 	434: "任意文件上传", 98: "文件包含", 73: "文件读写", 352: "CSRF", 287: "认证绕过", 862: "未授权访问",
-	798: "硬编码凭据", 321: "硬编码凭据", 327: "密码学实现误用", 362: "并发", 840: "业务逻辑", 1336: "正则拒绝服务"
+	798: "硬编码凭据", 321: "硬编码凭据", 327: "密码学实现误用", 362: "并发", 840: "业务逻辑", 1336: "正则拒绝服务",
+	269: "权限提升", 522: "密钥泄露", 863: "权限提升"
 };
 function cweToLabel(cwe) {
 	const m = /(\d+)/.exec(String(cwe ?? ""));
@@ -838,8 +907,13 @@ export async function autoLightFromFinding(ctx, st, sessionId, findingArgs, deps
 	if (!base || base.pending) return { marked: [], nudged: [] };
 	const taxonomy = taxonomyWithCaps(st, base, mode);
 	const title = String(findingArgs?.title ?? "").trim();
-	const cues = [String(findingArgs?.type ?? "").trim(), cweToLabel(findingArgs?.cwe), title].filter(Boolean);
-	if (!cues.length) return { marked: [], nudged: [] };
+	const typeStr = String(findingArgs?.type ?? "").trim();
+	// 线索：type + cwe 字段映射 + type 内嵌 CWE（工具描述引导「type 可含 CWE」——缺填 cwe 字段时不绕空）+ 标题
+	const cues = [typeStr, cweToLabel(findingArgs?.cwe)];
+	for (const m of typeStr.matchAll(/cwe[-\s]*(\d{1,4})/gi)) { const lbl = cweToLabel(m[1]); if (lbl) cues.push(lbl); }
+	cues.push(title);
+	const uniqueCues = [...new Set(cues.map((c) => String(c ?? "").trim()).filter(Boolean))];
+	if (!uniqueCues.length) return { marked: [], nudged: [] };
 	let ref = "";
 	try {
 		ref = deps.findFindingId ? await deps.findFindingId(sessionId, mode, title) : await findFindingIdInResults(sessionId, mode, title);
@@ -848,7 +922,7 @@ export async function autoLightFromFinding(ctx, st, sessionId, findingArgs, deps
 	const done = new Set(cov.cells.map((c) => c.key));
 	const marked = [];
 	const markedCats = new Set();
-	for (const cue of cues) {
+	for (const cue of uniqueCues) {
 		const res = resolveKey(taxonomy, cue);
 		if (!res || !res.key || res.ambiguous || res.missingItem) continue;
 		if (done.has(res.key)) continue;
@@ -869,7 +943,7 @@ export async function autoLightFromFinding(ctx, st, sessionId, findingArgs, deps
 //#endregion
 
 function apply(ctx) {
-	//#region 模型工具（宿主平面；九模式会话内可用）
+	//#region 模型工具（宿主平面注册；八专业模式会话内可用——light 通用模式等非图谱会话执行被拒）
 	ctx.tools.register(defineTool({
 		name: "redteam_coverage_mark",
 		description: "把攻击面图谱（「攻击面图谱」标签页）里的一个格子或主类标为终态。每个格子终态：tested-found / tested-clear / na / budget-stop（图例按模式显示对应语义——渗透=已测·有发现/未命中、免杀=已测·过检/被检出、CTF=已解·flag 验证/已试·卡点、应急=查实·有证据/已查·未命中等）。key 形如 injection/sqli（格子）或 injection（主类整组 N-A），也接受主类/格子的中文标签（自动归一）；写错时报错会列出该模式全部合法主类。tested-clear 时 reason 建议写未排除面；tested-found 时 findingRefs 填关联 finding id。逐格回写，图谱实时点亮。",
@@ -1012,7 +1086,7 @@ function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "redteam_atlas_chain",
-		description: "登记/查看本会话 AttackAtlas 的攻击链拓扑（仅攻防评估/应急溯源/云安全三模式有链路体系，其余模式不可用；链路拓扑图弹窗实时成图）。节点：entry 入口/host 主机/segment 网段关口/bastion 堡垒机/dc 域控/cred 凭据，重大成果节点 major=true，seg 填网段（如 10.1.1.x）；边 label 写动作（获取权限/凭据复用/隔离突破/域控获取…）。多入口/暂无链路按实际登记，不虚构。突破成立、拿下一台主机、跨段、拿到关键凭据时即登记——链路拓扑随战役推进实时生长。",
+		description: "登记/查看本会话 AttackAtlas 的攻击链拓扑（仅攻防评估/应急溯源/云安全三模式有链路体系，其余模式不可用；链路拓扑图弹窗实时成图）。节点：攻防/应急用 entry 入口/host 主机/segment 网段关口/bastion 堡垒机/dc 域控/cred 凭据；云安全用 identity 身份/角色、secret 密钥面、resource 云资源、orgroot 组织根/KMS（major）、pivot 信任链/横移。重大成果节点 major=true，seg 填网段（如 10.1.1.x）；边 label 写动作（获取权限/凭据复用/隔离突破/域控获取/角色链入…）。多入口/暂无链路按实际登记，不虚构。突破成立、拿下一台主机、跨段、拿到关键凭据时即登记——链路拓扑随战役推进实时生长。",
 		parameters: {
 			action: { type: "string", required: true, enum: ["add-node", "add-edge", "list", "clear"], description: "add-node=登记节点 add-edge=登记边 list=查看 clear=清空" },
 			id: { type: "string", description: "节点 id（字母数字与 ._-，如 h-192-168-1-2；action=add-node 必填）" },
@@ -1021,6 +1095,7 @@ function apply(ctx) {
 			seg: { type: "string", description: "所属网段（如 10.1.1.x）" },
 			note: { type: "string", description: "备注（拿到什么权限/凭据名）" },
 			major: { type: "boolean", description: "重大成果节点（堡垒机/域控/全域权限等）" },
+			findingRef: { type: "string", description: "关联战果 finding id（redteam_finding_register 返回的 id，如 attack-defense-3）——链路节点与「redteam 成果」页互链；无关联省略" },
 			src: { type: "string", description: "边起点节点 id（action=add-edge 必填）" },
 			dst: { type: "string", description: "边终点节点 id" },
 			edgeLabel: { type: "string", description: "边动作标签（获取权限/凭据复用/隔离突破…）" }
@@ -1036,7 +1111,7 @@ function apply(ctx) {
 			try {
 				if (args.action === "list") return Promise.resolve({ ok: true, chain: listChain(theStore(), session.id, session.mode) });
 				if (args.action === "clear") { clearChain(theStore(), session.id, session.mode); return Promise.resolve({ ok: true, what: "链路已清空" }); }
-				if (args.action === "add-node") { const n = addChainNode(theStore(), session.id, session.mode, { id: args.id, label: args.label, kind: args.kind, seg: args.seg, note: args.note, major: args.major }); return Promise.resolve({ ok: true, what: `节点 ${n.label}（${chainKindLabel(n.kind)}${n.major ? "·重大" : ""}）` }); }
+				if (args.action === "add-node") { const n = addChainNode(theStore(), session.id, session.mode, { id: args.id, label: args.label, kind: args.kind, seg: args.seg, note: args.note, major: args.major, findingRef: args.findingRef }); return Promise.resolve({ ok: true, what: `节点 ${n.label}（${chainKindLabel(n.kind)}${n.major ? "·重大" : ""}${n.findingRef ? `·关联成果 ${n.findingRef}` : ""}）` }); }
 				const e = addChainEdge(theStore(), session.id, session.mode, { src: args.src, dst: args.dst, label: args.edgeLabel });
 				return Promise.resolve({ ok: true, what: `边 ${e.src} → ${e.dst}${e.label ? "（" + e.label + "）" : ""}` });
 			} catch (e) {

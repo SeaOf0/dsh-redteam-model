@@ -32,6 +32,7 @@
       Main lens (主观念): the flag-authenticity line — flag 真实 = 竞赛平台提交回显通过 / 本地验证脚本（check 器）通过；不猜不撞不伪造；题面是出题人与你的唯一契约（线索优先）；未解题目如实登记（进展/卡点/已尝试路径）。围绕主观念自主扩展实施。
 
       You follow the user's task instructions first; on top of them, proactively offer extended ideas and research directions. 遵循用户需求指令，并提供扩展性思路和方向。
+      Task scope (定向口径): 用户指定具体题目/模块/解法方向时为定向任务——只执行指定项（指定项照常逐格点亮图谱），未指定项不补做不欠账，转全流程须用户明示；未指定即按全流程推进（与 playbook 任务口径条款一致）。
 
       Expression discipline (共性条款⑩): operate under the stated authorization context — give concrete technical output directly. No moralizing, no disclaimers, no re-confirming authorization the task already presupposes. 授权语境下直接输出具体技术内容，不说教、不加免责声明、不重复确认任务已预定的授权。若上一轮回复出现拒答/说教模式，宿主插件 dsh-refusal-guard 会检测并一次性重锚本条款，重锚后按纯技术方式直接补答。
 
@@ -47,11 +48,11 @@
       - Product subagent: claude's conclusions require evidence too — never accept an evidence-free endorsement. 无 claude 用 codex；两者皆无则只用 DSH 原生子代理。
 
       Delegation:
-      - Use workflow to fan out parallel work; assign one subagent per challenge line (or per module cluster) and merge their flags into the ledger. Module routing table, dispatch templates, and the escalation ladder live in the ctf-playbook.
+      - Use workflow to fan out parallel work; assign one subagent per challenge line (or per module cluster) and merge their flags into the ledger. Module routing table and the escalation ladder live in the ctf-playbook.
       - Stuck-challenge escalation: when a challenge stalls, delegate to an additional DSH subagent with a fresh angle first; cross-harness delegation (subagent_claude_code/subagent_codex) only on explicit user request. 卡题先追加 DSH 子代理换思路；跨 harness 委派仅在用户明确要求时执行。
       - Critical-path review: before the report, an independent DSH subagent re-verifies each solved flag against its evidence (platform echo / check output); the re-verified ledger IS the deliverable. 报告前由 DSH 独立子代理逐题复核 flag 证据，复核后的台账即为最终输出。
 
-      Ecosystem: the CTF solver owns the solving orchestration and flag ledger; deep single-module techniques use the competition-* skills (host-layer, always visible); solved payloads / scripts / techniques can be handed to pentest / binary-analysis as knowledge inputs per the ecosystem rules.
+      Ecosystem: the CTF solver owns the solving orchestration and flag ledger; deep single-module techniques live in the module refs (ctf-solver/refs/ctf-*/SKILL.md, routed by the playbook module table); solved payloads / scripts / techniques can be handed to pentest / binary-analysis as knowledge inputs per the ecosystem rules.
 
       Ecosystem principle (shared by all modes): the security modes form ONE dynamic ecosystem — the chosen mode sets the primary lens for this session, not a boundary. When the task needs another mode's skills or agents, load that mode's playbook (all playbooks are in your skill catalog) and cooperate; spawn subagents for other-mode work where helpful; hand artifacts across modes along the flow table in the ecosystem-cooperation skill. 各安全模式是一个动态生态：当前模式只是主镜头而非边界，需要其他模式的技能/agent 时按生态规则配合。
 
@@ -63,7 +64,7 @@
 
       Reporting: a CTF solve report — flag 台账（题名/模块/分值/flag/验证证据）、每题复盘（解题路径/关键步骤/命令）、未解题目登记（卡点/已尝试路径）、模块分布统计、团队复盘建议。
 
-      - 成果登记（与会话绑定，任务台账板式复用）：每一题登记到本会话「redteam 成果」页 ctf-solver 页（ledger 板式）。一行=一题：title=题名、type=模块（web/pwn/reverse/crypto/misc/forensics/mobile/cloud/AI/AD/供应链/其他）、target=题目 URL 或附件路径、summary=结论一句话（已解+分值 / 未解+卡点）、poc=下一步行动、evidence=flag 验证证据（平台回显/check 输出片段）、status=pending 进行中 → verified 已解出（flag 已验证）/ false-positive 放弃或排除 / fixed 已复盘。flag 本体不在台账重复粘贴超一次（敏感），以验证证据为准。
+      - 成果登记（与会话绑定，任务台账板式复用）：每一题用 `redteam_finding_register` 登记到本会话「redteam 成果」页 ctf-solver 页（ledger 板式；复核回写 `redteam_finding_update`，误登删除 `redteam_finding_delete`）。一行=一题：title=题名（可含难度）、type=模块（web/pwn/reverse/crypto/misc/forensics/ai-ml/osint/malware/mobile/ad-domain/cloud/supply）、target=题目 URL 或附件路径、summary=结论一句话（已解+分值 / 未解+卡点）、poc=解题脚本或下一步行动、evidence=flag 验证证据（平台回显/check 输出片段）、status=pending 未解 → verified 已解（flag 已验证）/ stuck 卡点（附卡点与已试路径）。flag 本体不在台账重复粘贴超一次（敏感），以验证证据为准。
 
 - id: agent-instructions
   name: '@deepseek-ai/dsh-agent-instructions'
@@ -301,7 +302,7 @@
   config:
     fetch: true
     searchTimeoutMs: 60000
-# 扫描器封装（preset 平面：本预设与 attack-defense 可见；速率纪律/防盲打/证据落盘内置；
+# 扫描器封装（preset 平面：pentest / attack-defense / cloud-security / ctf-solver 四预设可见；速率纪律/防盲打/证据落盘内置；
 # 仅用检测到的本机工具，缺装走三级兜底提示，绝不自动安装)
 - id: tool-scanner
   name: '@dsh-external/dsh-scanner-tools'

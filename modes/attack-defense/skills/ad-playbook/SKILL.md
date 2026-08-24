@@ -446,7 +446,7 @@ ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
 >
 > | 阶段门 | 结构校验物（canonical 名 + 必含标记） |
 > |---|---|---|
-> | recon | `assets.md`（≥2 行表格）+ `evidence-index.md`（≥1 行表格） |
+> | recon | `assets.md`（≥2 行×≥2 列表格）+ `evidence-index.md`（含字面标记 `tool-plane`、`MCP`，且 ≥1 行表格） |
 > | breach | `paths-ledger.md`（含标记 `candidate`、`chosen`；≥1 行、每行 ≥3 格） |
 > | lateral | `file`=横向证据记录（含标记 `授权`） |
 > | persistence | `persistence-registry.md`（含标记 `手动排除`；≥1 行、每行 ≥4 格） |
@@ -467,7 +467,7 @@ ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
 - **ATT&CK 覆盖度表**（对齐 refs/defense/attack-mapping-analysis）：走过的战术/技术
   与**没走的+原因**都登记——评估的完整性证明与复测基线。
 
-- **AttackAtlas 图谱联动（覆盖台账的 UI 面）**：「AttackAtlas」标签页按本手册作战链展示——三战场分区（外网打点/内网横向/登记收尾）× 19 战术列 × 五阶段带 × 四形态（外网/内网/域/AI 应用）。
+- **AttackAtlas 图谱联动（覆盖台账的 UI 面）**：「AttackAtlas」标签页按本手册作战链展示——三战场分区（外网打点/内网横向/登记收尾）× 20 战术列 × 五阶段带 × 四形态（外网/内网/域/AI 应用）。
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
   候选路径台账与阶段终态落盘时同步调 `redteam_coverage_mark`（key=战术列/子项；走通=tested-found、失败附原因=tested-clear、不适用附原因=na、未尝试让位=budget-stop），阶段推进调 `redteam_coverage_stage`（s1 侦察…s5 报告）；key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。阶段门 stage_gate 判定 PASS 后，对应阶段及其此前阶段自动回写 done（级联点亮）；无门阶段可手动 redteam_coverage_stage 推进补记。
   作战目标（授权范围/网段/域）调 `redteam_atlas_target` 登记，多目标终态带 target 参数逐目标回写。双击战术列/子项=按对应章节派单（自动带目标锚定与 refs 知识手册）。
@@ -546,6 +546,25 @@ ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
   description=内容摘要（凭据数/数据范围/权限级）、chain=获取路径、poc=利用/使用方法、evidence=证据编号。
 - 状态=资产语义（待验证/有效·已验证/已失效/已交付）；复核后 `redteam_finding_update` 回写；
   失效战果（凭据轮换后）标「已失效」不删行（保留痕迹）。
+- 入口/注入类战果按 pentest 纪律补渗透富字段：baseline/diffEvidence/markerEcho=对照三件套、
+  impact=影响证明、requestPkt/responsePkt=完整请求包与关键响应（成果页战果卡片与导出均呈现）。
+
+## 链路拓扑登记（AttackAtlas 互链）
+
+- 本模式带链路拓扑体系：突破成立、拿下一台主机、跨段、拿到关键凭据时即调 `redteam_atlas_chain`
+  登记节点与边——链路图随战役实时生长（与 §13 实时登记同步，不收口后补）。
+- 节点：entry 入口 / host 主机 / segment 网段关口 / bastion 堡垒机 / dc 域控 / cred 凭据（其他
+  资产 other）；seg 填网段（如 10.1.1.x）；边 label 写动作（获取权限/凭据复用/隔离突破/域控获取）。
+- **重大成果节点 major=true**（堡垒机/域控/全域权限），图上金框金边。
+- **战果互链 findingRef**：登记重大战果节点时带 findingRef=对应 `redteam_finding_register` 返回的
+  finding id（如 attack-defense-3）——链路图节点标蓝、成果页战果卡片反向显示「链路节点」行，
+  双向可溯。多入口/暂无链路按实际登记，不虚构。
+
+## 战役记忆沉淀（跨会话复用）
+
+- 环境突破序（本环境从入口到域控实际走通的序列）、目标环境指纹（防护设备/信任关系/凭据特征）、
+  检测情报（哪条链被拦/何设备告警）验证有效后即时 `campaign_memory_write` 沉淀（kind=tactic/
+  fingerprint/detect，同题重写即刷新）；开战或换环境先 `campaign_memory_search` 检索历史突破序。
 
 ## 报告模板
 
@@ -681,7 +700,7 @@ ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
 - 高频命令：`mimikatz.exe "privilege::debug" "sekurlsa::logonpasswords" exit`；`lsadump::dcsync /domain:X /user:krbtgt`；`sekurlsa::minidump lsass.dmp`；`dpapi::cred /in:<blob> /masterkey:<mk>`。
 - 输出解读：`sekurlsa` 按 provider 分组——`MSV`(NT/LM 哈希) `Kerberos`(票据/密钥) `WDigest`(明文，若未禁用)。
 - 速率纪律：单次抓取即可，不要反复 dump（每次 dump 都是一次 LSASS 访问风险）。
-- 检测避让：基础 `sekurlsa` 最易被 EDR 拦，换隐蔽链（comsvcs/nanodump/lsassy/pypykatz，见 refs `lsass-dump-stealth`）。
+- 检测避让：基础 `sekurlsa` 最易被 EDR 拦，换隐蔽链（comsvcs/nanodump/lsassy/pypykatz，见 refs zh-intranet/intranet-credential-theft.md 的 lsass-dump-stealth 节）。
 - 证据留存：哈希/票据掩码 + 命令时间戳 + 产物哈希进 evidence-index。
 
 **impacket（secretsdump / psexec）**
@@ -753,7 +772,7 @@ ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
 - 高频命令：`pypykatz lsa minidump lsass.dmp`；`DonPAPI.py domain/user:pass@target`；`dploot credentials -u u -p p -d d target`；`nanodump.exe --ssp --write lsass.dmp`；`lsassy -u u -p p -d d target`；`SharpDPAPI.exe credentials`。
 - 输出解读：pypykatz 分 provider 输出哈希/票据/DPAPI masterkey；DonPAPI/dploot 输出目标机 DPAPI 凭据明文；lsassy 输出远程哈希表。
 - 速率纪律：每台目标单次 dump/解密，勿反复。
-- 检测避让：lsassy 远程免落地、nanodump `--ssp` 绕进程监控、pypykatz 全离线（详见 refs `lsass-dump-stealth` / `dpapi-creds`）。
+- 检测避让：lsassy 远程免落地、nanodump `--ssp` 绕进程监控、pypykatz 全离线（详见 refs zh-intranet/intranet-credential-theft.md 的 lsass-dump-stealth / dpapi-creds 节）。
 - 证据留存：哈希/凭据掩码 + 工具 + 目标 + 时间戳。
 
 ### 附录 B：补充工具集（检测缺失时按安装请求兜底；安装命令按目标机平台自选）

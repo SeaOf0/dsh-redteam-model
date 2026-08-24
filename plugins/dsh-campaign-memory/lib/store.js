@@ -8,7 +8,8 @@
 // 久未读取的记忆自然让位、读取即复活——早期记忆不再永久霸占召回位。
 // detect（检测指纹）默认 30 天过期并自动清理——免杀情报有半衰期；fingerprint（目标指纹）
 // 默认 180 天——到期退出自动召回但保留资产（检索仍可命中带过期标记，同题重写即刷新时效）；
-// 其余类别默认永久。同模式同工作区同题写入=刷新既有记忆而非新增重复。
+// 其余类别默认永久。同模式同工作区同题同目标形态（target_kind）写入=刷新既有记忆而非新增重复
+// ——CTF 同名题（signin/pwn1 等）跨平台/赛事以 target_kind=平台名区分，不静默互覆。
 
 import { DatabaseSync } from "node:sqlite";
 import fs from "node:fs";
@@ -21,6 +22,9 @@ export function kindLabel(kind) { return KIND_LABELS[kind] || "战术打法"; }
 const DETECT_DEFAULT_DAYS = 30;
 const FINGERPRINT_DEFAULT_DAYS = 180;
 const HALF_LIFE_DAYS = 30;
+/** 单工作区（mode × workspace 名）记忆总量上限：写入查重的全表扫描因此有界；超限按热度×半衰最冷淘汰。 */
+export const MAX_ROWS_PER_WORKSPACE = 400;
+const COLD_ORDER = `ORDER BY (usage_count + 1.0) * pow(0.5, (julianday('now') - julianday(COALESCE(NULLIF(last_used_at, ''), created_at))) / ${HALF_LIFE_DAYS}.0) ASC, updated_at ASC, created_at ASC`;
 
 const SCHEMA = `
 CREATE TABLE IF NOT EXISTS memories (
@@ -32,6 +36,7 @@ CREATE TABLE IF NOT EXISTS memories (
 	tags         TEXT NOT NULL DEFAULT '',
 	target_kind  TEXT NOT NULL DEFAULT '',
 	workspace    TEXT NOT NULL DEFAULT '',
+	workspace_key TEXT NOT NULL DEFAULT '',
 	usage_count  INTEGER NOT NULL DEFAULT 0,
 	last_used_at TEXT DEFAULT '',
 	source_session TEXT NOT NULL DEFAULT '',
@@ -40,6 +45,7 @@ CREATE TABLE IF NOT EXISTS memories (
 	updated_at   TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS memories_mode ON memories(mode);
+CREATE INDEX IF NOT EXISTS memories_ws ON memories(mode, workspace_key);
 `;
 
 function now() {
@@ -53,8 +59,10 @@ export function openStore(dbPath) {
 	if (dbPath !== ":memory:") fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 	const db = new DatabaseSync(dbPath);
 	db.exec("PRAGMA journal_mode = WAL");
+	db.exec("PRAGMA busy_timeout = 5000"); // 多进程（两个 dsh 实例）并发写不直接抛 SQLITE_BUSY
 	db.exec(SCHEMA);
 	try { db.exec("ALTER TABLE memories ADD COLUMN workspace TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移 */ }
+	try { db.exec("ALTER TABLE memories ADD COLUMN workspace_key TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移 */ }
 	purgeExpired({ db }); // 开库即清过期：免杀指纹等时效记忆不滞留
 	return { db, close() { db.close(); } };
 }
@@ -76,26 +84,40 @@ function normTitle(t) {
 }
 
 /** 写入一条战役记忆（存储原文不脱敏；id 服务端生成）。同模式同工作区同题=刷新既有行
- *  （正文/类别/时效更新、热度保留、created_at 保留），跨工作区同题各自独立。 */
-export function writeMemory(st, { mode, kind, title, content, tags = "", target_kind = "", expires_days, source_session = "", workspace = "" }) {
+ *  （正文/类别/时效更新、热度保留、created_at 保留），跨工作区同题各自独立。
+ *  隔离键 workspace_key=basename@路径哈希：同名目录不串场、移动目录=新 key；缺省 "" 走旧 basename 语义。 */
+export function writeMemory(st, { mode, kind, title, content, tags = "", target_kind = "", expires_days, source_session = "", workspace = "", workspace_key = "" }) {
 	const m = clean(mode, 40), k = MEMORY_KINDS.includes(kind) ? kind : "tactic";
 	const t = clean(title, 80);
 	if (!m || !t) throw new Error("mode/title 必填");
 	const c = clean(content, 4000);
 	if (!c) throw new Error("content 必填");
 	const ws = clean(workspace, 60);
+	const wk = clean(workspace_key, 80);
 	const exp = expiry(k, expires_days);
 	const nt = normTitle(t);
-	const prev = st.db.prepare("SELECT id, title FROM memories WHERE mode = ? AND workspace = ?").all(m, ws).find((r) => normTitle(r.title) === nt);
+	const tk = clean(target_kind, 40);
+	// 同题判定带 target_kind 维度：同题同目标形态才刷新——跨平台同名题不互覆
+	const rows = st.db.prepare("SELECT id, title, workspace_key, target_kind FROM memories WHERE mode = ? AND workspace = ?").all(m, ws);
+	const prev = rows.find((r) => normTitle(r.title) === nt && (r.target_kind || "") === tk && (wk ? r.workspace_key === wk : r.workspace_key === ""));
 	if (prev) {
-		st.db.prepare("UPDATE memories SET kind = ?, title = ?, content = ?, tags = ?, target_kind = ?, expires_at = ?, source_session = ?, updated_at = ? WHERE id = ?")
-			.run(k, t, c, clean(tags, 200), clean(target_kind, 40), exp, clean(source_session, 80), now(), prev.id);
-		return { id: prev.id, mode: m, kind: k, workspace: ws, expires_at: exp, refreshed: true };
+		st.db.prepare("UPDATE memories SET kind = ?, title = ?, content = ?, tags = ?, target_kind = ?, expires_at = ?, source_session = ?, workspace_key = ?, updated_at = ? WHERE id = ?")
+			.run(k, t, c, clean(tags, 200), clean(target_kind, 40), exp, clean(source_session, 80), wk, now(), prev.id);
+		return { id: prev.id, mode: m, kind: k, workspace: ws, expires_at: exp, refreshed: true, evicted: 0 };
 	}
 	const id = "cm-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-	st.db.prepare("INSERT INTO memories (id, mode, kind, title, content, tags, target_kind, workspace, usage_count, last_used_at, source_session, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?)")
-		.run(id, m, k, t, c, clean(tags, 200), clean(target_kind, 40), ws, clean(source_session, 80), exp, now(), now());
-	return { id, mode: m, kind: k, workspace: ws, expires_at: exp, refreshed: false };
+	st.db.prepare("INSERT INTO memories (id, mode, kind, title, content, tags, target_kind, workspace, workspace_key, usage_count, last_used_at, source_session, expires_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, '', ?, ?, ?, ?)")
+		.run(id, m, k, t, c, clean(tags, 200), clean(target_kind, 40), ws, wk, clean(source_session, 80), exp, now(), now());
+	// 总量上限：同模式同工作区（含新旧键位行）超限冷淘汰——只淘汰本键位行，新写行永不让位。
+	let evicted = 0;
+	const total = st.db.prepare("SELECT COUNT(*) AS n FROM memories WHERE mode = ? AND workspace = ?").get(m, ws).n;
+	if (total > MAX_ROWS_PER_WORKSPACE) {
+		const keyCond = wk ? "workspace_key = ?" : "workspace_key = ''";
+		const coldArgs = wk ? [m, ws, wk, id, total - MAX_ROWS_PER_WORKSPACE] : [m, ws, id, total - MAX_ROWS_PER_WORKSPACE];
+		const cold = st.db.prepare(`SELECT id FROM memories WHERE mode = ? AND workspace = ? AND ${keyCond} AND id != ? ${COLD_ORDER} LIMIT ?`).all(...coldArgs);
+		for (const row of cold) { st.db.prepare("DELETE FROM memories WHERE id = ?").run(row.id); evicted += 1; }
+	}
+	return { id, mode: m, kind: k, workspace: ws, expires_at: exp, refreshed: false, evicted };
 }
 
 function rowOut(r) {
@@ -132,33 +154,42 @@ export function searchMemories(st, { mode, query = "", kind = "", target_kind = 
 	});
 }
 
-/** 正文预览：超上限截断加省略号（检索/list 行级 token 收敛；全文走 getMemory 按需取）。 */
+/** 正文预览：超上限截断加省略号（检索/list 行级 token 收敛；全文走 getMemory 按需取）。
+ *  截点不劈代理对（emoji 等 4 字节字符）。 */
 function preview(text, max) {
 	const t = String(text ?? "");
-	return t.length > max ? t.slice(0, max) + "…（全文经 campaign_memory_get 按需读取）" : t;
+	if (t.length <= max) return t;
+	let cut = t.slice(0, max);
+	if (/[\uD800-\uDBFF]$/.test(cut)) cut = cut.slice(0, -1);
+	return cut + "…（全文经 campaign_memory_get 按需读取）";
 }
 
 /** 召回注入候选（纯读、不记账——保证装配渲染确定性）：仅本工作区（新工作区=干净开局，
- *  不跨客户/项目串场）、未过期，按热度×半衰排序取前 N 条。 */
-export function topForInjection(st, mode, workspace, n = 3) {
-	const rows = st.db.prepare(`${SELECT} WHERE mode = ? AND workspace = ? AND (${notExpired()}) ${HOTNESS_ORDER} LIMIT ?`).all(clean(mode, 40), clean(workspace, 60), n);
+ *  不跨客户/项目串场）、未过期，按热度×半衰排序取前 N 条。
+ *  wk=隔离键（basename@路径哈希）：按键精确隔离；缺省走旧 basename 语义（仅匹配无键行）。 */
+export function topForInjection(st, mode, workspace, n = 3, wk = "") {
+	const rows = wk
+		? st.db.prepare(`${SELECT} WHERE mode = ? AND workspace_key = ? AND (${notExpired()}) ${HOTNESS_ORDER} LIMIT ?`).all(clean(mode, 40), clean(wk, 80), n)
+		: st.db.prepare(`${SELECT} WHERE mode = ? AND workspace = ? AND workspace_key = '' AND (${notExpired()}) ${HOTNESS_ORDER} LIMIT ?`).all(clean(mode, 40), clean(workspace, 60), n);
 	return rows.map(rowOut);
 }
 
-export function listMemories(st, { mode, kind = "", includeExpired = false }) {
+/** 清单（收口复盘/治理用）：与 search 同受行数钳制（token 收敛——list 不做全量倾倒），默认 50、上限 200。 */
+export function listMemories(st, { mode, kind = "", includeExpired = false, limit = 50 }) {
 	const m = clean(mode, 40);
 	if (!m) throw new Error("mode required");
 	const conds = ["mode = ?"];
 	const args = [m];
 	if (!includeExpired) conds.push("(" + notExpired() + ")");
 	if (kind && MEMORY_KINDS.includes(kind)) { conds.push("kind = ?"); args.push(kind); }
-	return st.db.prepare(`${SELECT} WHERE ${conds.join(" AND ")} ${HOTNESS_ORDER}`).all(...args).map((r) => rowOut({ ...r, content: preview(r.content, 200) }));
+	return st.db.prepare(`${SELECT} WHERE ${conds.join(" AND ")} ${HOTNESS_ORDER} LIMIT ?`).all(...args, Math.min(Math.max(Number(limit) || 50, 1), 200)).map((r) => rowOut({ ...r, content: preview(r.content, 200) }));
 }
 
-/** 读取全文=真实使用：记账（usage+1 / last_used 刷新）——热度与半衰排序的唯一驱动。 */
-export function getMemory(st, id) {
+/** 读取全文=真实使用：记账（usage+1 / last_used 刷新）——热度与半衰排序的唯一驱动。
+ *  account:false 供纯浏览（Web 标签页展开全文）——查看不是采用，不推高召回排名。 */
+export function getMemory(st, id, { account = true } = {}) {
 	const i = String(id ?? "");
-	st.db.prepare("UPDATE memories SET usage_count = usage_count + 1, last_used_at = ? WHERE id = ?").run(now(), i);
+	if (account) st.db.prepare("UPDATE memories SET usage_count = usage_count + 1, last_used_at = ? WHERE id = ?").run(now(), i);
 	const r = st.db.prepare(`${SELECT} WHERE id = ?`).get(i);
 	return r ? rowOut(r) : undefined;
 }

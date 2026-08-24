@@ -15,6 +15,7 @@
   密钥即可解密——流量解密取证工具对魔改版仍有效，密钥来源=内存 dump/客户端配置）。
 - 变体登记：GCM 切换、协商载体（Cookie/Header/TLS 层）、间隔抖动。
 - 判定表（本地实测后填）：| 引擎 | 结果 | 原文行 |
+- 验证记录：2026-08-20 `php -l modified-shell.php` 语法检查通过（PHP 8.5.9）；
   本机 `php -S 127.0.0.1` 协议回环冒烟通过——首包无 nonce → 200 + Set-Cookie n=<随机>；
   携带 nonce 的业务包（AES-128-CTR 加密 cmd）→ 回传 base64 解码还原出
   `behinder-smoke-ok` + 随机尾填充（协商/派生/CTR+XOR 回传链一致）；

@@ -55,11 +55,14 @@ shared/refs/finding-fields.md）；成果页列表/详情/导出报告/统计分
 - 先判断代码/框架/系统类型：语言、框架、中间件、部署形态。
 - 通用框架：先核对已知漏洞是否仍存在（版本比对 + 公开漏洞库），再针对业务代码做增量审计。
 - **框架专项路由**：识别出已知框架/组件后直达专项手册（`refs/components/`——fastjson /
-  shiro / log4j / struts2 / weblogic / spring 全家桶 / 若依等各有专项）：先核该组件全部
-  已知漏洞面（版本比对 + 利用条件核对）再增量审业务代码；refs 未收录的框架按 `refs/lang/`
-  通用手册 + 公开漏洞库检索兜底，并登记「未收录框架」到规则降级记录。
+  shiro / log4j / struts2 / weblogic 五篇专项）：先核该组件全部
+  已知漏洞面（版本比对 + 利用条件核对）再增量审业务代码；refs 未收录的框架（spring 全家桶 /
+  若依等）按 `refs/lang/` 对应语言手册 + 公开漏洞库检索兜底，并登记「未收录框架」到规则降级记录。
 - **经验召回**：开工读工作区 `lessons.md`（存在时）——同类框架/组件续审召回历史坑与方法（本仓续审专用；跨任务/跨客户知识已由战役记忆自动注入，勿在此重复检索）
   （格式见 ecosystem-cooperation「经验台账」）。
+- **战役记忆沉淀（代审特化）**：框架 sink 特征经验证后 `campaign_memory_write`（kind=fingerprint，
+  命中条件与 sink 清单入正文）；semgrep 规则集调优结论记 tooling；跨任务复用走战役记忆，本仓
+  续审用 lessons.md——两轨不重叠。
 - 完全不认识的代码/框架/系统：才走 0→1 全量审计，且先向用户确认范围与深度。
 
 ## 静态审计标准
@@ -330,7 +333,12 @@ error/warning/note（按 severity 映射）、`locations[].physicalLocation`=
 #### 静态扫描
 
 - **semgrep**（检测后使用）——多语言规则扫描主工具。
-  - **本地规则集优先（离线可用，随预设分发）**：
+  - **首选封装工具 `semgrep_scan`**（preset 平面）：规则层参数化（builtin-java=402 自建 /
+    builtin-php / oss=1080 开源 / custom=自定路径），预设 refs/ 自动定位，产物自动落
+    `artifacts/scans/`+evidence-index 回行，**命中自动双写 scan-reconcile.md/.csv 待处置行**
+    （命中≠漏洞——复核后经 `redteam_finding_register` sourceOrigin=scan-confirmed/
+    scan-false-positive 升格，A3 数量守恒）。缺装时工具自带三级兜底提示。
+  - 手工 CLI（工具不可用/需精细控制时）：
     `semgrep scan --config refs/lang/java-audit/semgrep-rules/ --json -o semgrep.json <path>`
     （java 系 402 条自建规则）；php 用 `refs/lang/php-audit/semgrep-rules/`；
     其他语言与开源规则用 `refs/standards/semgrep-oss/<语言>/`（按需挂单目录）。
@@ -425,7 +433,7 @@ trivy config --config-policy ./policy --namespaces user <dir>
 
 #### LLM Agent 应用审计
 
-- 无专用 CLI 要求；方法论驱动：OWASP Agentic Top 10 (2026) 视角 + refs/ai/ 六篇（先读 ai-agent-safety.md 主手册，再读 prompt-injection/jailbreak）
+- 无专用 CLI 要求；方法论驱动：OWASP Agentic Top 10 (2026) 视角 + refs/ai/ 七篇（先读 ai-agent-safety.md 主手册，再读 prompt-injection/jailbreak；MCP 配置检查项见 ai-mcp-audit.md）
   （提示注入/越狱攻击面）；MCP 配置手工检查项（权限过大、明文密钥、工具滥用入口）。
 
 #### 动态验证（有环境时）
@@ -499,7 +507,7 @@ trivy config --config-policy ./policy --namespaces user <dir>
 | Java 深度管线 | lang/java-audit/（pipeline/route-mapper/route-tracer/sql/file-read/file-upload/xxe/auth/severity-rating/dktss-scoring 等 20+ 篇，先读 java-audit-pipeline.md） |
 | PHP 深度管线 | lang/php-audit/（pipeline/cmd/auth/config/archive-extract/codeigniter 等，先读 php-audit-pipeline.md） |
 | 组件已知漏洞核对 | components/（fastjson/log4j/shiro/struts2/weblogic） |
-| LLM Agent/MCP 应用审计 | ai/ 六篇（prompt-injection/jailbreak/agent-safety/model-security/rag-poisoning/system-prompt-extraction） |
+| LLM Agent/MCP 应用审计 | ai/ 七篇（prompt-injection/jailbreak/agent-safety/model-security/rag-poisoning/system-prompt-extraction/mcp-audit） |
 | 供应链与密钥 | sca/devsecops-supply-chain.md、devsecops-secrets.md |
 | 加密实现审计 | crypto/crypto-implementation.md |
 | SAST/DAST 方法论 | methodology/devsecops-sast.md、devsecops-dast.md、coverage.md |
@@ -570,7 +578,7 @@ trivy config --config-policy ./policy --namespaces user <dir>
 >
 > | 门 | 结构校验物（canonical 名 + 必含标记） |
 > |---|---|---|
-> | A1 | `surface-map.md`（含字面标记 `入口`、`sink`、`深度`） |
+> | A1 | `surface-map.md`（含字面标记 `入口`、`sink`、`深度`）+ `evidence-index.md`（含字面标记 `tool-plane`、`MCP`，且 ≥1 行表格——工具平面检测四列登记于此） |
 > | A2 | `file`=该 finding 的双链比对文件（含标记 `entry`、`sink`） |
 > | A3 | `audit-coverage-matrix.md`（≥3 行、每行 ≥3 格）+ `scan-reconcile.md`（含标记 `确认`、`误报`） |
 

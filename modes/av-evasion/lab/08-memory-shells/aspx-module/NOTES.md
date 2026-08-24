@@ -21,5 +21,6 @@
   3. 配置遥测：IIS 配置变更 / AppDomain 内反射调用监控；
   4. 无文件驻留检测面：w3wp.exe 进程内存 dump 与部署目录差集比对。
 - 判定表（本地实测后填）：| 检测面 | 结果 | 原文行 |
+- 构建/语法验证记录：2026-08-20 Mono mcs 编译通过（`mcs -target:library -r:System.Web
   ModuleShell.cs`，exit 0，产物定向到 /tmp/lab_check/ModuleShell.dll，未在仓库内生成文件）；
   运行时验证未做（无 IIS/.NET Framework 判定环境），判定表留待本地实测后填。

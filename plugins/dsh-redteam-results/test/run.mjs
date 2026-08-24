@@ -1,6 +1,10 @@
 // dsh-redteam-results 离线单测：SQLite 数据层（:memory:）+ 通道纯逻辑
 // （登记/更新/删除/分页筛选/统计/计数/验证文案/信任栅栏/端点分发）。
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import { openStore as atlasOpen, addChainNode as atlasAddNode } from "@dsh-external/dsh-attack-atlas/store";
 import { openStore, registerFinding, updateFinding, removeFinding, getFinding, listFindings, listFindingsAll, computeStats, computeStatsAll, modeCounts, modeCountsAll, groupByTarget, groupByTargetAll, setMeta, getMeta, ledgerOverviewAll } from "../lib/store.js";
 import { verifyMessage, isTrustedRequest, dispatch, checkCsrf } from "../lib/index.js";
 
@@ -42,6 +46,18 @@ ok("register 越权值回落（severity/status/evidenceLevel 白名单）+ 长�
 	assert.equal(r.severity, "medium");
 	assert.equal(r.status, "pending");
 	assert.equal(r.title.length, 200);
+});
+
+ok("evidenceLevel 四档：impact 最高档可登记入统计，回落语义不变", () => {
+	const st = openStore(":memory:");
+	registerFinding(st, SID, "pentest", { title: "数据实际拖取", evidenceLevel: "impact" });
+	registerFinding(st, SID, "pentest", { title: "三件套齐", evidenceLevel: "confirmed" });
+	registerFinding(st, SID, "pentest", { title: "仅工具输出", evidenceLevel: "maybe" });
+	const stats = computeStats(st, SID, "pentest");
+	assert.equal(stats.byEvidence.impact, 1);
+	assert.equal(stats.byEvidence.confirmed, 1);
+	assert.equal(stats.byEvidence.unknown, 1, "越权值照旧回落 unknown");
+	assert.ok(!("maybe" in stats.byEvidence));
 });
 
 ok("update 状态翻转落 verifiedAt，字段白名单修订，模式/会话隔离", () => {
@@ -353,14 +369,6 @@ ok("listFindingsAll 跨会话按模式聚合（行带 sessionId，范围过滤�
 	st.close();
 });
 
-console.log(`\nall ${passed} tests passed`);
-
-ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
-	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "T" } }, "T"), true);
-	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "X" } }, "T"), false);
-	assert.equal(checkCsrf({}, "T"), false);
-});
-
 // ===== 分模式状态子集（产物型本体词 / 漏洞型五态不变）=====
 {
 	const st = openStore(":memory:");
@@ -389,3 +397,223 @@ ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
 	});
 	st.close();
 }
+
+ok("CSRF 头校验：匹配放行/缺失或错值拒", () => {
+	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "T" } }, "T"), true);
+	assert.equal(checkCsrf({ headers: { "x-dsh-csrf": "X" } }, "T"), false);
+	assert.equal(checkCsrf({}, "T"), false);
+});
+
+// ===== 台账状态机对齐 + 状态词贯穿回归（register/mark/stats/分组/meta）=====
+{
+	const st = openStore(":memory:");
+	ok("redteam 台账状态机：pending→已路由(fixed) update 不再被守卫拦截、登记即已路由合法", () => {
+		const r0 = registerFinding(st, "s-rt", "redteam", { title: "任务A", type: "A", target: "范围", summary: "浅做" });
+		assert.equal(r0.status, "pending");
+		const r1 = registerFinding(st, "s-rt", "redteam", { title: "任务B（登记即已路由）", status: "fixed", poc: "任务书路径" });
+		assert.equal(r1.status, "fixed", "台账 fixed=已路由，登记可直接写");
+		assert.equal(updateFinding(st, "s-rt", "redteam", r0.id, { status: "fixed" }).status, "fixed", "无 verified 前置");
+	});
+	ok("register 状态词表按模式取：av detected 登记保留、漏洞型 fixed 登记即拒", () => {
+		assert.equal(registerFinding(st, "s-av2", "av-evasion", { title: "载荷X", status: "detected" }).status, "detected");
+		assert.throws(() => registerFinding(st, "s-v2", "pentest", { title: "X", status: "fixed" }), /不可在登记时直接写入/);
+	});
+	ok("stats 状态分布按模式词表：detected 计数不再丢失", () => {
+		registerFinding(st, "s-av3", "av-evasion", { title: "a", status: "detected" });
+		registerFinding(st, "s-av3", "av-evasion", { title: "b", status: "detected" });
+		const s = computeStats(st, "s-av3", "av-evasion");
+		assert.equal(s.byStatus.detected, 2);
+		assert.equal(Object.values(s.byStatus).reduce((a, b) => a + b, 0), s.total);
+	});
+	ok("大屏 byStatus 词表取并集：detected 计入", () => {
+		const ov = ledgerOverviewAll(st, {});
+		assert.ok((ov.byStatus.detected ?? 0) >= 3);
+	});
+	ok("groupByTargetAll 全量分组——不再被分页钳到 100", () => {
+		const st2 = openStore(":memory:");
+		for (let i = 0; i < 105; i++) registerFinding(st2, "s-big", "pentest", { title: "f" + i, target: "同一目标", summary: "s" });
+		const groups = groupByTargetAll(st2, "pentest", {});
+		assert.equal(groups.length, 1);
+		assert.equal(groups[0].count, 105);
+		st2.close();
+	});
+	const av = registerFinding(st, "s-m", "av-evasion", { title: "载荷", status: "detected" });
+	const pen = registerFinding(st, "s-m", "pentest", { title: "注入" });
+	const m1 = await dispatch(null, st, "finding.mark", { sessionId: "s-m", id: av.id, status: "verified" });
+	ok("mark 按模式词表：av verified 合法", () => { assert.equal(m1.ok, true); assert.equal(m1.status, "verified"); });
+	const m2 = await dispatch(null, st, "finding.mark", { sessionId: "s-m", id: av.id, status: "false-positive" });
+	ok("mark 按模式词表：av 无 false-positive 词——拒绝（不再静默回落报成功）", () => { assert.equal(m2.ok, false); assert.match(m2.error, /status 必须/); });
+	const m3 = await dispatch(null, st, "finding.mark", { sessionId: "s-m", id: pen.id, status: "false-positive" });
+	ok("mark 漏洞型 false-positive 合法", () => { assert.equal(m3.ok, true); assert.equal(m3.status, "false-positive"); });
+	const m4 = await dispatch(null, st, "finding.mark", { sessionId: "s-m", id: av.id, status: "detected" });
+	ok("mark 产物型本体词（detected）可标——旧白名单根本不含", () => { assert.equal(m4.ok, true); assert.equal(m4.status, "detected"); });
+	const res = await dispatch(null, st, "findings.list", { scope: "all", mode: "pentest", sessionId: "s-m" });
+	ok("scope:all 返回请求会话 meta（模式页元数据栏不再永远未设置）", () => { assert.notEqual(res.meta, undefined); assert.equal(res.list.total, 1); });
+	const resG = await dispatch(null, st, "findings.groups", { scope: "all", mode: "pentest", sessionId: "s-m" });
+	ok("scope:all 分组同样返回 meta", () => { assert.notEqual(resG.meta, undefined); assert.equal(resG.groups.length, 1); });
+	ok("scope:all 分组返回 stats（分组态统计卡不再全零）", () => { assert.notEqual(resG.stats, undefined); assert.ok(resG.stats.total >= 1); });
+	ok("verify 复核消息携带完整请求包与关键响应（包级复核可见）", () => {
+		const r = registerFinding(st, "s-pkt", "pentest", { title: "注入", target: "http://a", summary: "s", requestPkt: "POST /api HTTP/1.1\nHost: a", responsePkt: "200 OK uid=0" });
+		const msg = verifyMessage(getFinding(st, "s-pkt", r.id));
+		assert.ok(msg.includes("POST /api HTTP/1.1") && msg.includes("200 OK uid=0"), "请求包/响应包进复核消息");
+	});
+	ok("序号计数器：删除末尾行后 id 不复用（报告引用 id 不漂移）", () => {
+		registerFinding(st, "s-seq", "pentest", { title: "a", target: "t", summary: "s" });
+		registerFinding(st, "s-seq", "pentest", { title: "b", target: "t", summary: "s" });
+		registerFinding(st, "s-seq", "pentest", { title: "c", target: "t", summary: "s" });
+		removeFinding(st, "s-seq", "pentest-3");
+		assert.equal(registerFinding(st, "s-seq", "pentest", { title: "d", target: "t", summary: "s" }).id, "pentest-4");
+	});
+	st.close();
+}
+
+// ===== attack-defense 批：ad 战果状态集 / verify 分支 / 链路互联 =====
+{
+	const st = openStore(":memory:");
+	ok("ad 状态集：code-reviewed 回落 pending、fixed=已交付（登记即拒+须先 verified）", () => {
+		const r = registerFinding(st, "s-ad", "attack-defense", { title: "域控成果", type: "域控成果", target: "DC01", summary: "s", status: "code-reviewed" });
+		assert.equal(r.status, "pending", "code-reviewed 不在战果词表——回落 pending");
+		assert.throws(() => registerFinding(st, "s-ad", "attack-defense", { title: "X", status: "fixed" }), /攻防=已交付/);
+		assert.throws(() => updateFinding(st, "s-ad", "attack-defense", r.id, { status: "fixed" }), /已交付/);
+		updateFinding(st, "s-ad", "attack-defense", r.id, { status: "verified" });
+		assert.equal(updateFinding(st, "s-ad", "attack-defense", r.id, { status: "fixed" }).status, "fixed", "verified→已交付");
+	});
+	ok("verifyMessage ad 分支：确定性信号菜单+获取路径标签（不再用代审『工人链』）", () => {
+		const f = registerFinding(st, "s-ad2", "attack-defense", { title: "密码本", type: "凭据·密码本", target: "10.1.1.5", summary: "s", chain: "L3: XSS窃会话→密码本" });
+		const msg = verifyMessage(getFinding(st, "s-ad2", f.id));
+		assert.match(msg, /获取路径（L<级>/);
+		assert.match(msg, /确定性信号按战果类型择一/);
+		assert.doesNotMatch(msg, /工人链/);
+	});
+	st.close();
+}
+{
+	// 链路互联回填：临时 atlas 库（DSH_ATLAS_DB 注入）+ chainRefIndex 反查
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "rtr-chain-"));
+	const adb = atlasOpen(path.join(dir, "atlas.db"));
+	atlasAddNode(adb, "s-adl", "attack-defense", { id: "dc-01", label: "DC01", kind: "dc", major: true, findingRef: "attack-defense-1" });
+	adb.close();
+	process.env.DSH_ATLAS_DB = path.join(dir, "atlas.db");
+	try {
+		const st = openStore(":memory:");
+		registerFinding(st, "s-adl", "attack-defense", { title: "域控成果", type: "域控成果", target: "DC01", summary: "s" });
+		const res = await dispatch(null, st, "findings.list", { scope: "all", mode: "attack-defense", sessionId: "s-adl" });
+		ok("链路互链：scope:all 行带 chainNodes（atlas finding_ref 反查，含 major）", () => {
+			assert.ok(res.list.rows[0].chainNodes && res.list.rows[0].chainNodes[0].id === "dc-01" && res.list.rows[0].chainNodes[0].major === true, "互链行回填");
+		});
+		st.close();
+	} finally {
+		delete process.env.DSH_ATLAS_DB;
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+}
+
+// ===== code-audit 批：auditMode 枚举清洗 / verifyMessage 代审分支直测 =====
+{
+	const st = openStore(":memory:");
+	ok("auditMode 枚举清洗：错值清空不回显（Web 通道无 schema 闸）", () => {
+		const r = registerFinding(st, "s-am", "code-audit", { title: "SQL注入", target: "Foo.java:88", summary: "s", auditMode: "dynamicc" });
+		assert.equal(r.auditMode, "", "错值清空");
+		const r2 = registerFinding(st, "s-am", "code-audit", { title: "XXE", target: "Bar.java:9", summary: "s", auditMode: "dynamic" });
+		assert.equal(r2.auditMode, "dynamic");
+		const u = updateFinding(st, "s-am", "code-audit", r2.id, { auditMode: "hacked" });
+		assert.equal(u.auditMode, "", "update 错值同样清空");
+	});
+	ok("verifyMessage 代审分支：静态只可 code-reviewed、verified 仅动态成功", () => {
+		const f = registerFinding(st, "s-vm", "code-audit", { title: "反序列化", target: "Baz.java:3", summary: "s", poc: "指纹:framework=fastjson,title=\"x\"" });
+		const msg = verifyMessage(getFinding(st, "s-vm", f.id));
+		assert.match(msg, /静态审计：复核通过只能回写 code-reviewed/);
+		assert.match(msg, /verified 仅限动态验证成功/);
+	});
+	ok("verifyMessage binary 分支：三态词表+静态优先纪律+正确标签", () => {		const f = registerFinding(st, "s-vb", "binary-analysis", { title: "脱壳产物", type: "脱壳还原二进制", target: "artifacts/x/", summary: "s", sampleHash: "ab".repeat(32), chain: "UPX→OEP→dump", impact: "窃取浏览器凭据" });
+		const msg = verifyMessage(getFinding(st, "s-vb", f.id));
+		assert.match(msg, /还原\/产出链/, "chain 标签");
+		assert.match(msg, /能力与危害/, "impact 标签");
+		assert.match(msg, /suspect=疑似/);
+		assert.match(msg, /静态优先/);
+	});
+	ok("binary 分组键=sampleHash：同样本产物归一组、漏填回落 target", () => {		const h = "cd".repeat(32);
+		registerFinding(st, "s-grp", "binary-analysis", { title: "脱壳产物", type: "脱壳还原二进制", target: "artifacts/a/", summary: "s", sampleHash: h });
+		registerFinding(st, "s-grp", "binary-analysis", { title: "YARA", type: "YARA 规则", target: "rules/x.yar", summary: "s", sampleHash: h });
+		registerFinding(st, "s-grp", "binary-analysis", { title: "无哈希产物", type: "脚本工具", target: "scripts/t.py", summary: "s" });
+		const g = groupByTarget(st, "s-grp", "binary-analysis", {});
+		assert.equal(g.length, 2, "同哈希两条归一组+无哈希回落 target 一组");
+		assert.equal(g.find((x) => x.target === h.slice(0, 16)).count, 2);
+		assert.equal(g.find((x) => x.target === "scripts/t.py").count, 1);
+		const pent = groupByTarget(st, "s-grp", "pentest", {});
+		assert.ok(Array.isArray(pent), "非 binary 模式分组不回归");
+	});
+	st.close();
+}
+
+// ===== cloud-security：状态四态 / 分组键 type / verifyMessage 分支 =====
+{
+	const st = openStore(":memory:");
+	ok("cloud 状态集：code-reviewed 回落 pending（板式四态）、fixed=已修复须先 verified", () => {
+		const r = registerFinding(st, "s-cl", "cloud-security", { title: "AK 泄露接管", type: "权限提升", target: "arn:aws:iam::x", summary: "s", status: "code-reviewed" });
+		assert.equal(r.status, "pending", "code-reviewed 不在路径词表——回落 pending");
+		assert.throws(() => registerFinding(st, "s-cl", "cloud-security", { title: "X", status: "fixed" }), /fixed/);
+		assert.throws(() => updateFinding(st, "s-cl", "cloud-security", r.id, { status: "fixed" }), /已修复|verified/);
+		updateFinding(st, "s-cl", "cloud-security", r.id, { status: "verified" });
+		assert.equal(updateFinding(st, "s-cl", "cloud-security", r.id, { status: "fixed" }).status, "fixed", "verified→已修复");
+	});
+	ok("cloud 分组键=type 路径类型：同类型路径归一组（分组标签名实相符）", () => {
+		registerFinding(st, "s-cg", "cloud-security", { title: "a", type: "对象存储", target: "oss://b1", summary: "s" });
+		registerFinding(st, "s-cg", "cloud-security", { title: "b", type: "对象存储", target: "oss://b2", summary: "s" });
+		registerFinding(st, "s-cg", "cloud-security", { title: "c", type: "权限提升", target: "arn:x", summary: "s" });
+		const g = groupByTarget(st, "s-cg", "cloud-security", {});
+		assert.equal(g.length, 2, "按 type 两类");
+		assert.equal(g.find((x) => x.target === "对象存储").count, 2);
+	});
+	ok("verifyMessage cloud 分支：三重证据+四要素复核+路径链标签", () => {
+		const f = registerFinding(st, "s-cv", "cloud-security", { title: "路径", type: "权限提升", target: "arn:x", summary: "s", chain: "前端AK→子账号→AdministratorAccess" });
+		const msg = verifyMessage(getFinding(st, "s-cv", f.id));
+		assert.match(msg, /路径链（入口→身份→权限→资源）/);
+		assert.match(msg, /三重证据/);
+		assert.match(msg, /四要素闭环核对/);
+	});
+	st.close();
+}
+
+// ── CTF verifyMessage 分支 + 分组键=模块 ──
+ok("verifyMessage CTF 分支：flag 语义+stuck 入口，无渗透语境与非法状态", () => {
+	const st = openStore(":memory:");
+	const f = registerFinding(st, "s-ctf", "ctf-solver", { title: "pwn1", type: "pwn", target: "https://ctf.example/pwn1", poc: "exp.py 栈溢出→ROP", chain: "栈溢出→ROP→shell" });
+	const msg = verifyMessage(f);
+	assert.match(msg, /模块 pwn /);
+	assert.match(msg, /解题材料（脚本\/过程）/);
+	assert.match(msg, /解题路径（怎么解的）/);
+	assert.match(msg, /stuck=卡点/);
+	assert.match(msg, /verified=已解（flag 已提交且平台确认得分/);
+	assert.ok(!msg.includes("false-positive="), "不再推荐 CTF 非法状态（cleanEnum 静默吞根源）");
+	assert.ok(!msg.includes("渗透模式=对照三件套"), "不再落渗透默认分支");
+	st.close();
+});
+ok("ctf 分组键=模块（type）：按模块归并不按题址", () => {
+	const st = openStore(":memory:");
+	registerFinding(st, "s-cg", "ctf-solver", { title: "a", type: "web", target: "u1", summary: "s" });
+	registerFinding(st, "s-cg", "ctf-solver", { title: "b", type: "pwn", target: "u2", summary: "s" });
+	registerFinding(st, "s-cg", "ctf-solver", { title: "c", type: "web", target: "u3", summary: "s" });
+	const groups = groupByTargetAll(st, "ctf-solver", {});
+	assert.equal(groups.length, 2);
+	assert.equal(groups.find((g) => g.target === "web").count, 2);
+	st.close();
+});
+
+// ── IR verifyMessage 分支（防御语义） ──
+ok("verifyMessage IR 分支：取证复核纪律+fixed=已处置，不再落渗透默认分支", () => {
+	const st = openStore(":memory:");
+	const f = registerFinding(st, "s-ir", "incident-response", { title: "主机A 发现 Webshell", type: "持久化", target: "web-01", timelineAt: "2026-08-24 10:00", poc: "webshell-detection 全盘扫描", chain: "上传→访问→命令执行" });
+	const msg = verifyMessage(f);
+	assert.match(msg, /｜ 主机 web-01 /);
+	assert.match(msg, /取证过程 \/ 检测命令/);
+	assert.match(msg, /取证过程（怎么证实）/);
+	assert.match(msg, /证据链交叉/);
+	assert.match(msg, /fixed=已处置/);
+	assert.match(msg, /code-reviewed=复核通过/);
+	assert.ok(!msg.includes("渗透模式=对照三件套"), "不再落渗透默认分支");
+	assert.ok(!msg.includes("复测不成功才可标记"), "fixed 不再教渗透修复语义");
+	st.close();
+});
+
+console.log(`\nall ${passed} tests passed`);

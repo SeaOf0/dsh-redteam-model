@@ -15,13 +15,21 @@ const STATUSES = ["pending", "code-reviewed", "verified", "false-positive", "fix
  *  verified 语义通用（各模式的"验证类终态"），verifiedAt 落库逻辑不变。 */
 const MODE_STATUSES = {
 	default: STATUSES,
+	/** redteam light 通用模式=台账板式：fixed 语义为「已路由」（路由是收口的替代路径，
+	 *  非「已修复」终态）——无「先 verified」前置；code-reviewed 不在台账词表。 */
+	redteam: ["pending", "verified", "false-positive", "fixed"],
+	/** attack-defense=战果清单（assets 板式）：fixed=已交付（须先 verified）；code-reviewed 不在战果词表。 */
+	"attack-defense": ["pending", "verified", "false-positive", "fixed"],
+	/** cloud-security=攻击路径板式（cloudpath）：fixed=已修复（须先 verified）；code-reviewed 不在路径词表。 */
+	"cloud-security": ["pending", "verified", "false-positive", "fixed"],
 	"av-evasion": ["pending", "verified", "detected"],
 	"ctf-solver": ["pending", "stuck", "verified"],
 	"binary-analysis": ["pending", "suspect", "verified"]
 };
 const ALL_STATUSES = Array.from(new Set([].concat(...Object.values(MODE_STATUSES))));
 const statusesOf = (mode) => MODE_STATUSES[mode] ?? STATUSES;
-const EVIDENCE_LEVELS = ["confirmed", "partial", "unknown"];
+/** 证据等级四档（自高到低）：impact 影响已证（数据实际获取/业务动作实际达成）＞ confirmed 可复现（对照三件套齐）＞ partial 部分证据（工具输出/间接推断）＞ unknown 未知。 */
+const EVIDENCE_LEVELS = ["impact", "confirmed", "partial", "unknown"];
 const SOURCE_ORIGINS = ["manual", "scan-confirmed", "scan-false-positive"];
 const DEFAULT_PAGE_SIZE = 10;
 const MODES = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver"];
@@ -78,6 +86,12 @@ CREATE TABLE IF NOT EXISTS findings (
 	PRIMARY KEY (session_id, id)
 );
 CREATE INDEX IF NOT EXISTS idx_findings_session_mode ON findings(session_id, mode, seq);
+CREATE TABLE IF NOT EXISTS counters (
+	session_id TEXT NOT NULL,
+	mode       TEXT NOT NULL,
+	last_seq   INTEGER NOT NULL,
+	PRIMARY KEY (session_id, mode)
+);
 CREATE TABLE IF NOT EXISTS session_meta (
 	session_id TEXT NOT NULL PRIMARY KEY,
 	target_label TEXT NOT NULL DEFAULT '',
@@ -98,22 +112,26 @@ const MIGRATION_COLUMNS = [
 	"entry", "identity", "permission", "resource"
 
 	, "audit_mode"
-];;
+];
 
 /** 打开（或创建）库并预编译语句。dbPath 传 ":memory:" 供测试。 */
 export function openStore(dbPath) {
 	const db = new DatabaseSync(dbPath);
 	db.exec("PRAGMA journal_mode = WAL;");
+	db.exec("PRAGMA busy_timeout = 5000;"); // 多进程（两个 dsh web）并发写不直接抛 SQLITE_BUSY
 	db.exec(SCHEMA);
 	for (const col of MIGRATION_COLUMNS) {
 		try { db.exec(`ALTER TABLE findings ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`); } catch { /* 列已存在 */ }
 	}
+	// 旧库升级：counters 从既有 findings 初始化（INSERT OR IGNORE——已有计数不回退）
+	db.exec("INSERT OR IGNORE INTO counters (session_id, mode, last_seq) SELECT session_id, mode, MAX(seq) FROM findings GROUP BY session_id, mode");
 	return {
 		dbPath,
 		db,
 		insert: db.prepare(`INSERT INTO findings (${COLS}) VALUES (${"?,".repeat(N_COLS - 1)}?)`),
 		get: db.prepare(`SELECT ${COLS} FROM findings WHERE session_id = ? AND id = ?`),
-		nextSeq: db.prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM findings WHERE session_id = ? AND mode = ?"),
+		counterGet: db.prepare("SELECT last_seq AS n FROM counters WHERE session_id = ? AND mode = ?"),
+		counterSet: db.prepare("INSERT INTO counters (session_id, mode, last_seq) VALUES (?, ?, ?) ON CONFLICT(session_id, mode) DO UPDATE SET last_seq = excluded.last_seq"),
 		update: db.prepare(`UPDATE findings SET title=?, severity=?, status=?, evidence_level=?, type=?, target=?, summary=?, description=?, poc=?, chain=?, evidence=?, fix=?, verify_note=?, updated_at=?, verified_at=?, baseline=?, diff_evidence=?, marker_echo=?, impact=?, cvss=?, retest_note=?, retest_at=?, request_pkt=?, response_pkt=?, snippet_entry=?, snippet_sink=?, chain_tracer=?, chain_verdict=?, cwe=?, patch=?, source_origin=?, sample_hash=?, family=?, packer=?, iocs=?, detection_rule=?, timeline_at=?, entry=?, identity=?, permission=?, resource=?, audit_mode=? WHERE session_id=? AND id=?`),
 		remove: db.prepare("DELETE FROM findings WHERE session_id = ? AND id = ?"),
 		listAll: db.prepare(`SELECT ${COLS} FROM findings WHERE session_id = ? AND mode = ? ORDER BY seq DESC`),
@@ -159,16 +177,23 @@ function rowToFinding(row) {
 	return f;
 }
 
-/** 登记一条 finding（会话内 mode 维度自增序号；mode 由宿主从会话推导，调用方不可指定他模式）。 */
+/** 登记一条 finding（会话内 mode 维度自增序号；mode 由宿主从会话推导，调用方不可指定他模式）。
+ *  序号走 counters 独立计数器（永不复用——删除末尾行后新登记不回收 id，报告引用 finding id 不漂移）。 */
 export function registerFinding(store, sessionId, mode, input) {
-	const seq = store.nextSeq.get(sessionId, mode).n;
+	const seq = (store.counterGet.get(sessionId, mode)?.n ?? 0) + 1;
+	store.counterSet.run(sessionId, mode, seq);
 	const id = `${mode}-${seq}`;
 	const now = nowIso();
+	// 状态词表按模式取（产物型=各自本体词）——与 update/mark 同源。
+	const status = cleanEnum(input.status, statusesOf(mode), "pending");
+	// 漏洞生命周期模式：fixed=已修复终态，不可在登记时直接写入（先登记、验证成立后经 update 流转）；
+	// redteam 台账语义 fixed=已路由——登记即已路由的任务合法。
+	if (mode !== "redteam" && status === "fixed") throw new Error("fixed 不可在登记时直接写入——先登记（pending/verified），经 update 流转标记 fixed（渗透/代审=已修复（修复复测不成功）；攻防=已交付；应急=已处置）");
 	const f = {
 		id, seq, mode,
 		title: cleanText(input.title, 200) || "未命名发现",
 		severity: cleanEnum(input.severity, SEVERITIES, "medium"),
-		status: cleanEnum(input.status, STATUSES, "pending"),
+		status,
 		evidenceLevel: cleanEnum(input.evidenceLevel, EVIDENCE_LEVELS, "unknown"),
 		type: cleanText(input.type, 60),
 		target: cleanText(input.target, 500),
@@ -183,6 +208,7 @@ export function registerFinding(store, sessionId, mode, input) {
 		sourceOrigin: cleanEnum(input.sourceOrigin, SOURCE_ORIGINS, "manual")
 	};
 	for (const k of EXTRA_FIELDS) f[k] = cleanText(input[k]);
+	if (mode === "code-audit") f.auditMode = ["static", "dynamic"].includes(f.auditMode) ? f.auditMode : ""; // 枚举清洗：错值清空（Web 通道无 schema 闸）
 	store.insert.run(
 		sessionId, f.id, f.seq, mode, f.title, f.severity, f.status, f.evidenceLevel, f.type, f.target, f.summary,
 		f.description, f.poc, f.chain, f.evidence, f.fix, f.verifyNote, f.createdAt, f.updatedAt, f.verifiedAt,
@@ -199,9 +225,10 @@ export function updateFinding(store, sessionId, mode, id, patch = {}) {
 	if (row === undefined || row.mode !== mode) return undefined;
 	const prev = rowToFinding(row);
 	const statusSet = statusesOf(mode);
-	// fixed 只接受"此前已验证真实存在"的流转：先 verified、修复后复测不成功才可标记（仅含 fixed 的模式适用）。
-	if (statusSet.includes("fixed") && cleanEnum(patch.status, statusSet, prev.status) === "fixed" && prev.status !== "verified") {
-		throw new Error("已修复 仅可用于此前已验证（verified）真实存在的 finding——先验证成立，用户修复后复测不成功再标记 fixed");
+	// fixed 只接受"此前已验证真实存在"的流转：先 verified、修复后复测不成功才可标记——
+	// 仅漏洞生命周期模式适用；redteam 台账语义 fixed=已路由（收口的替代路径），无此前置。
+	if (mode !== "redteam" && statusSet.includes("fixed") && cleanEnum(patch.status, statusSet, prev.status) === "fixed" && prev.status !== "verified") {
+		throw new Error("fixed 仅可用于此前已验证（verified）真实存在的 finding——先验证成立再流转标记（渗透/代审=已修复（修复复测不成功）；攻防=已交付；应急=已处置）");
 	}
 	const next = {
 		title: cleanText(patch.title, 200) || prev.title,
@@ -222,6 +249,7 @@ export function updateFinding(store, sessionId, mode, id, patch = {}) {
 		sourceOrigin: cleanEnum(patch.sourceOrigin, SOURCE_ORIGINS, prev.sourceOrigin)
 	};
 	for (const k of EXTRA_FIELDS) next[k] = patch[k] !== undefined ? cleanText(patch[k]) : prev[k];
+	if (mode === "code-audit") next.auditMode = ["static", "dynamic"].includes(next.auditMode) ? next.auditMode : "";
 	store.update.run(
 		next.title, next.severity, next.status, next.evidenceLevel, next.type, next.target, next.summary,
 		next.description, next.poc, next.chain, next.evidence, next.fix, next.verifyNote, next.updatedAt, next.verifiedAt,
@@ -260,7 +288,17 @@ export function listFindings(store, sessionId, mode, { page = 1, pageSize = DEFA
 	return { rows: rows.slice((current - 1) * size, current * size), total, page: current, pageSize: size, pages };
 }
 
-/** 按目标/位置分组（渗透=资产分组，代审=文件分组共用）。 */
+/** 分组键（模式化）：binary-analysis 按关联样本聚合（sampleHash 为键——同一样本的产物归一组；
+ *  未填 sampleHash 回落按 target 归组兼容旧行为）；cloud-security 按路径类型聚合（type 为键——
+ *  与分组标签「按路径类型分组」一致；未填回落 target）；ctf-solver 按题目模块聚合（type 为键——
+ *  与「按模块分组」标签一致；未填归「未分类」）；其余模式按 target。 */
+const groupKeyOf = (mode, f) => mode === "binary-analysis"
+	? (f.sampleHash ? f.sampleHash.slice(0, 16) : (f.target || "（未填）"))
+	: mode === "cloud-security" || mode === "ctf-solver"
+	? (f.type || "（未分类）")
+	: (f.target || "（未填）");
+
+/** 按目标/位置分组（渗透=资产分组，代审=文件分组共用；binary=按样本哈希分组）。 */
 export function groupByTarget(store, sessionId, mode, { severity = "", status = "", q = "" } = {}) {
 	const needle = String(q ?? "").trim().toLowerCase();
 	const rows = allFindings(store, sessionId, mode)
@@ -269,17 +307,17 @@ export function groupByTarget(store, sessionId, mode, { severity = "", status = 
 		.filter((f) => (needle ? `${f.title} ${f.summary} ${f.target} ${f.type} ${f.cwe}`.toLowerCase().includes(needle) : true));
 	const groups = new Map();
 	for (const f of rows) {
-		const key = f.target || "（未填）";
+		const key = groupKeyOf(mode, f);
 		if (!groups.has(key)) groups.set(key, []);
 		groups.get(key).push(f);
 	}
 	return [...groups.entries()].map(([target, items]) => ({ target, count: items.length, items }));
 }
 
-/** 统计内核（会话版与全局版共用）：四档严重度、状态分布、类型 top、CWE/来源/目标/家族/壳分布。 */
-function statsOf(all) {
+/** 统计内核（会话版与全局版共用）：四档严重度、状态分布（词表按模式取，跨模式聚合取并集）、类型 top、CWE/来源/目标/家族/壳分布。 */
+function statsOf(all, mode = "") {
 	const bySeverity = Object.fromEntries(SEVERITIES.map((s) => [s, 0]));
-	const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0]));
+	const byStatus = Object.fromEntries((mode ? statusesOf(mode) : ALL_STATUSES).map((s) => [s, 0]));
 	const byEvidence = Object.fromEntries(EVIDENCE_LEVELS.map((s) => [s, 0]));
 	const typeMap = new Map();
 	const cweMap = new Map();
@@ -291,7 +329,7 @@ function statsOf(all) {
 	let lastAt = "";
 	for (const f of all) {
 		bySeverity[f.severity] += 1;
-		byStatus[f.status] += 1;
+		byStatus[f.status] = (byStatus[f.status] ?? 0) + 1;
 		byEvidence[f.evidenceLevel] += 1;
 		typeMap.set(f.type || "未分类", (typeMap.get(f.type || "未分类") ?? 0) + 1);
 		if (f.cwe) cweMap.set(f.cwe, (cweMap.get(f.cwe) ?? 0) + 1);
@@ -319,16 +357,16 @@ function statsOf(all) {
 	};
 }
 
-/** 会话内统计（原语义保留）。 */
+/** 会话内统计（原语义保留；状态词表按模式取）。 */
 export function computeStats(store, sessionId, mode) {
-	return statsOf(allFindings(store, sessionId, mode));
+	return statsOf(allFindings(store, sessionId, mode), mode);
 }
 
 /** 跨会话统计：按登记时间（created_at）范围过滤后的全模式数据聚合。 */
 export function computeStatsAll(store, mode, { from = "", to = "" } = {}) {
 	const rows = store.listGlobalMode.all(mode)
 		.filter((row) => (from === "" || row.created_at >= from) && (to === "" || row.created_at <= to));
-	return statsOf(rows);
+	return statsOf(rows, mode);
 }
 
 /** 跨会话模式计数（侧栏总数，全时域）。 */
@@ -339,7 +377,7 @@ export function modeCountsAll(store) {
 }
 
 /** 跨会话清单：按 mode 全表 + 筛选（severity/status/q）+ created_at 范围 + 分页；行带 sessionId。 */
-export function listFindingsAll(store, mode, { page = 1, pageSize = DEFAULT_PAGE_SIZE, severity = "", status = "", q = "", from = "", to = "" } = {}) {
+export function listFindingsAll(store, mode, { page = 1, pageSize = DEFAULT_PAGE_SIZE, severity = "", status = "", q = "", from = "", to = "", all = false } = {}) {
 	const needle = String(q ?? "").trim().toLowerCase();
 	const rows = store.listGlobalMode.all(mode)
 		.map((row) => ({ ...rowToFinding(row), sessionId: row.session_id }))
@@ -348,6 +386,7 @@ export function listFindingsAll(store, mode, { page = 1, pageSize = DEFAULT_PAGE
 		.filter((f) => (from === "" || f.createdAt >= from))
 		.filter((f) => (to === "" || f.createdAt <= to))
 		.filter((f) => (needle ? `${f.title} ${f.summary} ${f.target} ${f.type} ${f.cwe}`.toLowerCase().includes(needle) : true));
+	if (all) return { rows, total: rows.length, page: 1, pageSize: rows.length, pages: 1 }; // 内部全量路径（分组/导出）——不受分页钳制
 	const size = Math.max(1, Math.min(100, Number(pageSize) || DEFAULT_PAGE_SIZE));
 	const total = rows.length;
 	const pages = Math.max(1, Math.ceil(total / size));
@@ -355,12 +394,12 @@ export function listFindingsAll(store, mode, { page = 1, pageSize = DEFAULT_PAGE
 	return { rows: rows.slice((current - 1) * size, current * size), total, page: current, pageSize: size, pages };
 }
 
-/** 跨会话按目标分组（平铺分组视图共享）。 */
+/** 跨会话按目标分组（平铺分组视图共享；binary=按样本哈希跨会话聚合同一样本产物）。 */
 export function groupByTargetAll(store, mode, { severity = "", status = "", q = "", from = "", to = "" } = {}) {
-	const list = listFindingsAll(store, mode, { severity, status, q, from, to, page: 1, pageSize: 100000 });
+	const list = listFindingsAll(store, mode, { severity, status, q, from, to, all: true });
 	const groups = new Map();
 	for (const f of list.rows) {
-		const key = f.target || "（未填）";
+		const key = groupKeyOf(mode, f);
 		if (!groups.has(key)) groups.set(key, []);
 		groups.get(key).push(f);
 	}
@@ -372,13 +411,13 @@ export function groupByTargetAll(store, mode, { severity = "", status = "", q = 
 export function ledgerOverview(store, sessionId) {
 	const rows = store.listAllAll ? store.listAllAll.all(sessionId) : [];
 	const byMode = Object.fromEntries(MODES.map((m) => [m, 0]));
-	const byStatus = { pending: 0, verified: 0, "false-positive": 0, fixed: 0 };
+	const byStatus = Object.fromEntries(ALL_STATUSES.map((s) => [s, 0])); // 跨模式聚合：词表取并集（含产物型 detected/stuck/suspect）
 	const bySeverity = Object.fromEntries(SEVERITIES.map((s) => [s, 0]));
 	const byEvidence = Object.fromEntries(EVIDENCE_LEVELS.map((s) => [s, 0]));
 	let lastAt = "";
 	for (const row of rows) {
 		if (byMode[row.mode] !== undefined) byMode[row.mode] += 1;
-		if (byStatus[row.status] !== undefined) byStatus[row.status] += 1;
+		byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
 		if (bySeverity[row.severity] !== undefined) bySeverity[row.severity] += 1;
 		if (byEvidence[row.evidence_level] !== undefined) byEvidence[row.evidence_level] += 1;
 		if (row.updated_at > lastAt) lastAt = row.updated_at;
@@ -393,7 +432,7 @@ export function ledgerOverviewAll(store, { from = "", to = "" } = {}) {
 	const rows = store.listGlobal.all();
 	const inRange = (row) => (from === "" || row.created_at >= from) && (to === "" || row.created_at <= to);
 	const byMode = Object.fromEntries(MODES.map((m) => [m, 0]));
-	const byStatus = { pending: 0, verified: 0, "false-positive": 0, fixed: 0 };
+	const byStatus = Object.fromEntries(ALL_STATUSES.map((s) => [s, 0])); // 跨模式聚合：词表取并集（含产物型 detected/stuck/suspect）
 	const bySeverity = Object.fromEntries(SEVERITIES.map((s) => [s, 0]));
 	const byEvidence = Object.fromEntries(EVIDENCE_LEVELS.map((s) => [s, 0]));
 	const sessions = new Set();
@@ -404,7 +443,7 @@ export function ledgerOverviewAll(store, { from = "", to = "" } = {}) {
 		total += 1;
 		sessions.add(row.session_id);
 		if (byMode[row.mode] !== undefined) byMode[row.mode] += 1;
-		if (byStatus[row.status] !== undefined) byStatus[row.status] += 1;
+		byStatus[row.status] = (byStatus[row.status] ?? 0) + 1;
 		if (bySeverity[row.severity] !== undefined) bySeverity[row.severity] += 1;
 		if (byEvidence[row.evidence_level] !== undefined) byEvidence[row.evidence_level] += 1;
 		if (row.updated_at > lastAt) lastAt = row.updated_at;

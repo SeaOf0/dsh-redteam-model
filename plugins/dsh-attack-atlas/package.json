@@ -7,7 +7,6 @@
 		"deepseek-harness",
 		"dsh-plugin",
 		"dsh-bundle",
-		"attack-atlas",
 		"coverage-matrix",
 		"session-scoped"
 	],

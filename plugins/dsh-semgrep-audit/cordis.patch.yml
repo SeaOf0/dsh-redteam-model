@@ -1,0 +1,6 @@
+# dsh-semgrep-audit 备用宿主层挂载行（当前【不启用】：本插件挂 preset 平面，
+# 由 code-audit 的 agent.cordis.yml 持一行。若未来要全模式开放，取消注释即可。）
+#
+# 注意：本文件必须保持合法的顶层 YAML 数组——仅含注释时解析为 null，
+# 会导致 dsh 启动器报 "must be a top-level YAML array" 而整个 profile 无法启动。
+[]

@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { openStore, writeMemory, searchMemories, topForInjection, listMemories, getMemory, removeMemory, statsMemories, purgeExpired, kindLabel } from "../lib/store.js";
+import { openStore, writeMemory, searchMemories, topForInjection, listMemories, getMemory, removeMemory, statsMemories, purgeExpired, kindLabel, MAX_ROWS_PER_WORKSPACE } from "../lib/store.js";
 import { buildMemoryBlock, dispatch, isTrustedRequest, MODE_IDS, checkCsrf } from "../lib/index.js";
 
 let pass = 0, fail = 0;
@@ -81,7 +81,13 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	ok("召回注入不记账（确定性）", listMemories(st, { mode: "pentest" }).every((r) => r.usageCount === 0));
 	ok("空集返回空串", buildMemoryBlock("pentest", []) === "");
 	const fb = buildMemoryBlock("pentest", "client-a", [{ kind: "tactic", title: "长记忆", content: "x".repeat(2000) }, { kind: "tactic", title: "更长", content: "y".repeat(2000) }]);
-	ok("超预算截断仍以闭合标签收尾", fb.length <= 701 && fb.endsWith("</dsh-campaign-memory>"));
+	ok("短集合不触发截断仍闭合收尾", fb.length <= 700 && fb.endsWith("</dsh-campaign-memory>"));
+	// 真触发预算截断：10 条长行，断言硬上限、闭合标签、指引保留、n 同步
+	const many = Array.from({ length: 10 }, (_, i) => ({ kind: "tactic", title: "超预算行" + i + "－" + "标题填充".repeat(12), content: "细节" + i + "：" + "z".repeat(90) }));
+	const fb2 = buildMemoryBlock("pentest", "client-a", many);
+	const nMatch = / n="(\d+)">/.exec(fb2);
+	ok("预算截断硬上限 ≤700（修复 723 超限）", fb2.length <= 700 && fb2.endsWith("</dsh-campaign-memory>"));
+	ok("截断先减记忆行：指引行保留、首行保留、n 同步实留行数", fb2.includes("campaign_memory_search") && fb2.includes("超预算行0") && !fb2.includes("超预算行9") && nMatch !== null && Number(nMatch[1]) < 10);
 	ok("九模式名单齐", MODE_IDS.length === 9 && MODE_IDS.includes("redteam"));
 	st.close();
 }
@@ -96,7 +102,6 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	await dispatch(null, st, "memory.write", { mode: "pentest", kind: "lesson", title: "他区教训", content: "另一个工作区的经验", workspace: "client-b" });
 	const sr = await dispatch(null, st, "memory.search", { mode: "pentest", query: "" });
 	ok("memory.search 跨工作区命中并带来源标注", sr.memories.length === 2 && sr.memories.some((m) => m.workspace === "client-b"));
-	ok("memory.search 行级预览上限", "z".repeat(0) === "" || true);
 	const got = await dispatch(null, st, "memory.get", { id: w.id });
 	ok("memory.get 返回全文", got.memory && got.memory.content.includes("10.1.2.33") && got.memory.content.length >= 10);
 	const stat = await dispatch(null, st, "memory.stats", { mode: "pentest" });
@@ -168,6 +173,72 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	st.db.prepare("UPDATE memories SET expires_at = '2020-01-01 00:00:00' WHERE id = ?").run(fpA.id);
 	const fpB = writeMemory(st, { mode: "pentest", kind: "fingerprint", title: "客户 X 指纹", content: "新", workspace: "client-a" });
 	ok("同题重写复活过期指纹（时效刷新）", fpB.id === fpA.id && listMemories(st, { mode: "pentest" }).some((r) => r.id === fpA.id));
+	st.close();
+}
+
+// 8. 行数钳制与浏览不记账：search 默认 8 上限 20；list 默认 50 上限 200（token 收敛）；peek 读全文不记账
+{
+	const st = openStore(":memory:");
+	for (let i = 0; i < 55; i++) writeMemory(st, { mode: "pentest", kind: "tactic", title: "限行检查" + i, content: "内容" + i });
+	ok("search 行数默认 8", searchMemories(st, { mode: "pentest", query: "限行检查" }).length === 8);
+	ok("search 行数上限 20", searchMemories(st, { mode: "pentest", query: "限行检查", limit: 99 }).length === 20);
+	ok("list 默认 50（不再全量倾倒）", listMemories(st, { mode: "pentest" }).length === 50);
+	ok("list 上限 200 可覆盖全量", listMemories(st, { mode: "pentest", limit: 200 }).length === 55);
+	ok("peek 读全文不记账（Web 浏览不推高召回热度）", (() => { const row = listMemories(st, { mode: "pentest" })[0]; getMemory(st, row.id, { account: false }); return listMemories(st, { mode: "pentest" })[0].usageCount === 0; })());
+	st.close();
+}
+
+// 9. 路径哈希隔离：同名目录不串场、移动目录=新 key 干净开局、无键行旧语义兼容
+{
+	const st = openStore(":memory:");
+	writeMemory(st, { mode: "pentest", kind: "tactic", title: "打法A", content: "客户1的打法", workspace: "client-a", workspace_key: "client-a@11111111" });
+	writeMemory(st, { mode: "pentest", kind: "tactic", title: "打法B", content: "客户2的打法", workspace: "client-a", workspace_key: "client-a@22222222" });
+	writeMemory(st, { mode: "pentest", kind: "tactic", title: "旧库行", content: "无键旧行", workspace: "client-a" });
+	ok("同名目录不同路径：注入按隔离键互不串场", topForInjection(st, "pentest", "client-a", 3, "client-a@11111111").every((r) => r.title === "打法A") && topForInjection(st, "pentest", "client-a", 3, "client-a@22222222").every((r) => r.title === "打法B"));
+	ok("同题同 key 刷新（同名目录不误合并）", writeMemory(st, { mode: "pentest", kind: "tactic", title: "打法A", content: "v2", workspace: "client-a", workspace_key: "client-a@11111111" }).refreshed === true);
+	ok("移动目录=新 key 干净开局；旧记忆跨工作区检索找回", topForInjection(st, "pentest", "client-a", 3, "client-a@33333333").length === 0 && searchMemories(st, { mode: "pentest", query: "打法A" }).length === 1);
+	ok("旧语义兼容：无键调用只匹配无键行", topForInjection(st, "pentest", "client-a", 3).length === 1 && topForInjection(st, "pentest", "client-a", 3)[0].title === "旧库行");
+	st.close();
+}
+
+// 10. 注入行 160 字符 / 多目标提示行 / 工作区总量上限冷淘汰
+{
+	const st = openStore(":memory:");
+	const b160 = buildMemoryBlock("binary-analysis", "bin-a", [{ kind: "fingerprint", targetKind: "a1b2c3d4", title: "家族指纹", content: "x".repeat(400) }]);
+	ok("注入行预览放宽至 160 字符（家族指纹/工具配方不再过短腰斩）", /x{160}/.test(b160) && !/x{161}/.test(b160) && b160.length <= 700);
+	const two = buildMemoryBlock("cloud-security", "cw", [{ kind: "tactic", targetKind: "aliyun", title: "A", content: "a" }, { kind: "tactic", targetKind: "tencent", title: "B", content: "b" }]);
+	const one = buildMemoryBlock("cloud-security", "cw", [{ kind: "tactic", targetKind: "aliyun", title: "A", content: "a" }]);
+	ok("多目标工作区注入带提示行（单目标不带）", two.includes("多目标") && two.includes("target_kind") && !one.includes("多目标"));
+	let last = null;
+	for (let i = 0; i < MAX_ROWS_PER_WORKSPACE + 2; i++) last = writeMemory(st, { mode: "pentest", kind: "tactic", title: "上限行" + i, content: "c" + i, workspace: "cap-ws", workspace_key: "cap-ws@abcd1234" });
+	const n = st.db.prepare("SELECT COUNT(*) AS n FROM memories WHERE mode = ? AND workspace = ?").get("pentest", "cap-ws").n;
+	ok("工作区上限 400：超限冷淘汰至 400，新写行保留", n === MAX_ROWS_PER_WORKSPACE && last.evicted >= 1 && !!st.db.prepare("SELECT id FROM memories WHERE id = ?").get(last.id));
+	writeMemory(st, { mode: "pentest", kind: "tactic", title: "另键位行", content: "x", workspace: "cap-ws", workspace_key: "cap-ws@zzzz9999" });
+	ok("冷淘汰只动本键位行（另键位行不受影响）", st.db.prepare("SELECT COUNT(*) AS n FROM memories WHERE mode = ? AND workspace = ? AND workspace_key = ?").get("pentest", "cap-ws", "cap-ws@zzzz9999").n === 1);
+	st.close();
+}
+
+// 11. 同题刷新带 target_kind 维度（同名题跨平台不互覆）
+{
+	const st = openStore(":memory:");
+	writeMemory(st, { mode: "ctf-solver", kind: "tactic", title: "signin 题解套路", content: "平台A套路", target_kind: "platform-a", workspace: "ctf-ws", workspace_key: "ctf-ws@11111111" });
+	const w2 = writeMemory(st, { mode: "ctf-solver", kind: "tactic", title: "signin 题解套路", content: "平台B套路", target_kind: "platform-b", workspace: "ctf-ws", workspace_key: "ctf-ws@11111111" });
+	ok("同名题跨平台不互覆（同题判定带 target_kind 维度）", w2.refreshed === false);
+	const w3 = writeMemory(st, { mode: "ctf-solver", kind: "tactic", title: "signin 题解套路", content: "平台A套路v2", target_kind: "platform-a", workspace: "ctf-ws", workspace_key: "ctf-ws@11111111" });
+	ok("同题同平台刷新而非新增", w3.refreshed === true && w3.id !== w2.id);
+	ok("两条共存", st.db.prepare("SELECT COUNT(*) AS n FROM memories WHERE mode = ?").get("ctf-solver").n === 2);
+	st.close();
+}
+
+// 12. 应急溯源用例（案件号 target_kind 隔离 + 写入读回）
+{
+	const st = openStore(":memory:");
+	writeMemory(st, { mode: "incident-response", kind: "fingerprint", title: "银狐家族指纹", content: "特征串 abc", target_kind: "case-2026-01", workspace: "ir-ws", workspace_key: "ir-ws@11111111" });
+	const w2 = writeMemory(st, { mode: "incident-response", kind: "tactic", title: "webshell 排查配方", content: "时间窗+内容特征定位", target_kind: "case-2026-02", workspace: "ir-ws", workspace_key: "ir-ws@11111111" });
+	ok("IR 多案件同目录不互覆（案件号维度）", w2.refreshed === false);
+	ok("IR 按 target_kind 过滤检索", searchMemories(st, { mode: "incident-response", query: "银狐", target_kind: "case-2026-01" }).length === 1);
+	const top = topForInjection(st, "incident-response", "ir-ws", 3, "ir-ws@11111111");
+	ok("IR 注入行带案件标注（多目标提示触发）", top.length === 2 && top.some((r) => r.targetKind === "case-2026-01"));
 	st.close();
 }
 

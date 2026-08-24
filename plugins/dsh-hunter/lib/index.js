@@ -121,6 +121,10 @@ function normalizeRows(platform, rows) {
 }
 
 /** 实测：读 finding → 指纹 → 搜索 → 流水线 → 回写 + 历史 + followup。 */
+/** 实测防重：sessionId:findingId → 最近执行时间（10 分钟窗口——流水线含搜索+最多 50 资产探测，防连点并发重复扣平台配额）。 */
+const LIVE_VERIFY_SENT = new Map();
+const LIVE_VERIFY_WINDOW_MS = 10 * 60 * 1000;
+
 async function runVerify(ctx, p) {
 	const sessionId = String(p.sessionId ?? "");
 	const findingId = String(p.findingId ?? "");
@@ -129,6 +133,10 @@ async function runVerify(ctx, p) {
 	const finding = getFinding(rst, sessionId, findingId);
 	if (!finding) throw new Error("finding 不存在");
 	if (finding.mode !== "code-audit") throw new Error("实测仅支持 code-audit 模式 finding");
+	const vkey = `${sessionId}:${findingId}`;
+	const lastRun = LIVE_VERIFY_SENT.get(vkey) ?? 0;
+	if (Date.now() - lastRun < LIVE_VERIFY_WINDOW_MS) throw new Error("实测已在此前 10 分钟内执行——请稍后再试（重复执行会重复消耗平台配额）");
+	LIVE_VERIFY_SENT.set(vkey, Date.now());
 
 	const fp = parseFingerprint(finding.poc);
 	const query = fingerprintQuery(fp);
@@ -188,7 +196,10 @@ async function runVerify(ctx, p) {
 	// 回写 finding（数据变更）
 	const note = `[实测] ${nowIso().slice(0, 19)} ${result.summary}`;
 	const patch = { retestNote: note, evidence: [finding.evidence, `实测:${result.verdict} (L0=${result.detail?.l0Hits ?? 0}/L1=${result.detail?.l1Passed ?? 0})`].filter(Boolean).join("；") };
-	if (result.verdict === "l1-passed") patch.status = "verified";
+	if (result.verdict === "l1-passed") {
+		patch.status = "verified";
+		patch.auditMode = "dynamic"; // L1 实测过=形态升格动态——消除「已验证+静态审计」词面矛盾（过程形态随实测事实更新）
+	}
 	updateFinding(rst, sessionId, finding.mode, findingId, patch);
 
 	// 历史

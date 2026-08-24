@@ -16,4 +16,5 @@
   ntdll .text 哈希/完整性周期校验；Hook 自愈（EDR 重新 patch）检测面；
   NtOpenSection 已知段对象访问监控（mode 1）。
 - 判定表（本地实测后填）：| 引擎 | 结果 | 原文行 |
+- 构建验证记录：2026-08-20 mingw 14.0.0 编译通过（PE32+ GUI x86-64）；运行验证待
   Windows 判定环境。

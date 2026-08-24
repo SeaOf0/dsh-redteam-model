@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS chain_nodes (
 	seg        TEXT NOT NULL DEFAULT "",
 	note       TEXT NOT NULL DEFAULT "",
 	major      INTEGER NOT NULL DEFAULT 0,
+	finding_ref TEXT NOT NULL DEFAULT "",
 	created_at TEXT NOT NULL,
 	PRIMARY KEY (session_id, mode, id)
 );
@@ -107,6 +108,7 @@ export function openStore(dbPath) {
 	db.exec("PRAGMA journal_mode = WAL");
 	db.exec(SCHEMA);
 	try { db.exec("ALTER TABLE coverage ADD COLUMN target TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移（列已存在） */ }
+	try { db.exec("ALTER TABLE chain_nodes ADD COLUMN finding_ref TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移（列已存在） */ }
 	return {
 		db,
 		close() { db.close(); }
@@ -189,16 +191,17 @@ export const CHAIN_NODE_KINDS = ["entry", "host", "segment", "bastion", "dc", "c
 const CHAIN_KIND_LABELS = { entry: "入口", host: "主机", segment: "网段关口", bastion: "堡垒机", dc: "域控", cred: "凭据", attacker: "攻击者", infra: "C2/基础设施", pivot: "跳板/横向", exfil: "外传/扩散", identity: "身份/角色", secret: "密钥面", resource: "云资源", orgroot: "组织根/KMS", other: "资产" };
 export function chainKindLabel(kind) { return CHAIN_KIND_LABELS[kind] || "资产"; }
 
-export function addChainNode(st, sessionId, mode, { id, label, kind = "host", seg = "", note = "", major = false }) {
+export function addChainNode(st, sessionId, mode, { id, label, kind = "host", seg = "", note = "", major = false, findingRef = "" }) {
 	const nid = clean(id, 60);
 	if (!/^[a-z0-9][a-z0-9._-]*$/i.test(nid)) throw new Error(`节点 id 非法（字母数字与 ._-）：${nid}`);
 	const l = clean(label, 80);
 	if (!l) throw new Error("label required");
 	const k = CHAIN_NODE_KINDS.includes(kind) ? kind : "other";
-	st.db.prepare("INSERT INTO chain_nodes (session_id, mode, id, label, kind, seg, note, major, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)\n" +
-		"ON CONFLICT (session_id, mode, id) DO UPDATE SET label = excluded.label, kind = excluded.kind, seg = excluded.seg, note = excluded.note, major = excluded.major")
-		.run(String(sessionId), String(mode), nid, l, k, clean(seg, 60), clean(note, 300), major ? 1 : 0, now());
-	return { id: nid, label: l, kind: k, major: !!major };
+	const fr = clean(findingRef, 60); // 关联成果 finding id（与「redteam 成果」页互链；空=无关联）
+	st.db.prepare("INSERT INTO chain_nodes (session_id, mode, id, label, kind, seg, note, major, finding_ref, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" +
+		"ON CONFLICT (session_id, mode, id) DO UPDATE SET label = excluded.label, kind = excluded.kind, seg = excluded.seg, note = excluded.note, major = excluded.major, finding_ref = excluded.finding_ref")
+		.run(String(sessionId), String(mode), nid, l, k, clean(seg, 60), clean(note, 300), major ? 1 : 0, fr, now());
+	return { id: nid, label: l, kind: k, major: !!major, findingRef: fr };
 }
 
 export function addChainEdge(st, sessionId, mode, { src, dst, label = "" }) {
@@ -215,9 +218,18 @@ export function addChainEdge(st, sessionId, mode, { src, dst, label = "" }) {
 }
 
 export function listChain(st, sessionId, mode) {
-	const nodes = st.db.prepare("SELECT id, label, kind, seg, note, major, created_at AS createdAt FROM chain_nodes WHERE session_id = ? AND mode = ? ORDER BY created_at, id").all(String(sessionId), String(mode));
+	const nodes = st.db.prepare("SELECT id, label, kind, seg, note, major, finding_ref AS findingRef, created_at AS createdAt FROM chain_nodes WHERE session_id = ? AND mode = ? ORDER BY created_at, id").all(String(sessionId), String(mode));
 	const edges = st.db.prepare("SELECT src, dst, label FROM chain_edges WHERE session_id = ? AND mode = ? ORDER BY created_at").all(String(sessionId), String(mode));
 	return { nodes, edges };
+}
+
+/** 反查互链：该模式下各 finding 被哪些链路节点引用（键=`${sessionId}:${findingRef}`——
+ *  「redteam 成果」页跨会话模式页 Detail 的「链路节点」行用）。 */
+export function chainRefIndex(st, mode) {
+	const rows = st.db.prepare("SELECT session_id AS sessionId, id AS nodeId, label, kind, major, finding_ref AS findingRef FROM chain_nodes WHERE mode = ? AND finding_ref != ''").all(String(mode));
+	const idx = {};
+	for (const r of rows) (idx[`${r.sessionId}:${r.findingRef}`] ||= []).push(r);
+	return idx;
 }
 
 export function clearChain(st, sessionId, mode) {
@@ -372,15 +384,25 @@ export function saveCap(st, { id, mode, kind, cat, item, label, desc = "", templ
 	} else {
 		const c = clean(cat, 60);
 		if (!CAP_KEY_RE.test(c)) throw new Error(`所属主类 key 非法：${c || "(空)"}`);
+		let oldCat = "";
 		if (existing) {
 			if (existing.kind !== "item") throw new Error("类型不可变更");
-			itemKey = st.db.prepare("SELECT item FROM capabilities WHERE id = ?").get(rowId).item;
+			const prevRow = st.db.prepare("SELECT cat, item FROM capabilities WHERE id = ?").get(rowId);
+			itemKey = prevRow.item;
+			oldCat = prevRow.cat;
 		} else {
 			const n = st.db.prepare("SELECT COUNT(*) AS n FROM capabilities WHERE mode = ? AND kind = 'item'").get(m).n;
 			if (n >= CAPS_LIMIT.items) throw new Error(`自定义子类已达上限 ${CAPS_LIMIT.items}`);
 			itemKey = capKey();
 		}
 		catKey = c;
+		// 换主类：既有终态行随迁（旧 cat/item → 新 cat/item），矩阵不留幽灵行；
+		// 新 key 已有终态时（UPDATE OR IGNORE 落空）删旧行去重——状态以新格子现存为准。
+		if (oldCat && oldCat !== catKey) {
+			const oldKey = `${oldCat}/${itemKey}`, newKey = `${catKey}/${itemKey}`;
+			st.db.prepare("UPDATE OR IGNORE coverage SET key = ? WHERE mode = ? AND key = ?").run(newKey, m, oldKey);
+			st.db.prepare("DELETE FROM coverage WHERE mode = ? AND key = ?").run(m, oldKey);
+		}
 	}
 	const rid = rowId || ("c-" + Date.now().toString(36) + Math.random().toString(36).slice(2, 8));
 	st.db.prepare(

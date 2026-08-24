@@ -17,4 +17,5 @@
 - 变体登记：R1（PS5/PS7 字段路线）与 R2（Win32 数据补丁）为互补形态；
   内存 patch 类（改 AmsiScanBuffer 字节）不在本实验范围（见 refs/techniques/
   AMSI_BYPASS_TECHNIQUES.md，完整性校验对抗面差异）。
+- 验证记录：2026-08-20 ps1 语法检查未执行（本机无 pwsh，如实标注）；运行验证待
   Windows PowerShell 判定环境。

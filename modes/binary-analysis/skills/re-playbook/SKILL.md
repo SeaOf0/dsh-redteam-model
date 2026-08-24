@@ -163,7 +163,7 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 - 脚本模板：frida-trace 起步，按需写 hook 脚本；每次 trace 保留输出文件并入证据。
 - 注意对抗性样本的反调试/反 hook 检测，trace 结果与实际代码路径相互印证。
 
-## angr 符号执行分工（工具待装）
+## angr 符号执行分工
 
 - 适用场景：路径探索（找到达危险调用的输入）、约束求解（还原加密/校验逻辑）、去混淆辅助。
 - 与静态分析互补：angr 解决「哪条路径可达」，静态分析解决「这条路径干什么」。
@@ -189,11 +189,13 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 - 成果单位=**落盘产物**（不是漏洞/结论）：脱壳还原二进制、反编译源码、提取的配置/密钥/载荷/C2、
   修复样本、脚本工具、IOC 集、YARA 规则——每产出一个登记一行。
 - 字段映射：title=产物名、type=产物类型（脱壳还原二进制/反编译源码/提取配置/提取密钥(Key)/
-  C2 配置/提取载荷/修复样本/脚本工具/IOC 集/YARA 规则）、target=产物位置（工作区路径）、
-  sampleHash=关联原样本、family/packer=所属、chain=来源链路（怎么产出的）、
+  C2 配置/提取载荷/修复样本/脚本工具/IOC 集/YARA 规则——词干与词表一致）、target=产物位置（工作区路径）、
+  sampleHash=关联原样本 SHA256（**每产物必填**——成果页按样本分组依赖它，受理登记时已有）、family/packer=所属、
+  chain=还原/产出链路（怎么产出的）、impact=能力与危害、
   poc=使用/复现方法、description=内容说明、iocs/detectionRule 按需。
-- 状态=资产语义（待验证/有效·已验证/已失效/已交付）；复核后 `redteam_finding_update` 回写；
-  作废产物 `redteam_finding_delete`。页面按样本分组（同一样本的产物聚合）。
+- 状态=分析语义三态：pending=分析中 / suspect=疑似（还原三验未全过或静态线索未到定论强度——
+  合法中间态，不强行升格）/ verified=已定论（字节/指令级证据支撑）；复核后 `redteam_finding_update` 回写；
+  作废产物 `redteam_finding_delete`。页面按样本分组（sampleHash 聚合同一样本的全部产物，跨会话同样本聚合）。
 
 ## 报告模板
 
@@ -379,9 +381,15 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
 
 - 「AttackAtlas」标签页按本手册结构展示——五分区（分诊与登记/分析维度/形态与还原/场景作战卡/交付与收口）× 18 战术列 × 六阶段带（登记分诊→静态→动态→还原破解→假设循环覆盖→IOC 报告）× 五样本形态（Windows/Linux/macOS/移动/固件硬件）。
-- **分析维度覆盖的 UI 面**：analysis-coverage.md 每维度落终态时同步调 `redteam_coverage_mark`（已分析有结论=tested-found、已分析未见异常=tested-clear、不适用附原因=na、未分析收窄=budget-stop）；假设台账终态同规则；阶段推进调 `redteam_coverage_stage`（s1…s6）。样本（sha256/形态）调 `redteam_atlas_target` 登记，多样本批次逐样本 target 参数回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。阶段门 stage_gate 判定 PASS 后，对应阶段及其此前阶段自动回写 done（级联点亮）；无门阶段可手动 redteam_coverage_stage 推进补记。登记 finding 时 type 填判定/形态（家族/壳/exe/dll/so/脚本…，等级字段不展示可省略）；type 若与图谱分析维度子项同名可自动点亮对应格。
+- **分析维度覆盖的 UI 面**：analysis-coverage.md 每维度落终态时同步调 `redteam_coverage_mark`（已分析有结论=tested-found、已分析未见异常=tested-clear、不适用附原因=na、未分析收窄=budget-stop）；假设台账终态同规则；阶段推进调 `redteam_coverage_stage`（s1…s6）。样本（sha256/形态）调 `redteam_atlas_target` 登记，多样本批次逐样本 target 参数回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。阶段门 stage_gate 判定 PASS 后，对应阶段及其此前阶段自动回写 done（级联点亮）；无门阶段可手动 redteam_coverage_stage 推进补记。登记 finding 时 type 填产物类型词表（同成果页登记节——图谱自动点亮已按产物/判定/形态词建别名桥：脱壳还原二进制→脱壳格、exe/dll→Windows PE 原生样本格、家族识别→家族快筛格等）；等级字段不展示可省略。
 
 ### 分析维度覆盖规则（防「看了字符串就交卷」）
+
+- **战役记忆沉淀（binary 特化）**：家族特征（特征串/壳与脱壳 OEP 手法/配置解密算法/YARA 命中串）
+  验证有效后即时 `campaign_memory_write`（kind=fingerprint，target_kind=家族名——多样本批次与
+  家族快筛路由直接消费）；样本特有结论（非家族共性）target_kind 填样本哈希前 8 位——同目录
+  多样本时召回注入按目标标注、适用性按目标自判不串场；开战/换家族先 `campaign_memory_search`
+  检索历史家族指纹。
 
 - **分析维度清单固定**（来源 refs F 域手册分类）：静态三视角（汇编/伪代码/调用图+字符串）、
   动态行为面（进程/文件/注册表/网络/持久化）、内存分析、对抗性构造（反调试/反 hook/

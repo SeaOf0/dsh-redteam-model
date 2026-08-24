@@ -257,10 +257,26 @@ export const TAXONOMIES = {
 			{ id: "ai", label: "AI 应用" }
 		],
 		formCategories: {
-			external: ["recon", "entry-vec", "cred-line", "foothold"],
-			intranet: ["host-collect", "inet-recon", "svc-line", "passive-cred", "win-chain", "linux-line", "lateral", "privesc", "hv-target", "pivot"],
+			external: ["recon", "entry-vec", "cred-line", "foothold", "phishing"],
+			intranet: ["host-collect", "inet-recon", "svc-line", "passive-cred", "win-chain", "linux-line", "lateral", "privesc", "hv-target", "pivot", "persistence", "trace-mgmt", "defense-verify"],
 			domain: ["host-collect", "passive-cred", "win-chain", "lateral", "domain-attack", "hv-target"],
 			ai: ["ai-redteam"]
+		},
+		/** 战果词别名（attack-defense 专属）：成果登记的 type 是「拿到了什么」的结果名词，体系标签是
+		 *  「怎么打」的技法词——此表桥接两者，resolveKey 顶层消费，mark/sync/自动点亮全入口同享。 */
+		aliases: {
+			"入口点": "entry-vec",
+			"数据读取成果": "hv-target",
+			"凭据·密码本": "cred-line",
+			"哈希集": "win-chain",
+			"哈希集(hash map)": "win-chain",
+			"横向立足点": "lateral",
+			"域控成果": "domain-attack",
+			"Webshell 部署": "foothold",
+			"持久化项": "persistence",
+			"内网资产": "host-collect",
+			"检测gap": "defense-verify",
+			"检测缺口": "defense-verify"
 		},
 		zones: [
 			{ id: "external", label: "外网打点" },
@@ -515,6 +531,24 @@ export const TAXONOMIES = {
 			exfil: { label: "外传/扩散", fill: "rgba(255,159,67,.14)", stroke: "#ff9f43" },
 			other: { label: "其他", fill: "rgba(93,107,128,.14)", stroke: "rgba(141,153,171,.6)" }
 		},
+		aliases: {
+			// 成果页 type 双轴桥：persona 链节点八词（执行/影响两词 label contains 已正确命中不重复建；
+			// 其他=有意无格）+ 自然事件词。横向/失陷/IOC/时间线/数据外传/提权 六词为纠偏——
+			// 裸 contains 会错位到勒索卡前兆/云实例/收敛格/报告格/双勒索格/webshell 伴随格。
+			"入口点": "card-vuln/exp-anchor",
+			"持久化": "compromise-check", "持久化后门": "compromise-check/backdoor",
+			"横向": "spread-loop/five-dim", "横向移动": "spread-loop/five-dim",
+			"数据外传": "card-forensics/rebuild",
+			"处置清理": "remediation/checklist",
+			"勒索病毒": "card-ransom", "勒索软件": "card-ransom",
+			"挖矿木马": "compromise-check/backdoor", "木马": "compromise-check/backdoor",
+			"日志清除": "card-forensics/rebuild", "痕迹清除": "card-forensics/rebuild",
+			"暴力破解": "card-live/chain-ser", "弱口令": "card-live/chain-ser",
+			"凭据窃取": "spread-loop/five-dim",
+			"隧道": "net-forensics/tunnel-detect",
+			"提权": "chain-rebuild", "失陷": "compromise-check", "入侵": "compromise-check",
+			"IOC": "ioc-enrich", "时间线": "timeline"
+		},
 		categories: [
 			{
 				id: "evidence-save", label: "证据保全", desc: "开工先只读取证", zone: "preserve",
@@ -756,6 +790,38 @@ export const TAXONOMIES = {
 			{ id: "native", label: "云原生战场" },
 			{ id: "close", label: "收口与检测" }
 		],
+		/** 登记词别名（cloud-security 专属）：结果词（路径类型/AK-SK 族/报告词）与体系技法标签的桥接
+		 *  ——同 ad/binary/code-audit 别名机制；12 官方路径类型词全中+破 IAM/OIDC 歧义。 */
+		aliases: {
+			// 官方 12 路径类型词（playbook 登记指导）
+			"凭证泄露利用": "entry-disc",
+			"元数据服务": "entry-disc/imds", "元数据接管": "entry-disc/imds",
+			"对象存储": "deep-dig/bucket-public", "存储桶": "deep-dig/bucket-public",
+			"桶接管": "deep-dig/bucket-public", "对象桶接管": "deep-dig/bucket-public",
+			"云数据库": "loot-order/data-face", "RDS": "loot-order/data-face",
+			"权限提升": "deep-dig/iam-deep", "IAM 提权": "deep-dig/iam-deep", "IAM 权限提升": "deep-dig/iam-deep",
+			"RAM 提权": "deep-dig/iam-deep", "角色提权": "deep-dig/iam-deep", "策略提权": "deep-dig/iam-deep", "权限链": "deep-dig/iam-deep",
+			"K8s 集群": "k8s-line", "集群提权": "k8s-line/rbac",
+			"CI-CD": "cicd-line",
+			"持久化": "persist-cloud", "持久化后门": "persist-cloud",
+			// AK/SK 泄露族（此前全变体不中）
+			"AK/SK": "entry-disc/hardcoded-first", "AKSK": "entry-disc/hardcoded-first",
+			"AK 泄露": "entry-disc/hardcoded-first", "AK泄露": "entry-disc/hardcoded-first",
+			"SK 泄露": "entry-disc/hardcoded-first", "密钥泄露": "entry-disc/hardcoded-first",
+			"凭据泄露": "entry-disc/hardcoded-first", "AccessKey 泄露": "entry-disc/hardcoded-first",
+			"AccessKey": "entry-disc/hardcoded-first", "前端泄露": "entry-disc/hardcoded-first",
+			// 接管/信任/收口词
+			"子账号接管": "loot-order/ctrl-face", "账号接管": "loot-order/ctrl-face",
+			"IAM": "perm-recon",
+			"OIDC": "trust-lateral/oidc", "跨云": "trust-lateral",
+			"Secret 泄露": "loot-order/secret-face",
+			"配置缺陷": "deep-dig", "配置错误": "deep-dig",
+			"制品投毒": "cicd-line/artifact", "快照共享": "snapshot-line/snap-copy",
+			"准入绕过": "k8s-line/admission", "Lambda": "serverless/fn-perm",
+			"STS": "cred-verify/whoami",
+			"日志缺失": "detect-gap-cloud/audit-log", "监控缺失": "detect-gap-cloud/baseline",
+			"数据外传": "loot-order/exfil"
+		},
 		stateLabels: { "tested-found": "走通·有战果", "tested-clear": "执行·未走通", na: "不适用（附原因）", "budget-stop": "未尝试·让位/预算" },
 		stateShort: { found: "走通", clear: "未走通", na: "不适用", budget: "让位" },
 		chain: true,
@@ -803,7 +869,8 @@ export const TAXONOMIES = {
 					{ id: "identity-face", label: "身份面（能造 key/角色）", pb: "§3" },
 					{ id: "ctrl-face", label: "控制面（控制台接管）", ref: "knowledge/metadata-service-endpoints.md" },
 					{ id: "secret-face", label: "密钥面（Secrets/SSM/KMS）", pb: "§3" },
-					{ id: "data-face", label: "数据面（桶/库/快照）", pb: "§3" }
+					{ id: "data-face", label: "数据面（桶/库/快照）", pb: "§3" },
+					{ id: "exfil", label: "数据外传（exfil/回传通道）", pb: "§3" }
 				]
 			},
 			{
@@ -957,6 +1024,28 @@ export const TAXONOMIES = {
 			mobile: ["sample-reg","triage-route","static-view","dyn-behavior","adversarial","unpack-line","obfuscation","crack-line","instrument","mobile-card","platform-card","ioc-rule","ledger-collect"],
 			firmware: ["sample-reg","triage-route","static-view","unpack-line","obfuscation","crack-line","instrument","firmware-card","platform-card","exploit-line","ioc-rule","ledger-collect"]
 		},
+		/** 登记词别名（binary-analysis 专属）：产物/判定/形态词（结果名词）与体系技法标签的桥接
+		 *  ——同 ad/code-audit 别名机制；type=产物类型词表时自动点亮对应产出线格。 */
+		aliases: {
+			// 形态/格式词 → 平台特化格（原生样本专属格 pe-native/elf-native）
+			"exe": "platform-card/pe-native", "dll": "platform-card/pe-native", "PE": "platform-card/pe-native",
+			"so": "platform-card/elf-native", "ELF": "platform-card/elf-native",
+			"Mach-O": "platform-card/macos", "go": "platform-card/gorust", "rust": "platform-card/gorust",
+			"UPX": "unpack-line/pack-id", "VMP": "unpack-line/pack-id", "加壳": "unpack-line/pack-id",
+			// 家族/分诊词
+			"家族识别": "triage-route/family", "免杀家族": "triage-route/family", "样本": "triage-route",
+			// 分析形态主词
+			"静态分析": "static-view", "动态分析": "dyn-behavior", "行为分析": "dyn-behavior", "行为能力": "dyn-behavior", "挖矿": "dyn-behavior",
+			// 产物类型十词（persona/playbook 官方词表）
+			"脱壳还原二进制": "unpack-line/unpack", "脱壳还原": "unpack-line/unpack",
+			"反编译源码": "static-view/pseudo", "提取配置": "obfuscation/downloader", "提取载荷": "obfuscation/downloader",
+			"提取密钥(Key)": "crack-line/key", "密钥提取": "crack-line/key", "Key恢复": "crack-line/key",
+			"C2 配置": "dyn-behavior/net", "C2提取": "dyn-behavior/net", "C2": "dyn-behavior/net",
+			"修复样本": "unpack-line", "脚本工具": "crack-line/algo", "IOC 集": "ioc-rule",
+			// 结论类型词
+			"恶意定性": "ledger-collect", "算法破解": "crack-line", "后门确认": "dyn-behavior/persist", "后门": "dyn-behavior/persist",
+			"诱饵排除": "ledger-collect", "固件后门": "firmware-card/fw", "rootkit": "platform-card/kernel"
+		},
 		zones: [
 			{ id: "triage", label: "分诊与登记" },
 			{ id: "dims", label: "分析维度" },
@@ -1073,7 +1162,7 @@ export const TAXONOMIES = {
 			{
 				id: "mobile-card", label: "移动样本卡", desc: "app 壳与脱壳还原", zone: "cards",
 				items: [
-					{ id: "apk", label: "APK 逆向", pb: "移动样本（refs mobile/apk-reverse）" },
+					{ id: "apk", label: "APK 逆向", ref: "mobile/apk-reverse/SKILL.md" },
 					{ id: "dump", label: "脱壳还原（dump apk pack）", pb: "脱壳与还原" },
 					{ id: "app-shell", label: "app 壳对抗", pb: "脱壳与还原" }
 				]
@@ -1081,13 +1170,15 @@ export const TAXONOMIES = {
 			{
 				id: "platform-card", label: "平台特化卡", desc: "按运行时与语言", zone: "cards",
 				items: [
-					{ id: "dotnet", label: ".NET 样本", pb: "平台特化（refs platform/dotnet-reverse）" },
-					{ id: "gorust", label: "Go/Rust 变种（免杀家族常见）", pb: "平台特化（refs platform/go-rust-reverse）" },
-					{ id: "js", label: "JS 样本/混淆", pb: "平台特化（refs platform/js-reverse）" },
-					{ id: "macos", label: "macOS 样本", pb: "平台特化（refs platform/macos-reverse）" },
-					{ id: "protocol", label: "协议逆向", pb: "平台特化（refs platform/protocol-reverse）" },
+					{ id: "pe-native", label: "Windows PE 原生样本", ref: "static/reverse-engineering-binary.md" },
+					{ id: "elf-native", label: "ELF 原生样本（Linux）", ref: "static/reverse-engineering-binary.md" },
+					{ id: "dotnet", label: ".NET 样本", ref: "platform/dotnet-reverse/SKILL.md" },
+					{ id: "gorust", label: "Go/Rust 变种（免杀家族常见）", ref: "platform/go-rust-reverse/SKILL.md" },
+					{ id: "js", label: "JS 样本/混淆", ref: "platform/js-reverse/SKILL.md" },
+					{ id: "macos", label: "macOS 样本", ref: "platform/macos-reverse/SKILL.md" },
+					{ id: "protocol", label: "协议逆向", ref: "platform/protocol-reverse/SKILL.md" },
 					{ id: "kernel", label: "内核 0day 挖掘", ref: "methodology/kernel-0day-hunting.md" },
-					{ id: "browser", label: "浏览器/V8 样本", pb: "平台特化" }
+					{ id: "browser", label: "浏览器/V8 样本", ref: "platform/browser-extension-reverse/SKILL.md" }
 				]
 			},
 			{
@@ -1156,6 +1247,17 @@ export const TAXONOMIES = {
 			{ id: "cards", label: "场景审计卡" },
 			{ id: "closure", label: "确证与交付" }
 		],
+		/** 代审登记词别名（code-audit 专属）：playbook 官方 type 词与近义词→格子（值支持 cat/item） */
+		aliases: {
+			"命令注入": "sink-core/cmd",
+			"文件包含": "sink-core/file-rw",
+			"硬编码前端绕过": "rce-main/hardcoded-rce",
+			"fastjson": "rce-main/deep-deser",
+			"shiro": "rce-main/deep-deser",
+			"log4j": "rce-main/cve-patterns",
+			"struts2": "rce-main/cve-patterns",
+			"weblogic": "rce-main/cve-patterns"
+		},
 		stateLabels: { "tested-found": "已审·有 finding", "tested-clear": "已审·无 finding", na: "N-A（附原因）", "budget-stop": "未完成（预算）" },
 		stateShort: { found: "有finding", clear: "无finding", na: "N-A", budget: "未完成" },
 		categories: [
@@ -1198,7 +1300,7 @@ export const TAXONOMIES = {
 					{ id: "xxe", label: "XXE", ref: "README.md" },
 					{ id: "ssti", label: "SSTI/模板", ref: "README.md" },
 					{ id: "path", label: "路径穿越", ref: "README.md" },
-					{ id: "el", label: "表达式注入", ref: "lang/code-audit-java.md" },
+					{ id: "el", label: "表达式注入", ref: "README.md" },
 					{ id: "ldap", label: "LDAP", pb: "sink 大表" },
 					{ id: "xpath", label: "XPath", pb: "sink 大表" },
 					{ id: "crypto-mis", label: "密码学实现误用", ref: "crypto/crypto-misuse-audit.md" }
@@ -1481,6 +1583,14 @@ export const TAXONOMIES = {
 			jeopardy: ["mod-core","mod-eco","triage-solve","card-jeopardy","strategy","discipline","ledger-writeup"],
 			awd: ["mod-core","mod-eco","card-awd","strategy","discipline","ledger-writeup"],
 			koth: ["mod-core","mod-eco","card-koth","strategy","discipline","ledger-writeup"]
+		},
+		aliases: {
+			// 成果页 type=题目模块（主线词）→ 格子；web/pwn/supply 等短词 label 归一后无词边界、裸 id 不参与全局解析，靠别名直连
+			"web": "mod-core/web", "pwn": "mod-core/pwn", "reverse": "mod-core/reverse", "rev": "mod-core/reverse",
+			"crypto": "mod-core/crypto", "misc": "mod-core/misc", "forensics": "mod-core/forensics",
+			"ai-ml": "mod-core/ai-ml", "aiml": "mod-core/ai-ml", "osint": "mod-core/osint", "malware": "mod-core/malware",
+			"mobile": "mod-eco/mobile", "ad-domain": "mod-eco/ad-domain", "ad": "mod-eco/ad-domain", "域": "mod-eco/ad-domain",
+			"cloud": "mod-eco/cloud", "supply": "mod-eco/supply", "supply-chain": "mod-eco/supply", "供应链": "mod-eco/supply"
 		},
 		zones: [
 			{ id: "modules", label: "题型模块" },

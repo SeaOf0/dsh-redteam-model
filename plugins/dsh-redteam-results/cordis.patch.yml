@@ -1,6 +1,6 @@
-# dsh-redteam-results：会话隔离的 redteam 成果登记（六模式）。
+# dsh-redteam-results：会话隔离的 redteam 成果登记（九模式）。
 # 宿主平面（全模式可见）：模型经 redteam_finding_register/update/delete 登记本会话成果，
-# Web 会话标签页「redteam 成果」经 loopback RPC 读写同一份会话数据。
+# Web 会话标签页「redteam 成果」经自注册 loopback Web 通道读写同一份会话数据。
 - insert:
     - id: dsh-redteam-results
       name: '@dsh-external/dsh-redteam-results'

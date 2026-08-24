@@ -143,5 +143,7 @@ java -cp "$JAVA_HOME/lib/tools.jar:." Injector <pid>
    文件描述符。
 
 - 判定表（本地实测后填）：| 检测面 | 结果 | 原文行 |
+- 构建/语法验证记录：2026-08-20 未执行编译——本机 javac 1.8 与 tools.jar 可用
+  （/Library/Java/JavaVirtualMachines/jdk-1.8.jdk/Contents/Home/lib/tools.jar），但无
   javassist 依赖，且 HookAgent/Patch 需真实容器类方可运行；代码块仅人工复核，
   运行时验证未做，判定表留待本地实测后填。

@@ -19,6 +19,8 @@ Two setup strategies depending on your workflow:
 
 ### Pre-install (recommended before competitions)
 
+> 本部署注：本仓库不随附 `scripts/` 安装脚本（下述命令与链接仅作参考清单）；工具缺装走三级兜底提示，绝不自动安装。
+
 Use the central installer entrypoint:
 
 ```bash

@@ -7,13 +7,13 @@
 > 即 `skills/audit-playbook/`）；refs/ 相对 base 目录 = `../../refs/`。
 > 覆盖面：六语言审计手册 / Java 与 PHP 专项审计技能集（含 semgrep 规则）/ 组件漏洞识别 /
 > 供应链与密钥 / 密码学实现审计 / 容器与 K8s 配置 / SAST·DAST 方法论 / AI 与 Agent 审计 /
-> 定级标准参照（内置 Fortify 分类学 + ChanziSAST 规则知识库 + 开源规则集）/ 趋势。共 226 篇 md + 1482 条 semgrep 规则（402 条自建 + 1080 条开源）。
+> 定级标准参照（内置 Fortify 分类学 + ChanziSAST 规则知识库 + 开源规则集）/ 趋势。共 226 篇 md + 1483 条 semgrep 规则（403 条自建[Java 402+PHP 1] + 1080 条开源）。
 
 ## 快速路由（按任务类型找目录）
 
 | 任务类型 | 目录 |
 |---|---|
-| 按语言的全量审计 | `lang/`（6 篇总手册） |
+| 按语言的全量审计 | `lang/`（7 篇总手册：六语言 + dotnet 反序列化） |
 | Java/前端深度专项（逐漏洞类/框架/流程/规则） | `lang/java-audit/`（27 篇 + semgrep-rules 14 条） |
 | PHP 深度专项（逐漏洞类/框架/流程） | `lang/php-audit/`（39 篇） |
 | 已知漏洞组件识别（fastjson/shiro/log4j/struts2/weblogic） | `components/`（5 篇） |
@@ -168,24 +168,24 @@ php-evidence-point-ids.md（证据点编号——调用链引用规范的同构�
 
 ## 来源与说明
 
-- **lang/ 六篇**：，按原文收录。
+- **lang/ 七篇（六语言总手册 + dotnet-deser-audit）**：按原文收录。
 - **sca/devsecops-*、methodology/devsecops-***：内容整理收录；
-  **config/** 。
+  **config/** 内容整理收录。
 - **lang/java-audit/**：内容整理收录（框架协议+references+semgrep 规则，
   未携带其 scripts/ 与 requirements）与 java-audit-skills（9 个子技能 + shared 3 篇），
   按原文收录；semgrep-rules 为可直接使用的 yaml 规则。
-- **lang/php-audit/**：，按原文收录。
+- **lang/php-audit/**：按原文收录。
 - **components/**：渗透侧组件利用技能，取识别视角。
 - **methodology/evidence-first-audit、coverage 与 sca/dependency-confusion、insecure-scm**：
   内容整理收录。
-- **crypto/**：。
+- **crypto/**：按原文收录。
 - **standards/fortify-kingdom-reference.md**：playbook 自建——把「Fortify 规则体系
   作标准参考」的业务逻辑改为 preset 内置实体：分类学源自公开的 Fortify Taxonomy
   （Seven Pernicious Kingdoms 体系），CWE 映射取自 MITRE 公开目录，**不含任何 Fortify
   版权规则文件**；外部 Fortify 安装降为可选增强参照。
-- **ai/**：与 pentest/refs/ai/ 同源复制（开源安全知识库 全六篇）——
+- **ai/**：与 pentest/refs/ai/ 同源复制（开源安全知识库，全七篇含 ai-mcp-audit）——
   为保证单预设分发自包含，接受整体分发时的重复。
-- **trends/**：playbook 自建（自建），条目联网核实并附来源链接。
+- **trends/**：playbook 自建，条目联网核实并附来源链接。
 - 本目录随预设打包分发；第三方来源文件的许可注记见各 README 与 semgrep-oss/README（开源规则集合规快照）。
 - 与 playbook 的关系：速查卡（playbook）→ 深度手册（refs/）→ 证据落盘（任务工作区，见
   ecosystem-cooperation 技能「产物落盘与交接约定」）。

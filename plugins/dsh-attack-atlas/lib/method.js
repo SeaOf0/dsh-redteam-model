@@ -164,7 +164,9 @@ function stepLine(taxonomy, node) {
 		let hint = "";
 		if (loc.item.ref) {
 			const p = loc.item.ref.startsWith("pentest:") ? `pentest refs/${loc.item.ref.slice(8)}` : `refs/${loc.item.ref}`;
-			hint = ` —— 知识手册：${p}（开测前先读对应验证姿势）`;
+			hint = loc.item.ref === "README.md"
+				? ` —— 知识手册：${p}（按目标语言快速路由到对应语言手册后再读验证姿势——语言类格子不预设语言）`
+				: ` —— 知识手册：${p}（开测前先读对应验证姿势）`;
 		} else if (loc.item.pb) hint = ` —— 打法出处：本模式 playbook ${loc.item.pb}`;
 		else if (loc.item._cap?.template) hint = ` —— 用户自定义打法模板：\n    ${loc.item._cap.template.split("\n").join("\n    ")}`;
 		else if (loc.item._cap) hint = " —— 用户自定义步骤（未附模板，按标签意图与会话上下文执行）";

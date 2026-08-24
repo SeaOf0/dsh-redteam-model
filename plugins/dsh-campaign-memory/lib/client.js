@@ -8,18 +8,28 @@ var React = require("react");
 var useState = React.useState, useEffect = React.useEffect, useRef = React.useRef;
 
 var dshCsrf = {};
-/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。 */
+/** CSRF token 懒加载（同源 GET /csrf，跨源页面读不到）；POST 回带 x-dsh-csrf 头。
+ *  token 缓存遇 403 即失效重取一次——宿主重启轮换 token 后已开标签页自愈，不再永久 403。 */
 function csrfOf(base) {
 	if (!dshCsrf[base]) dshCsrf[base] = fetch(base + "/csrf").then(function (r) { return r.json(); }).then(function (r) { return r && r.token ? r.token : ""; }).catch(function () { return ""; });
 	return dshCsrf[base];
 }
+function postJson(tok, endpoint, payload) {
+	return fetch("/dsh-campaign-memory/" + endpoint, {
+		method: "POST",
+		headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
+		body: JSON.stringify(payload || {})
+	});
+}
 function api(endpoint, payload) {
 	return csrfOf("/dsh-campaign-memory").then(function (tok) {
-		return fetch("/dsh-campaign-memory/" + endpoint, {
-			method: "POST",
-			headers: tok ? { "content-type": "application/json", "x-dsh-csrf": tok } : { "content-type": "application/json" },
-			body: JSON.stringify(payload || {})
-		}).then(function (r) { return r.json(); });
+		return postJson(tok, endpoint, payload).then(function (r) {
+			if (r.status === 403) {
+				delete dshCsrf["/dsh-campaign-memory"];
+				return csrfOf("/dsh-campaign-memory").then(function (tok2) { return postJson(tok2, endpoint, payload); }).then(function (r2) { return r2.json(); });
+			}
+			return r.json();
+		});
 	});
 }
 
@@ -190,7 +200,7 @@ function MemoryView(props) {
 									if (expanded[0] === m.id) { setExpanded(""); return; }
 									setExpanded(m.id);
 									if (!fullOf[0][m.id] && String(m.content).includes("…")) {
-										api("memory.get", { id: m.id }).then(function (r) {
+										api("memory.get", { id: m.id, peek: true }).then(function (r) { // peek=纯浏览不记账（查看不是采用）
 											if (r && r.memory) { var nx = Object.assign({}, fullOf[0]); nx[m.id] = r.memory.content; setFull(nx); }
 										}).catch(function () {});
 									}

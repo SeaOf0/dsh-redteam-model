@@ -25,7 +25,7 @@
 | 反编译器/调试器使用 | `tools/`（5 个技能目录） |
 | 特定平台/格式的逆向 | `platform/`（7 个技能目录） |
 | Android/iOS 逆向与脱壳 | `mobile/`（apk/mobile/android-reverse + 加固脱壳专项） |
-| 方法论：对抗/还原/对比/1day | `methodology/`（8 个技能目录 + 5 篇，含 kernel-0day-hunting 内核找洞方法论） |
+| 方法论：对抗/还原/对比/1day | `methodology/`（8 个技能目录 + 7 篇，含 kernel-0day-hunting 内核找洞方法论） |
 | 固件分析 | `firmware/`（2） |
 | 二进制漏洞研究（pwn） | `pwn/`（stack/heap/kernel 3 篇 + SKILL） |
 | 漏洞挖掘与利用开发（fuzz/崩溃/缓解/边界） | `exploit-dev/`（10 篇：fuzzing·课程、利用开发·路线图、崩溃分析、Windows 缓解、Windows 边界、漏洞类别、基础利用、shellcode） |
@@ -58,7 +58,7 @@
 | ida-reverse/ | IDA 逆向技能（含 ida-mcp-cheatsheet——IDA 的 MCP 桥接速查，配合 trends） | IDA 可用时 （2026-08-17 补齐 scripts/open.ps1|start.ps1：IDA 启动辅助）
 | ida-ai-reversing/ | IDA AI 逆向工作流（397 行） | IDA + AI 协作 |
 | ida-plugin-ecosystem.md | IDA 插件生态 2025-2026（IDAPython/MCP 桥接/AI 插件/经典插件/新插件） | IDA 插件/脚本/AI 协作 |
-| x64dbg-reversing/ | x64dbg 动态调试手册（645 行，MCP 命令速查）+ references/unpacking-oep-iat.md（OEP 方法体系 + IAT 重建对比 + B1 三验判据）+ references/x64dbg-debugging-and-plugins.md（断点方法论/插件生态/脚本系统） | Windows 样本动态调试/脱壳 |
+| x64dbg-reversing/ | x64dbg 动态调试手册（652 行，MCP 命令速查）+ references/unpacking-oep-iat.md（OEP 方法体系 + IAT 重建对比 + B1 三验判据）+ references/x64dbg-debugging-and-plugins.md（断点方法论/插件生态/脚本系统） | Windows 样本动态调试/脱壳 |
 | ghidra-reverse/ | Ghidra 逆向（含 ghidra-cheatsheet） | Ghidra 可用时 |
 | ghidra-mcp-workflow.md | Ghidra headless 脚本（analyzeHeadless）+ MCP 联动（GhidraMCP/ReVa） | Ghidra 批量/无 GUI/AI 协作 |
 | radare2/ | radare2 逆向（含 cheatsheet，129 行） | r2 命令行逆向（含 scripts/recon.sh|.ps1：r2 分诊速启）
@@ -76,7 +76,7 @@
 | thick-client/ | 胖客户端逆向（thick-client-checklist） | Electron/Qt/原生客户端 |
 | browser-extension-reverse/ | 浏览器扩展逆向（extension-analysis 完整路线：manifest→background/content script→凭据流量→去混淆） | 恶意/可疑扩展 |
 
-### mobile/（移动逆向与脱壳，100 篇）
+### mobile/（移动逆向与脱壳，含 v1/v2 历史包计 117 篇）
 
 | 目录/文件 | 内容 | 何时读 |
 |---|---|---|
@@ -104,14 +104,15 @@ analysis-decision-framework（分析决策框架）——与预设证据标准�
 JS 系自定义 DSL/VM 解释器与风控引擎逆向：识别启发（IIFE+switch 分发/常量表）、
 opcode 提取分类、运行时 VM 状态捕获——js-reverse 去混淆之外的 VM 型混淆专项。
 
-### methodology/（方法论与对抗，9 目录 + 6 篇）
+### methodology/（方法论与对抗，8 目录 + 7 篇）
 
 | 目录/文件 | 内容 | 何时读 |
 |---|---|---|
-| reverse-engineering/ | 逆向总纲（24 篇：ai-assisted-re / ollvm-deobfuscation / nonpe-format-cookbook / re-agent-workflow + 扩展 20 篇——anti-analysis、elf-analysis、kernel-driver-reverse、go-reverse、languages*、patterns*、platforms*、tools*、crypto-decode-tools、awesome-re-resources 等；本轮补 native-vm-devirt（VMProtect/Themida devirt）、symbolic-execution-deep（angr/unicorn 深度）、symbol-recovery（符号恢复新法）） | 开工总入口 |
+| reverse-engineering/ | 逆向总纲（26 篇：ai-assisted-re / ollvm-deobfuscation / nonpe-format-cookbook / re-agent-workflow + 扩展 20 篇——anti-analysis、elf-analysis、kernel-driver-reverse、go-reverse、languages*、patterns*、platforms*、tools*、crypto-decode-tools、awesome-re-resources 等；本轮补 native-vm-devirt（VMProtect/Themida devirt）、symbolic-execution-deep（angr/unicorn 深度）、symbol-recovery（符号恢复新法）） | 开工总入口 |
 | malware-analysis/ | 恶意分析技能（anti-analysis-techniques 反分析对抗、sandbox-orchestration 沙箱编排+CAPE debugger 实操、yara-sigma-rules、memory-forensics-volatility Volatility3 体系） | 恶意样本全流程 |
 | software-cracking/ | 注册算法还原方法体系（SKILL.md：验证点定位→算法还原→keygen→补丁→网络验证绕过） | 逆向破解主线（key/算法/授权还原） |
 | malware-analysis-methodology.md | 恶意软件分析方法论（478 行） | 分析规划 |
+| kernel-0day-hunting.md | 内核 0day 找洞方法论（CVE 范本提炼） | 内核方向开工 |
 | malware-config-extraction.md | 主流恶意家族配置提取（Quasar/AsyncRAT/RedLine + Maco/rat-king-parser/cape-parsers） | RAT/Stealer 配置提取 |
 | downloader-chain-decoding.md | 下载器链逐级解码（宏/VBS/JS/PS1 多级下载器：olevba→-enc 解码→反射加载→多级 URL，衔接 Gate B0） | 宏/脚本下载器链分析 |
 | binary-diff/ | 二进制差异分析（含 prompt-template） | 版本对比找改动 |
@@ -155,17 +156,17 @@ opcode 提取分类、运行时 VM 状态捕获——js-reverse 去混淆之外�
 
 ## 来源与说明
 
-- **基础分析 8 篇（原 static/dynamic/behavior/detection）**：内容整理收录
-  F-恶意软件与逆向 分域（全量），按原文收录。
+- **基础分析 8 篇（原 static/dynamic/behavior/detection）**：内容整理收录，
+  覆盖 F-恶意软件与逆向分域全量，按原文收录。
 - **tools/、platform/、mobile/apk-reverse、mobile/mobile-reverse、methodology/ 四个目录
   （reverse-engineering、malware-analysis、binary-diff、patch-diff-exploit）、firmware/firmware-pentest**：
-  ，按原文收录。
+  按原文收录。
 - **mobile/android-reverse/**：内容整理收录，
   artifacts 样例产物未随附；references 内含任务 schema 与输入示例 JSON）。
-- **mobile/dumpapkpack/**：。
+- **mobile/dumpapkpack/**：内容整理收录，按原文收录。
 - **tools/ida-ai-reversing、tools/x64dbg-reversing**：内容整理收录。
 - **methodology 四篇单文件（malware-analysis-methodology / anti-debugging / binary-protection /
-  code-obfuscation-deobfuscation）**：。
+  code-obfuscation-deobfuscation）**：按原文收录。
 - **dynamic/macos-process-injection**：内容整理收录。
 - **methodology/reverse-engineering 补 20 篇、pwn/、hardware/、edr-bypass-re/**：内容整理收录
   reverse-skill-main 技能库，按原文收录；CTF-Sandbox-Orchestrator（93 篇

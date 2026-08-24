@@ -11,7 +11,7 @@ Linux）即可一键部署。
 | 组件 | 位置 | 作用 | 挂载平面 |
 |---|---|---|---|
 | 五专业模式 | `modes/{pentest,code-audit,binary-analysis,attack-defense,av-evasion}/` | persona/工具行/playbook/refs（自包含、零本机路径、工具平面检测制） | —（预设本体，链接即 modes/） |
-| CTF 解题模式 | `modes/ctf-solver/` | CTF 竞赛解题台：题面登记、模块路由（competition-* 技能）、解题循环、flag 台账与复盘；两门（board/flag） | —（预设本体，链接即 modes/） |
+| CTF 解题模式 | `modes/ctf-solver/` | CTF 竞赛解题台：题面登记、模块路由（内建 refs 118 篇）、解题循环、flag 台账与复盘；两门（board/flag） | —（预设本体，链接即 modes/） |
 | 云安全攻防模式 | `modes/cloud-security/` | 云平台（AWS/Azure/GCP/阿里云/腾讯云/华为云）+ 云原生（K8s/容器/Serverless/CI-CD）渗透：暴露面测绘、凭证利用、IAM 提权、元数据 SSRF、容器/K8s 逃逸、云检测缺口；七门（C1-C7） | —（预设本体，链接即 modes/） |
 | 应急溯源模式 | `modes/incident-response/` | Windows/Linux 应急响应与攻击溯源：日志分析、恶意程序排查（webshell/内存马/木马/病毒/勒索）、失陷调查、攻击链还原报告、持久化与隐藏后门排查；五门（I1-I5） | —（预设本体，链接即 modes/） |
 | redteam 主模式 | `modes/redteam/` | 泛化安全研究员：任务路由（浅做/专业路由/多任务协同）+ 台账 + 全局总结与下一步建议；无自建门（总控只消费专业模式 gate-pass）、无 refs 库（知识靠八 playbook） | —（预设本体，roster 置顶 order:0） |

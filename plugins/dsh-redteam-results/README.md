@@ -1,11 +1,11 @@
 # dsh-redteam-results
 
-会话隔离的 **redteam 成果**登记与展示：九预设共用的成果页插件。模型在会话内登记发现，Web 端每个会话的「redteam 成果」标签页实时查看本会话成果——严格按「会话 × 模式」隔离，跨会话互不可见。
+会话隔离的 **redteam 成果**登记与展示：九预设共用的成果页插件。模型在会话内登记发现，Web 端每个会话的「redteam 成果」标签页查看成果——存储严格按「会话 × 模式」双键隔离；模式页提供跨会话聚合视图（行带会话标注）+ 全局任务台账大屏。
 
 ## 组成
 
 - **模型工具**（宿主平面，九模式可见）：`redteam_finding_register` / `redteam_finding_update` / `redteam_finding_delete`——执行时自动取当前会话 id 与模式（`exec.agent.session`），模型不指定归属。
-- **会话标签页**（`conversation.view` slot）：与 会话/轨迹/EASM暴露面 并列的「redteam 成果」页。左侧九模式侧栏（研究员/渗透/审计/二进制/攻防/免杀/应急/云安全/CTF，带计数徽标）；**渗透测试页**已实现：
+- **会话标签页**（`conversation.view` slot）：与 会话/轨迹/EASM暴露面 并列的「redteam 成果」页。左侧九模式侧栏（研究员/渗透/审计/二进制/攻防/免杀/应急/云安全/CTF，带计数徽标）+「任务台账视图」跨会话大屏；九模式成果页全部实现（板式按模式分型，渗透示例）：
   - 上部统计：总数 + 严重/高危/中危/低危计数卡（点击即筛选）、占比堆叠条、状态分布 chips（待验证/已验证/误报/已修复，点击筛选）、类型分布 top；
   - 下部列表：一条漏洞一行（序号/名称/级别标签/状态/简介/时间），点击行手动展开详情（描述、测试过程与复现 EXP、证据引用、修复建议、复核注记）；分页 10 条/页；
   - 操作：单条**验证**（把复核请求注入当前会话，模型按对照三件套复核后回写状态）、单条**删除**（两步确认，统计动态更新）；
@@ -19,11 +19,11 @@
 - **板式二分**：
   - **发现型（findings）= 渗透/代审**：漏洞报告版式——严重度统计卡、报告详情、MD 漏洞报告导出。
   - **资产型（assets）= 二进制/攻防/免杀**：产物/战果/交付物**清单**版式——状态卡（待验证/有效·已验证/已失效/已交付）+ 类型分布，详情=资产卡片（位置路径·内容摘要·来源链路·使用方法），导出=清单表格 + 资产卡片 MD。二进制=分析产物（脱壳二进制/源码/密钥/C2/IOC/YARA，按样本分组）；攻防=战果（入口点/数据读取/密码本/hash map/域控，按阶段分组语义、severity=权限价值级）；免杀=交付物（可用 webshell/二进制/加载器 + 引擎效果清单 iocs）。
-- 研究员模式页为占位（任务台账视图后续迭代提供）。
+- 研究员模式页=任务台账板式（任务×形态×状态×结论×证据等级×下一步；侧栏「任务台账视图」聚合全会话九模式数据）。
 
 ## 字段
 
-`title / severity(critical|high|medium|low) / status(pending|verified|false-positive|fixed) / evidenceLevel(confirmed|partial|unknown) / type / target / summary / description / poc / evidence / fix / verifyNote / createdAt / verifiedAt`
+`title / severity(critical|high|medium|low) / status / evidenceLevel(confirmed|partial|unknown) / type / target / summary / description / poc / evidence / fix / verifyNote / createdAt / verifiedAt`。status 词表按模式取：漏洞型五态（pending/code-reviewed/verified/false-positive/fixed，fixed=已修复须先 verified）；免杀=pending/verified/detected；CTF=pending/stuck/verified；二进制=pending/suspect/verified；研究员台账=pending/verified/false-positive/fixed（fixed=已路由，无 verified 前置）。另有分模式扩展字段（代审双链/CWE/patch、二进制家族/壳/IOC/YARA、云四要素、IR 时间线等，合计约 45 列）。
 
 ## 验证
 

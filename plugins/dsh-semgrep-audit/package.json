@@ -1,0 +1,32 @@
+{
+	"name": "@dsh-external/dsh-semgrep-audit",
+	"version": "1.0.0",
+	"description": "DSH semgrep wrapper plugin (preset-plane, code-audit): local semgrep as a model tool with the preset's offline rule sets (java 402 built-in + php + oss 1080 auto-located), evidence-index landing, dual-writes hits to scan-reconcile.md/.csv as pending rows (hit != vuln — reconcile via register sourceOrigin), metrics off, local binary only — never auto-installs.",
+	"keywords": [
+		"deepseek",
+		"deepseek-harness",
+		"dsh-plugin",
+		"semgrep",
+		"model-tools"
+	],
+	"type": "module",
+	"main": "./lib/index.js",
+	"license": "MIT",
+	"exports": {
+		".": "./lib/index.js",
+		"./package.json": "./package.json"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/dsh-tools": "*"
+	},
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		}
+	},
+	"author": "SeaOf0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+	}
+}

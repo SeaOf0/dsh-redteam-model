@@ -20,6 +20,7 @@
   3. 流量侧：伪装路径 + Header 触发的请求对（无前端引用入口的孤立 GET）；
   4. JVM 层：非磁盘类加载审计（ControllerShell 类无 jar 来源）。
 - 判定表（本地实测后填）：| 检测面 | 结果 | 原文行 |
+- 构建/语法验证记录：2026-08-20 javac 1.8 解析检查——无语法错误；报错全部为缺失依赖
   jar 的符号（spring-webmvc/servlet-api 未提供：WebApplicationContext/
   RequestContextHolder/ServletRequestAttributes/RequestMappingHandlerMapping/
   RequestMappingInfo/RequestMethod/HttpServletRequest 共 8 个，无一处指向自身代码）；

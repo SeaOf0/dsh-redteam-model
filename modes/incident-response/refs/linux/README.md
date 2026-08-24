@@ -29,7 +29,7 @@
 
 > ⚠️ **许可**：本目录是 NOP Team《Linux 应急响应手册》（Linux-INCIDENT-RESPONSE-COOKBOOK）在线版
 > 17 章全文收录，受 **GPL-3.0** 约束，随附 `LICENSE`（GPL-3.0 全文）。
-> 再分发本目录须保留 `LICENSE`、`SOURCE.md` 与各文件头部的来源注记。
+> 再分发本目录须保留 `LICENSE` 与各文件头部的来源注记。
 > 作者 NOP Team，https://github.com/Just-Hack-For-Fun/Linux-INCIDENT-RESPONSE-COOKBOOK 。
 
 | 文件 | 内容 | 何时读 |
@@ -50,7 +50,6 @@
 | `14-常见问题的解决方法.md` | `ps/top` 看不到进程、`netstat` pid 显示 `-` 等坑 | 遇到误判时 |
 | `15-小技巧.md` | 17 项（查文件/完整性/文件监控/数据恢复/history 时间等） | 具体操作技巧 |
 | `16-知识点附录.md` | 守护进程/启动项/SSH 隧道/**与 C&C 隐藏技术对抗** | 深入原理与对抗面 |
-| `SOURCE.md` | 来源与抓取说明 | 核对来源/许可 |
 
 ### logs/（自写，1 篇）
 
@@ -100,17 +99,18 @@
 |---|---|---|
 | `tool-cards.md` | chkrootkit/rkhunter/Lynis/osquery/Falco/Sysdig/Velociraptor/unhide/pspy/auditd/LiME/AVML/Volatility3/plaso/ZLT 15 工具速查卡（215 行） | 应急现场选工具 |
 
-### knowledge/（自写，1 篇）
+### knowledge/（自写，2 篇）
 
 | 文件 | 内容 | 何时读 |
 |---|---|---|
 | `awesome-indexes.md` | awesome-incident-response、awesome-forensics、SigmaHQ（DRL 约束）、MITRE ATT&CK Linux Matrix 索引（45 行） | 需要外部知识库导航 |
+| `disk-artifacts.md` | Linux 盘面残留取证（日志被清除/痕迹不足时按 artifact 重建行为轨迹） | 日志缺失或被清除时 |
 
 ## 计数
 
 | 目录 | md 篇数 | 说明 |
 |---|---|---|
-| `cookbook-linux/` | 17 | 15 章全量原文 + 1 篇封面/更新日记合并简述 + SOURCE.md（另有 GPL-3.0 LICENSE 1 份，非 md） |
+| `cookbook-linux/` | 16 | 15 章全量原文 + 1 篇封面/更新日记合并简述（另有 GPL-3.0 LICENSE 1 份，非 md） |
 | `logs/` | 1 | 自写 |
 | `process/` | 1 | 自写 |
 | `persistence/` | 1 | 自写 |
@@ -127,13 +127,12 @@
 
 - **cookbook-linux/ 章节文件**：GPL-3.0 授权内容整理成文
   （https://book.noptrace.com/ ，GPL-3.0）。章节 1、3~16 共 15 章全量原文不改写（仅 HTML→Markdown
-  结构转换），封面（0）与更新日记（2）合并为 1 篇简述；随附 GPL-3.0 LICENSE 与
-  SOURCE.md（抓取说明 + 文件命名对照）。详见 `cookbook-linux/SOURCE.md`。
-- **logs/process/persistence/rootkit/webshell/malware/attack-chain/tools/knowledge 共 9 篇**：
+  结构转换），封面（0）与更新日记（2）合并为 1 篇简述；随附 GPL-3.0 LICENSE（全文，目录内）。
+- **logs/process/persistence/rootkit/webshell/malware/attack-chain/tools/knowledge 共 10 篇**：
   自写原创实现级方法论（按主题域用命令级内容写成，
   未照抄受版权文章；来源 URL 放各文件文末「来源」节）。
 - **Sigma 规则（SigmaHQ）**：受 DRL 约束，未整库拷贝，仅在 `knowledge/awesome-indexes.md` 引用外部来源。
-- 本目录随预设打包分发；cookbook-linux 的 GPL-3.0 许可注记见各文件头部与 SOURCE.md。
+- 本目录随预设打包分发；cookbook-linux 的 GPL-3.0 许可注记见各文件头部与 LICENSE。
 - 与 playbook 的关系：速查卡（playbook）→ 深度手册（refs/linux/）→ 证据落盘（任务工作区）。
 
 ## 路径与链接约定

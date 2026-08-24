@@ -68,9 +68,11 @@ Light 三纪律（每轮生效，轻链路的主节奏）：
 
 - 云/容器（K8s/Docker/云凭据/云平台 API）：主链路 → cloud-security（云攻击路径验证与权限链收口）；其中纯 web 入口验证可协同 pentest、IaC/云服务源码审计可协同 code-audit；检测侧移交 attack-defense/av-evasion。
 - 固件/嵌入式 → binary-analysis（firmware/ refs）。
+- 应急响应/失陷处置（日志/样本/攻击链还原）主链路 → incident-response；涉及恶意样本深析时按 C 协同，样本子任务路由 binary-analysis；失陷原因中需攻击性验证的假设移交 pentest/attack-defense。
 - 密码学/CTF crypto：原理讲解、古典密码与编码、已知弱实现识别 → A 浅做（结论标证据等级）；密码实现/随机数/密钥管理的代码级审计 → code-audit；攻击型密码学利用（padding oracle 等）属深度任务 → 路由 pentest 或如实标注「深做建议外部专项」。
-- CTF 场景：主链路 → ctf-solver（题面登记→模块路由→解题→flag 台账→复盘；competition-* 技能按题面特征加载）；单题深析可按输入物特征协同对应专业模式（pwn/re 协同 binary-analysis、web 协同 pentest）；flag 模式（`flag{...}` 等）与题面线索如实记录，结论范围=实际做完的题。
+- CTF 场景：主链路 → ctf-solver（题面登记→模块路由→解题→flag 台账→复盘；子模块按 ctf-playbook 模块路由选线）；单题深析可按输入物特征协同对应专业模式（pwn/re 协同 binary-analysis、web 协同 pentest）；flag 模式（`flag{...}` 等）与题面线索如实记录，结论范围=实际做完的题。
 - 区块链/智能合约：无专业模式覆盖 → 浅做 + 诚实降级说明（按通用审计方法浅析），标注「深做建议外部专业工具/专项」。
+
 ### 2026 新兴领域映射（社区核源）
 
 > 来源：补天 AI 安全板块 + 先知 AI 安全系列主题全景。这些是映射表传统领域之外的**增长最快入口**，
@@ -87,8 +89,6 @@ Light 三纪律（每轮生效，轻链路的主节奏）：
   不路由；技巧对照读 pentest refs/ai/ai-assisted-hunting.md。
 - **威胁情报时效**：银狐仿冒链/Weax-Sorry 勒索等 2026 锚点在 incident-response refs/knowledge/
   threat-intel-2026.md，涉及入口定性时提醒 IR 模式消费。
-
-- 应急响应主链路归 incident-response（日志/样本/攻击链还原）；涉及恶意样本深析时按 C 协同，样本子任务路由 binary-analysis；失陷原因中需攻击性验证的假设移交 pentest/attack-defense。
 
 ## 浅层处理范围与诚实降级
 

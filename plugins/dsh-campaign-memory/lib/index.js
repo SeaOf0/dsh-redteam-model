@@ -46,33 +46,46 @@ function theStore() {
 const INJECT_TAG = "dsh-campaign-memory";
 const INJECT_BUDGET = 700;
 
-/** 装配期召回块：标记化（压缩后可识别）、预算内（超限截到整行）。确定性：同库状态同文。 */
+/** 装配期召回块：标记化（压缩后可识别）、预算内（超限先减记忆行——数据让位，指引行最后丢；
+ *  n 属性随实留行数重建）。确定性：同库状态同文。 */
 export function buildMemoryBlock(mode, workspace, rows) {
 	if (!rows || rows.length === 0) return "";
-	const lines = [`<${INJECT_TAG} mode="${mode}" workspace="${workspace}" n="${rows.length}">`, `本工作区战役记忆（历史战役沉淀；适用性自判——目标环境可能已变化）：`];
-	rows.forEach((r, i) => {
-		const brief = String(r.content).split("\n")[0].slice(0, 90);
-		lines.push(`${i + 1}. [${kindLabel(r.kind)}${r.targetKind ? "·" + r.targetKind : ""}] ${r.title}——${brief}`);
-	});
-	lines.push("沉淀/检索：有效打法即时 campaign_memory_write 记忆（正文原样入库不脱敏——凭据可入库或只写指位指向本地凭据库）；开战或换目标类型先 campaign_memory_search 检索。");
-	lines.push(`</${INJECT_TAG}>`);
-	let text = lines.join("\n");
+	const close = `</${INJECT_TAG}>`;
+	const guide = "沉淀/检索：有效打法即时 campaign_memory_write 记忆（正文原样入库不脱敏——凭据可入库或只写指位指向本地凭据库）；开战/接案或换目标类型先 campaign_memory_search 检索。";
+	const build = (kept) => {
+		const kinds = [...new Set(kept.map((r) => r.targetKind).filter(Boolean))];
+		const topicLine = kinds.length > 1 ? `本工作区记忆含多目标（${kinds.slice(0, 4).join("/")}${kinds.length > 4 ? " 等" : ""}）——适用性按目标自判，检索可加 target_kind 过滤。` : "";
+		return [
+			`<${INJECT_TAG} mode="${mode}" workspace="${workspace}" n="${kept.length}">`,
+			"本工作区战役记忆（历史战役沉淀；适用性自判——目标环境可能已变化）：",
+			...kept.map((r, i) => `${i + 1}. [${kindLabel(r.kind)}${r.targetKind ? "·" + r.targetKind : ""}] ${r.title}——${String(r.content).split("\n")[0].slice(0, 160)}`),
+			...(topicLine ? [topicLine] : []),
+			guide
+		].join("\n") + "\n" + close;
+	};
+	let kept = rows.slice();
+	let text = build(kept);
+	while (kept.length > 0 && text.length > INJECT_BUDGET) {
+		kept = kept.slice(0, -1);
+		text = build(kept);
+	}
 	if (text.length > INJECT_BUDGET) {
-		while (lines.length > 3 && text.length > INJECT_BUDGET) {
-			lines.splice(lines.length - 2, 1);
-			text = lines.join("\n");
-		}
-		text = text.slice(0, INJECT_BUDGET - 1) + "…\n</" + INJECT_TAG + ">";
+		const tail = "…\n" + close; // 兜底（固定行极端超限）：硬截到预算内，截点在闭合标签前
+		text = text.slice(0, INJECT_BUDGET - tail.length) + tail;
 	}
 	return text;
 }
 
 //#endregion
 
+/** 工作区标识：name=目录 basename（展示与旧库兼容），key=basename@全路径哈希 8 位（隔离键——
+ *  同名目录不串场、移动/改名目录=新 key 干净开局，旧记忆仍可跨工作区检索找回）。cwd 缺失时
+ *  key=""（回落 basename 旧语义，注入只匹配无键行）。 */
 function workspaceOf(agent) {
 	const cwd = agent?.session?.header?.cwd;
-	const base = typeof cwd === "string" && cwd ? path.basename(cwd) : "";
-	return base.slice(0, 60);
+	if (typeof cwd !== "string" || !cwd) return { name: "", key: "" };
+	const base = path.basename(cwd).slice(0, 60);
+	return { name: base, key: base + "@" + crypto.createHash("sha256").update(cwd).digest("hex").slice(0, 8) };
 }
 
 function sessionOf(ctx, exec) {
@@ -135,7 +148,7 @@ export async function dispatch(ctx, st, endpoint, payload) {
 	if (endpoint === "memory.list") {
 		const mode = String(p.mode ?? "");
 		if (!mode) throw new Error("mode required");
-		return { memories: listMemories(st, { mode, kind: p.kind ? String(p.kind) : "", includeExpired: !!p.includeExpired }) };
+		return { memories: listMemories(st, { mode, kind: p.kind ? String(p.kind) : "", includeExpired: !!p.includeExpired, limit: p.limit }) };
 	}
 	if (endpoint === "memory.search") {
 		const mode = String(p.mode ?? "");
@@ -143,12 +156,12 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		return { memories: searchMemories(st, { mode, query: p.query, kind: p.kind, target_kind: p.target_kind, limit: p.limit }) };
 	}
 	if (endpoint === "memory.get") {
-		const m = getMemory(st, String(p.id ?? ""));
+		const m = getMemory(st, String(p.id ?? ""), { account: !p.peek }); // peek=纯浏览不记账（Web 标签页展开全文）
 		if (!m) throw new Error(`记忆不存在：${p.id}`);
 		return { memory: m };
 	}
 	if (endpoint === "memory.write") {
-		const m = writeMemory(st, { mode: p.mode, kind: p.kind, title: p.title, content: p.content, tags: p.tags, target_kind: p.target_kind, expires_days: p.expires_days, source_session: p.sessionId, workspace: p.workspace });
+		const m = writeMemory(st, { mode: p.mode, kind: p.kind, title: p.title, content: p.content, tags: p.tags, target_kind: p.target_kind, expires_days: p.expires_days, source_session: p.sessionId, workspace: p.workspace, workspace_key: p.workspaceKey });
 		return { ok: true, ...m };
 	}
 	if (endpoint === "memory.remove") {
@@ -179,7 +192,8 @@ function apply(ctx) {
 			try { presetId = String(ctx.agentPresets.composedPreset(agent.ctx) ?? ""); } catch { /* 组合未就绪 */ }
 			if (!MODE_IDS.includes(presetId)) return "";
 			try {
-				return buildMemoryBlock(presetId, workspaceOf(agent), topForInjection(theStore(), presetId, workspaceOf(agent), 3));
+				const ws = workspaceOf(agent);
+				return buildMemoryBlock(presetId, ws.name, topForInjection(theStore(), presetId, ws.name, 3, ws.key));
 			} catch { return ""; }
 		}
 	});
@@ -188,25 +202,26 @@ function apply(ctx) {
 	//#region 模型工具（宿主平面；九模式会话内可用）
 	ctx.tools.register(defineTool({
 		name: "campaign_memory_write",
-		description: "把本次战役中验证有效的打法/目标指纹/工具可用性/教训/检测指纹沉淀为战役记忆（跨会话长期复用）。存储原文不做脱敏——内网地址/指纹细节/凭据均原样入库（记忆库是本地库）；已有独立凭据库（hunter key 库/webshell 连接库等）时也可只写指位（存哪、叫什么）。同模式同工作区同题写入=刷新既有记忆（正文与时效更新、热度保留，不产生重复——复用标题即可更新）。kind：tactic 战术打法 / fingerprint 目标指纹（默认 180 天时效，到期退出自动召回、检索仍可命中带过期标记，同题重写即刷新）/ tooling 工具可用性 / lesson 教训 / detect 检测指纹（默认 30 天过期并清理，可 expires_days 覆盖）。本模式作战记忆以本工具为准沉淀；用户偏好/环境事实等通用记忆（如有其他记忆工具）不在此沉淀。有效即可记，不必等收口。",
+		description: "把本次战役中验证有效的打法/目标指纹/工具可用性/教训/检测指纹沉淀为战役记忆（跨会话长期复用）。存储原文不做脱敏——内网地址/指纹细节/凭据均原样入库（记忆库是本地库）；已有独立凭据库（hunter key 库/webshell 连接库等）时也可只写指位（存哪、叫什么）。同模式同工作区同题写入=刷新既有记忆（正文与时效更新、热度保留，不产生重复——复用标题即可更新）。kind：tactic 战术打法 / fingerprint 目标指纹（默认 180 天时效，到期退出自动召回、检索仍可命中带过期标记，同题重写即刷新；代审的框架 sink 特征归此档）/ tooling 工具可用性（代审的 semgrep 规则集调优结论归此档）/ lesson 教训 / detect 检测指纹（默认 30 天过期并清理，可 expires_days 覆盖）。本模式作战记忆以本工具为准沉淀；用户偏好/环境事实等通用记忆（如有其他记忆工具）不在此沉淀。有效即可记，不必等收口。同模式同工作区上限 400 条，超限自动冷淘汰（热度×半衰最旧让位）；同目录多目标（多云厂商/多样本/多题）时 target_kind 填目标标识（厂商名/样本哈希前 8 位/平台名）——召回注入按目标标注，适用性按目标自判。CTF：题解套路与非预期解→tactic、工具配方（完整命令行/参数）→tooling、卡点教训→lesson；开赛/换题型先检索；同名题跨平台/赛事以 target_kind=平台名区分（同题同平台才刷新，不互覆）。应急溯源：排查配方与处置手法→tactic、家族/威胁指纹→fingerprint、取证工具可用性→tooling、检测规则时效情报→detect、复盘教训→lesson；接案/换案件先检索；多案件同目录以 target_kind=案件号区分。",
 		parameters: {
-			title: { type: "string", required: true, description: "一句话标题（如：XX 框架后台默认凭据直连）；与既有记忆同题即刷新而非新增" },
+			title: { type: "string", required: true, description: "一句话标题（如：XX 框架后台默认凭据直连）；同题同 target_kind 即刷新而非新增（跨平台同名题不互覆）" },
 			content: { type: "string", required: true, description: "打法/事实正文（怎么做的、命中条件、关键参数；原样入库不做脱敏——凭据/密钥也原样存储）" },
 			kind: { type: "string", required: true, enum: MEMORY_KINDS, description: "记忆类别" },
 			tags: { type: "string", description: "检索标签（逗号分隔，如：java,后台,弱口令）" },
-			target_kind: { type: "string", description: "适用目标形态（web/api/域环境/家族名等，召回过滤用）" },
+				target_kind: { type: "string", description: "适用目标形态（web/api/域环境/家族名/案件号等，召回过滤用）" },
 			expires_days: { type: "number", description: "有效期天数（省略时 detect=30 天、fingerprint=180 天，其余永久）" }
 		},
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
-			render: (_a, v) => [{ type: "text", text: v.ok ? `记忆已${v.refreshed ? "刷新" : "沉淀"}：${v.id}${v.expires_at ? "（" + v.expires_at + " 过期）" : ""}` : `沉淀失败：${v.error}` }]
+			render: (_a, v) => [{ type: "text", text: v.ok ? `记忆已${v.refreshed ? "刷新" : "沉淀"}：${v.id}${v.expires_at ? "（" + v.expires_at + " 过期）" : ""}${v.evicted ? `（本工作区超上限，冷淘汰 ${v.evicted} 条）` : ""}` : `沉淀失败：${v.error}` }]
 		},
 		execute(args, exec) {
 			const session = sessionOf(ctx, exec);
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅安全模式会话内可用" });
 			try {
-				const m = writeMemory(theStore(), { mode: session.mode, kind: args.kind, title: args.title, content: args.content, tags: args.tags, target_kind: args.target_kind, expires_days: args.expires_days, source_session: session.id, workspace: workspaceOf(exec?.agent) });
-				return Promise.resolve({ ok: true, id: m.id, expires_at: m.expires_at, refreshed: m.refreshed });
+				const ws = workspaceOf(exec?.agent);
+				const m = writeMemory(theStore(), { mode: session.mode, kind: args.kind, title: args.title, content: args.content, tags: args.tags, target_kind: args.target_kind, expires_days: args.expires_days, source_session: session.id, workspace: ws.name, workspace_key: ws.key });
+				return Promise.resolve({ ok: true, id: m.id, expires_at: m.expires_at, refreshed: m.refreshed, evicted: m.evicted });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
 			}
@@ -250,15 +265,19 @@ function apply(ctx) {
 		execute(args, exec) {
 			const session = sessionOf(ctx, exec);
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅安全模式会话内可用" });
-			const m = getMemory(theStore(), args.id);
-			return Promise.resolve(m ? { ok: true, memory: m } : { ok: false, error: `记忆不存在：${args.id}` });
+			try {
+				const m = getMemory(theStore(), args.id);
+				return Promise.resolve(m ? { ok: true, memory: m } : { ok: false, error: `记忆不存在：${args.id}` });
+			} catch (e) {
+				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
+			}
 		}
 	}));
 
 	ctx.tools.register(defineTool({
 		name: "campaign_memory_list",
-		description: "列出本模式当前有效战役记忆（收口复盘与记忆治理用）。",
-		parameters: { kind: { type: "string", enum: MEMORY_KINDS, description: "限定类别（可选）" } },
+		description: "列出本模式当前有效战役记忆（收口复盘与记忆治理用；按热度排序取前列——默认 50 条、上限 200，需要更多用检索收窄）。",
+		parameters: { kind: { type: "string", enum: MEMORY_KINDS, description: "限定类别（可选）" }, limit: { type: "number", description: "返回条数（默认 50，上限 200）" } },
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
 			render: (_a, v) => [{ type: "text", text: v.ok ? `本模式战役记忆 ${v.memories.length} 条` : `读取失败：${v.error}` }]
@@ -266,7 +285,11 @@ function apply(ctx) {
 		execute(args, exec) {
 			const session = sessionOf(ctx, exec);
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅安全模式会话内可用" });
-			return Promise.resolve({ ok: true, memories: listMemories(theStore(), { mode: session.mode, kind: args.kind }) });
+			try {
+				return Promise.resolve({ ok: true, memories: listMemories(theStore(), { mode: session.mode, kind: args.kind, limit: args.limit }) });
+			} catch (e) {
+				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
+			}
 		}
 	}));
 
