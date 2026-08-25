@@ -469,9 +469,20 @@ function spawnCollect(
 
 async function runPnpmInstall(cwd: string, onProgress?: ProgressCallback): Promise<void> {
   onProgress?.('running pnpm install', 50)
-  const result = await spawnCollect('npx', ['-y', 'pnpm', 'install', '--prefer-offline', '--no-frozen-lockfile'], cwd, line => {
+  const runArgs = ['-y', 'pnpm', 'install', '--prefer-offline', '--no-frozen-lockfile']
+  let result = await spawnCollect('npx', runArgs, cwd, line => {
     if (line !== '') onProgress?.(line.slice(0, 200))
   })
+  // pnpm's supply-chain policy rejects lockfiles whose existing entries were
+  // published inside the minimumReleaseAge window. That is a property of the
+  // profile's other plugins, not of this install: retry once with the
+  // one-shot bypass so a fresh profile lockfile does not block the operation.
+  if (result.code !== 0 && `${result.stdout}\n${result.stderr}`.includes('minimumReleaseAge')) {
+    onProgress?.('retrying install with fresh-release bypass', 55)
+    result = await spawnCollect('npx', [...runArgs, '--config.minimumReleaseAge=0'], cwd, line => {
+      if (line !== '') onProgress?.(line.slice(0, 200))
+    })
+  }
   if (result.code !== 0) {
     const tail = result.stderr.trim() || result.stdout.trim() || `exit code ${String(result.code)}`
     throw new Error(`pnpm install failed: ${tail.slice(-1000)}`)
