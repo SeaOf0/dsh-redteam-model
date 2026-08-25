@@ -33,6 +33,7 @@ function harness(bundle, field, needsSessions) {
   }
   const listeners = new Set()
   const registered = []
+  const lifecycle = []
   let disposed = 0
   let cleanup = () => undefined
 
@@ -48,6 +49,7 @@ function harness(bundle, field, needsSessions) {
         return {
           getSnapshot: () => snapshot,
           subscribe(listener) {
+            lifecycle.push('subscribe')
             listeners.add(listener)
             return () => listeners.delete(listener)
           },
@@ -61,6 +63,7 @@ function harness(bundle, field, needsSessions) {
         return cleanup
       },
       register(options) {
+        lifecycle.push('register')
         registered.push(options.id)
         let alive = true
         return () => {
@@ -75,6 +78,7 @@ function harness(bundle, field, needsSessions) {
   bundle.apply(ctx)
   return {
     registered,
+    lifecycle,
     disposed: () => disposed,
     publish(next) {
       snapshot = next
@@ -89,6 +93,7 @@ for (const [file, packageId, slotId, field, needsSessions] of CASES) {
     const bundle = loadBundle(file, packageId)
     assert.deepEqual(Array.from(bundle.inject), ['slots', 'settingsScope'])
     const view = harness(bundle, field, needsSessions)
+    assert.deepEqual(view.lifecycle.slice(0, 2), ['subscribe', 'register'])
     assert.deepEqual(view.registered, [slotId])
 
     view.publish({ status: 'loading', value: undefined, writable: false, mode: 'memory' })
@@ -102,7 +107,7 @@ for (const [file, packageId, slotId, field, needsSessions] of CASES) {
     view.publish({ status: 'ready', value: { [field]: false }, writable: true, mode: 'host' })
     assert.equal(view.disposed(), 1)
 
-    view.publish({ status: 'unavailable', value: undefined, writable: false, mode: 'memory' })
+    view.publish({ status: 'unavailable', value: { [field]: false }, writable: false, mode: 'memory' })
     assert.deepEqual(view.registered, [slotId, slotId])
 
     view.publish({ status: 'ready', value: { [field]: true }, writable: true, mode: 'host' })

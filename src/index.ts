@@ -9,8 +9,10 @@ import path from 'node:path'
 
 import {
   CONVERSATION_VIEW_SETTINGS_NAMESPACE,
+  conversationViewWriteApplied,
   ConversationViewSettingsSchema,
   DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  effectiveConversationViewSettings,
   registerConversationViewSettings,
 } from './conversationViewSettings.ts'
 import { deployModes, dshHome, getStatus, installOne, profileWebDir, repairMode, scanModes, scanPlugins, uninstallOne } from './manager.ts'
@@ -23,8 +25,10 @@ export { deployModes, dshHome, getStatus, installOne, repairMode, scanModes, sca
 export { registerModelRpc }
 export {
   CONVERSATION_VIEW_SETTINGS_NAMESPACE,
+  conversationViewWriteApplied,
   ConversationViewSettingsSchema,
   DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  effectiveConversationViewSettings,
   registerConversationViewSettings,
 }
 

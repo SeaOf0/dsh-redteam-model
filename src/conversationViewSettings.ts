@@ -1,24 +1,19 @@
 /** Persistent Host settings for repository-owned conversation views. */
 import { settingsNamespace, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
+import {
+  DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  type ConversationViewSettings,
+} from './conversationViewState.ts'
 
-export interface ConversationViewSettings {
-  readonly showCampaignMemory: boolean
-  readonly showAttackAtlas: boolean
-  readonly showRedteamResults: boolean
-  readonly showHunter: boolean
-  readonly showWebshellManager: boolean
-}
+export {
+  conversationViewWriteApplied,
+  DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  effectiveConversationViewSettings,
+} from './conversationViewState.ts'
+export type { ConversationViewField, ConversationViewSettings } from './conversationViewState.ts'
 
 export const CONVERSATION_VIEW_SETTINGS_NAMESPACE = settingsNamespace('redteam-manager-ui')
-
-export const DEFAULT_CONVERSATION_VIEW_SETTINGS: ConversationViewSettings = Object.freeze({
-  showCampaignMemory: true,
-  showAttackAtlas: true,
-  showRedteamResults: true,
-  showHunter: true,
-  showWebshellManager: true,
-})
 
 export const ConversationViewSettingsSchema: z<ConversationViewSettings> = z.object({
   showCampaignMemory: z.boolean().default(true),

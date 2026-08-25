@@ -1,5 +1,18 @@
 /** Browser-side contract for the five repository-owned conversation views. */
 
+import {
+  DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  type ConversationViewField,
+  type ConversationViewSettings,
+} from '../conversationViewState.js'
+
+export {
+  conversationViewWriteApplied,
+  DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  effectiveConversationViewSettings,
+} from '../conversationViewState.js'
+export type { ConversationViewField, ConversationViewSettings } from '../conversationViewState.js'
+
 export const CONVERSATION_VIEW_SETTINGS_NAMESPACE = 'redteam-manager-ui'
 
 export const VIEW_FIELD_BY_PLUGIN = {
@@ -9,24 +22,6 @@ export const VIEW_FIELD_BY_PLUGIN = {
   'dsh-hunter': 'showHunter',
   'dsh-webshell-mgr': 'showWebshellManager',
 } as const
-
-export type ConversationViewField = typeof VIEW_FIELD_BY_PLUGIN[keyof typeof VIEW_FIELD_BY_PLUGIN]
-
-export interface ConversationViewSettings {
-  showCampaignMemory: boolean
-  showAttackAtlas: boolean
-  showRedteamResults: boolean
-  showHunter: boolean
-  showWebshellManager: boolean
-}
-
-export const DEFAULT_CONVERSATION_VIEW_SETTINGS: ConversationViewSettings = Object.freeze({
-  showCampaignMemory: true,
-  showAttackAtlas: true,
-  showRedteamResults: true,
-  showHunter: true,
-  showWebshellManager: true,
-})
 
 export interface ConversationViewSettingsSnapshot {
   status: 'loading' | 'ready' | 'unavailable'

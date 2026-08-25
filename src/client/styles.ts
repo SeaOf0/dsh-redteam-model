@@ -170,6 +170,19 @@ const CSS_TEXT = String.raw`
   .dsh-rtm-batchbar-hint{margin-left:0;flex-basis:100%}
 }
 
+/* The Host settings shell is two-column by default; stack its navigation only
+   while this page is selected on phone-sized viewports. */
+@media (max-width:559px){
+  [role="dialog"]:has(.dsh-rtm){flex-direction:column}
+  [role="dialog"]:has(.dsh-rtm)>nav{width:100%;padding:10px 12px 0}
+  [role="dialog"]:has(.dsh-rtm)>nav>:first-child{display:none}
+  [role="dialog"]:has(.dsh-rtm)>nav>:last-child{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;padding-bottom:8px}
+  [role="dialog"]:has(.dsh-rtm)>nav>:last-child>button{width:100%!important;min-width:0;padding:7px 10px;white-space:normal}
+  [role="dialog"]:has(.dsh-rtm)>:not(nav){width:100%;min-height:0}
+  .dsh-rtm{padding-inline:10px}
+  .dsh-rtm-stats{grid-template-columns:1fr}
+}
+
 /* ---- reduced motion ---- */
 @media (prefers-reduced-motion: reduce){
   .dsh-rtm-spin,.dsh-rtm-progress--indeterminate .dsh-rtm-progress-fill{animation:none}

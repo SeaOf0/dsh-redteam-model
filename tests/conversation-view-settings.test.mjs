@@ -3,8 +3,10 @@ import test from 'node:test'
 
 import {
   CONVERSATION_VIEW_SETTINGS_NAMESPACE,
+  conversationViewWriteApplied,
   ConversationViewSettingsSchema,
   DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  effectiveConversationViewSettings,
   registerConversationViewSettings,
 } from '../lib/index.js'
 
@@ -26,6 +28,21 @@ test('conversation view settings accept booleans and reject malformed values', (
     showHunter: false,
   })
   assert.throws(() => ConversationViewSettingsSchema({ showHunter: 'false' }), TypeError)
+})
+
+test('conversation view settings fail open instead of displaying a retained unavailable value', () => {
+  const hidden = { ...DEFAULT_CONVERSATION_VIEW_SETTINGS, showAttackAtlas: false }
+  assert.equal(effectiveConversationViewSettings({ status: 'ready', value: hidden }).showAttackAtlas, false)
+  assert.equal(effectiveConversationViewSettings({ status: 'unavailable', value: hidden }).showAttackAtlas, true)
+  assert.equal(effectiveConversationViewSettings({ status: 'loading', value: undefined }).showAttackAtlas, true)
+})
+
+test('conversation view writes are acknowledged from the settled scope snapshot', () => {
+  const visible = { ...DEFAULT_CONVERSATION_VIEW_SETTINGS, showAttackAtlas: true }
+  const hidden = { ...DEFAULT_CONVERSATION_VIEW_SETTINGS, showAttackAtlas: false }
+  assert.equal(conversationViewWriteApplied({ status: 'ready', value: hidden }, 'showAttackAtlas', false), true)
+  assert.equal(conversationViewWriteApplied({ status: 'ready', value: visible }, 'showAttackAtlas', false), false)
+  assert.equal(conversationViewWriteApplied({ status: 'unavailable', value: hidden }, 'showAttackAtlas', false), false)
 })
 
 test('conversation view settings register once as live settings', () => {

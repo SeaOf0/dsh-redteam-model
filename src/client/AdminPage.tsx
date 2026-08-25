@@ -3,7 +3,8 @@ import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import { Button, IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { type AdminOperationStart, type AdminStatus, type PluginStatus, type Translate } from './contracts.js'
 import {
-  DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  conversationViewWriteApplied,
+  effectiveConversationViewSettings,
   type ConversationViewField,
   type ConversationViewSettingsScope,
 } from './conversationViewSettings.js'
@@ -82,7 +83,7 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
       return unsubscribe
     }, [visibilityScope])
 
-    const visibility = visibilitySnapshot.value ?? DEFAULT_CONVERSATION_VIEW_SETTINGS
+    const visibility = effectiveConversationViewSettings(visibilitySnapshot)
     const visibilityWritable = visibilitySnapshot.status === 'ready'
       && visibilitySnapshot.mode === 'host'
       && visibilitySnapshot.writable
@@ -93,13 +94,17 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
       setError(null)
       try {
         await visibilityScope.set(field, visible)
-        setVisibilitySnapshot(visibilityScope.getSnapshot())
+        const settled = visibilityScope.getSnapshot()
+        setVisibilitySnapshot(settled)
+        if (!conversationViewWriteApplied(settled, field, visible)) {
+          throw new Error(t('pluginViewSettingsSaveFailed'))
+        }
       } catch (cause) {
         setError(errorMessage(cause))
       } finally {
         setVisibilityPending(null)
       }
-    }, [visibilityScope, visibilityWritable])
+    }, [t, visibilityScope, visibilityWritable])
 
     const runStart = useCallback(async (request: AdminOperationStart) => {
       setPending(true)
