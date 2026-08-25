@@ -57,7 +57,8 @@
   "scripts": {
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit -p tsconfig.json",
-    "check": "npm run typecheck && npm run build",
+    "test": "node --test tests/*.test.mjs",
+    "check": "npm run typecheck && npm run build && npm run test",
     "prepack": "npm run build"
   },
   "devDependencies": {

@@ -6,8 +6,12 @@
  */
 
 import { OperationQueue } from './operations.ts'
+import { getStatus, scanModes, scanPlugins } from './manager.ts'
 import { registerModelRpc } from './rpc.ts'
 import type { HostConnectionHandle } from './types.ts'
+
+export { OperationQueue }
+export { getStatus, scanModes, scanPlugins }
 
 export const name = 'dsh-redteam-model'
 export const inject = ['connection']
