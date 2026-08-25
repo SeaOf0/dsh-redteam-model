@@ -38,3 +38,15 @@ jobs:
             fi
           done
           exit $status
+
+  manager:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: install root dev dependencies
+        run: npm ci
+      - name: typecheck and build manager bundles
+        run: npm run check
