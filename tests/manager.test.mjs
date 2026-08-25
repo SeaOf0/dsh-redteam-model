@@ -1,10 +1,10 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, mkdirSync, existsSync, readlinkSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { getStatus, scanModes, scanPlugins } from '../lib/index.js'
+import { deployModes, getStatus, scanModes, scanPlugins } from '../lib/index.js'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
@@ -38,6 +38,30 @@ test('getStatus reports an untouched profile as all not-installed without profil
     assert.equal(status.summary.pluginsInstalled, 0)
     assert.equal(status.summary.profileError, undefined)
     assert.equal(status.plugins.every(plugin => plugin.installState === 'not-installed'), true)
+  } finally {
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    rmSync(isolatedHome, { recursive: true, force: true })
+  }
+})
+
+test('deployModes links modes into an existing real .agent-presets directory without touching it', () => {
+  const previousHome = process.env.DSH_HOME
+  const isolatedHome = mkdtempSync(path.join(tmpdir(), 'dsh-redteam-model-test-'))
+  const presetsDir = path.join(isolatedHome, '.agent-presets')
+  mkdirSync(presetsDir, { recursive: true })
+  mkdirSync(path.join(presetsDir, 'router-standard'))
+  process.env.DSH_HOME = isolatedHome
+  try {
+    const detail = deployModes(repoRoot)
+    assert.match(detail, /linked 9 modes/)
+    assert.equal(existsSync(path.join(presetsDir, 'router-standard')), true)
+    const status = getStatus([], repoRoot)
+    assert.equal(status.summary.modesReady, 9)
+    for (const mode of status.modes) {
+      assert.equal(mode.linkState, 'ok')
+      assert.equal(readlinkSync(path.join(presetsDir, mode.id)), path.join(repoRoot, 'modes', mode.id))
+    }
   } finally {
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome

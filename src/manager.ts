@@ -312,22 +312,39 @@ function compareVersions(left: string, right: string): number {
 function modeStatus(mode: ModeDescriptor, root: string): ModeStatus {
   const link = presetsLinkPath()
   const modesRoot = path.join(root, 'modes')
+  const modeDir = mode.dir
   let linkState: ModeStatus['linkState'] = 'missing'
-  let current: string | null = null
+  let linkPath: string | undefined
+
   try {
-    current = readlinkSync(link)
+    // Whole-directory deployment: ~/.dsh/.agent-presets is a symlink to
+    // <package>/modes and every mode inside it is live.
+    const current = readlinkSync(link)
+    linkPath = path.join(link, mode.id)
     linkState = path.resolve(current) === path.resolve(modesRoot) ? 'ok' : 'stale'
   } catch {
-    linkState = existsSync(link) ? 'error' : 'missing'
+    if (existsSync(link)) {
+      // Existing real directory: the manager links modes inside it one by
+      // one, so judge the per-mode entry instead of the directory itself.
+      linkPath = path.join(link, mode.id)
+      try {
+        const current = readlinkSync(linkPath)
+        linkState = path.resolve(current) === path.resolve(modeDir) ? 'ok' : 'stale'
+      } catch {
+        linkState = existsSync(linkPath) ? 'error' : 'missing'
+      }
+    } else {
+      linkState = 'missing'
+    }
   }
-  const linkPath = path.join(link, mode.id)
-  const ready = linkState === 'ok' && existsSync(path.join(modesRoot, mode.id))
+
+  const ready = linkState === 'ok' && existsSync(modeDir)
   return {
     id: mode.id,
     name: mode.name,
     summary: mode.summary,
     linkState,
-    ...(linkState === 'missing' ? {} : { linkPath }),
+    ...(linkPath === undefined ? {} : { linkPath }),
     ready,
   }
 }
@@ -559,7 +576,7 @@ export function linkPluginPeers(root = locateRoot()): { deepseek: number; extern
   return { deepseek, external }
 }
 
-/** Deploy (or repair) the ~/.dsh/.agent-presets symlink/junction to <root>/modes. */
+/** Deploy (or repair) the nine modes into ~/.dsh/.agent-presets. */
 export function deployModes(root = locateRoot(), onProgress?: ProgressCallback): string {
   const target = path.join(root, 'modes')
   const link = presetsLinkPath()
@@ -571,15 +588,15 @@ export function deployModes(root = locateRoot(), onProgress?: ProgressCallback):
     try {
       current = readlinkSync(link)
     } catch {
-      // Existing real directory: never silently rename the user's presets away.
-      throw new Error(
-        `refusing to replace ${link}: it is a real directory, not a symlink. Move it away manually (or keep it and manage modes through the CLI deploy script), then retry.`,
-      )
+      // Existing real directory: never replace the user's presets. Link each
+      // of our modes into it so both sets of presets stay live together.
+      return deployModesIntoDirectory(link, root, onProgress)
     }
     if (current !== null && path.resolve(current) === path.resolve(target)) {
       onProgress?.('agent presets link ok', 100)
       return `agent presets link ok: ${link} -> ${target}`
     }
+    // Existing symlink to something else: a link can be moved aside safely.
     const backup = `${link}.bak-${Date.now()}`
     renameSync(link, backup)
     onProgress?.(`backed up existing agent presets link to ${backup}`, 50)
@@ -588,6 +605,38 @@ export function deployModes(root = locateRoot(), onProgress?: ProgressCallback):
   symlinkSync(target, link, ensureLinkType())
   onProgress?.('agent presets link ready', 100)
   return `agent presets link ready: ${link} -> ${target}`
+}
+
+/**
+ * Link each packaged mode into an existing real `.agent-presets` directory.
+ * Existing entries are never overwritten: foreign or conflicting presets are
+ * reported and left exactly as they are.
+ */
+function deployModesIntoDirectory(directory: string, root: string, onProgress?: ProgressCallback): string {
+  const modes = scanModes(root)
+  let linked = 0
+  const skipped: string[] = []
+
+  for (const mode of modes) {
+    const destination = path.join(directory, mode.id)
+    if (existsAny(destination)) {
+      try {
+        const current = readlinkSync(destination)
+        if (path.resolve(current) === path.resolve(mode.dir)) continue
+        skipped.push(`${mode.id} (existing link to ${current})`)
+        continue
+      } catch {
+        skipped.push(`${mode.id} (existing directory)`)
+        continue
+      }
+    }
+    symlinkSync(mode.dir, destination, ensureLinkType())
+    linked += 1
+  }
+
+  const suffix = skipped.length > 0 ? `; skipped existing entries: ${skipped.join(', ')}` : ''
+  onProgress?.(`linked ${linked} modes into existing agent presets directory${suffix}`, 100)
+  return `linked ${linked} modes into existing agent presets directory${suffix}`
 }
 
 /** Validate/rebuild the .agent-presets link for one named mode. */

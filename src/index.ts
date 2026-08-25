@@ -5,13 +5,13 @@
  * mutations are triggered by the settings page through the loopback RPC.
  */
 
+import { deployModes, getStatus, scanModes, scanPlugins } from './manager.ts'
 import { OperationQueue } from './operations.ts'
-import { getStatus, scanModes, scanPlugins } from './manager.ts'
 import { registerModelRpc } from './rpc.ts'
 import type { HostConnectionHandle } from './types.ts'
 
 export { OperationQueue }
-export { getStatus, scanModes, scanPlugins }
+export { deployModes, getStatus, scanModes, scanPlugins }
 
 export const name = 'dsh-redteam-model'
 export const inject = ['connection']
