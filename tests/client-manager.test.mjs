@@ -191,6 +191,13 @@ test('Manager fails open when an unavailable settings snapshot retains false', a
   })
   try {
     manager.openPlugins()
+    assert.deepEqual(
+      manager.renderer.root.findAllByProps({ role: 'switch' }).map(node => node.props['aria-label']),
+      [
+        'Attack Atlas: Show conversation tab',
+        'Attack Atlas: Enabled in current profile',
+      ],
+    )
     const toggle = manager.renderer.root.findByProps({
       role: 'switch',
       'aria-label': 'Attack Atlas: Show conversation tab',
