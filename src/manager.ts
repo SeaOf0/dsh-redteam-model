@@ -10,6 +10,7 @@
 import { spawn } from 'node:child_process'
 import {
   copyFileSync,
+  cpSync,
   existsSync,
   lstatSync,
   mkdirSync,
@@ -17,7 +18,9 @@ import {
   readdirSync,
   readlinkSync,
   renameSync,
+  rmSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
@@ -324,14 +327,31 @@ function modeStatus(mode: ModeDescriptor, root: string): ModeStatus {
     linkState = path.resolve(current) === path.resolve(modesRoot) ? 'ok' : 'stale'
   } catch {
     if (existsSync(link)) {
-      // Existing real directory: the manager links modes inside it one by
-      // one, so judge the per-mode entry instead of the directory itself.
+      // Existing real directory: DSH's preset discovery skips symlinked
+      // children (`child.isDirectory()` is false for them), so the manager
+      // copies each packaged mode in as a real directory and records it in a
+      // marker file. Judge that managed copy instead.
       linkPath = path.join(link, mode.id)
+      const entry = readModeMarker(link)[mode.id]
+      let stat: ReturnType<typeof lstatSync> | null = null
       try {
-        const current = readlinkSync(linkPath)
-        linkState = path.resolve(current) === path.resolve(modeDir) ? 'ok' : 'stale'
+        stat = lstatSync(linkPath)
       } catch {
-        linkState = existsSync(linkPath) ? 'error' : 'missing'
+        stat = null
+      }
+      if (entry?.source === mode.dir && stat !== null && stat.isDirectory()) {
+        linkState = 'ok'
+      } else if (stat !== null && stat.isSymbolicLink()) {
+        try {
+          const current = readlinkSync(linkPath)
+          linkState = path.resolve(current) === path.resolve(modeDir) ? 'stale' : 'error'
+        } catch {
+          linkState = 'error'
+        }
+      } else if (stat !== null) {
+        linkState = 'error'
+      } else {
+        linkState = 'missing'
       }
     } else {
       linkState = 'missing'
@@ -588,8 +608,9 @@ export function deployModes(root = locateRoot(), onProgress?: ProgressCallback):
     try {
       current = readlinkSync(link)
     } catch {
-      // Existing real directory: never replace the user's presets. Link each
-      // of our modes into it so both sets of presets stay live together.
+      // Existing real directory: never replace the user's presets. DSH's
+      // preset discovery skips symlinked children, so copy each packaged mode
+      // in as a real directory and record the managed copies in a marker.
       return deployModesIntoDirectory(link, root, onProgress)
     }
     if (current !== null && path.resolve(current) === path.resolve(target)) {
@@ -608,35 +629,82 @@ export function deployModes(root = locateRoot(), onProgress?: ProgressCallback):
 }
 
 /**
- * Link each packaged mode into an existing real `.agent-presets` directory.
- * Existing entries are never overwritten: foreign or conflicting presets are
- * reported and left exactly as they are.
+ * Copy each packaged mode into an existing real `.agent-presets` directory.
+ * A hidden marker records which entries this manager owns; only those owned
+ * copies are ever replaced. Foreign or conflicting presets are left as-is.
  */
+
+const MODE_MARKER_FILE = '.dsh-redteam-model.json'
+
+interface ModeMarker {
+  [id: string]: { readonly source: string; readonly deployedAt: number }
+}
+
+function modeMarkerFile(directory: string): string {
+  return path.join(directory, MODE_MARKER_FILE)
+}
+
+function readModeMarker(directory: string): ModeMarker {
+  const raw = readJsonFile(modeMarkerFile(directory))
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+  const marker: ModeMarker = {}
+  for (const [id, value] of Object.entries(raw)) {
+    if (typeof value !== 'object' || value === null) continue
+    const entry = value as { source?: unknown; deployedAt?: unknown }
+    if (typeof entry.source === 'string') {
+      marker[id] = { source: entry.source, deployedAt: typeof entry.deployedAt === 'number' ? entry.deployedAt : 0 }
+    }
+  }
+  return marker
+}
+
+function writeModeMarker(directory: string, marker: ModeMarker): void {
+  writeFileSync(modeMarkerFile(directory), `${JSON.stringify(marker, null, 2)}\n`, 'utf8')
+}
+
+function isOurSymlink(destination: string, source: string): boolean {
+  try {
+    return lstatSync(destination).isSymbolicLink() && path.resolve(readlinkSync(destination)) === path.resolve(source)
+  } catch {
+    return false
+  }
+}
+
 function deployModesIntoDirectory(directory: string, root: string, onProgress?: ProgressCallback): string {
   const modes = scanModes(root)
-  let linked = 0
+  const marker = readModeMarker(directory)
+  let copied = 0
   const skipped: string[] = []
 
   for (const mode of modes) {
     const destination = path.join(directory, mode.id)
+    const owned = marker[mode.id]?.source === mode.dir
+
     if (existsAny(destination)) {
-      try {
-        const current = readlinkSync(destination)
-        if (path.resolve(current) === path.resolve(mode.dir)) continue
-        skipped.push(`${mode.id} (existing link to ${current})`)
-        continue
-      } catch {
-        skipped.push(`${mode.id} (existing directory)`)
+      if (isOurSymlink(destination, mode.dir)) {
+        // A leftover from the older symlink-based deploy; replace it with a
+        // real directory copy, which DSH's discovery can see.
+        unlinkSync(destination)
+      } else if (!owned || !lstatSync(destination).isDirectory()) {
+        skipped.push(`${mode.id} (existing entry)`)
         continue
       }
     }
-    symlinkSync(mode.dir, destination, ensureLinkType())
-    linked += 1
+
+    if (owned && existsAny(destination)) {
+      // Managed copy from a previous deploy: move it aside rather than
+      // deleting in place, then lay down the fresh tree.
+      renameSync(destination, `${destination}.bak-${Date.now()}`)
+    }
+    cpSync(mode.dir, destination, { recursive: true })
+    marker[mode.id] = { source: mode.dir, deployedAt: Date.now() }
+    copied += 1
   }
 
+  writeModeMarker(directory, marker)
   const suffix = skipped.length > 0 ? `; skipped existing entries: ${skipped.join(', ')}` : ''
-  onProgress?.(`linked ${linked} modes into existing agent presets directory${suffix}`, 100)
-  return `linked ${linked} modes into existing agent presets directory${suffix}`
+  onProgress?.(`copied ${copied} modes into existing agent presets directory${suffix}`, 100)
+  return `copied ${copied} modes into existing agent presets directory${suffix}`
 }
 
 /** Validate/rebuild the .agent-presets link for one named mode. */
