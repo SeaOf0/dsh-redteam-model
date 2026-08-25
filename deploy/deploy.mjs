@@ -2,7 +2,7 @@
 // 六模式 + redteam 主模式 presets 自包含一键部署 CLI（win/mac/linux，零新增依赖：node>=22 + 网络）。
 //
 // dsh-redteam-model/ 即完整交付物：modes/（九预设：八专业模式 + redteam 主模式）+ shared/ +
-// plugins/（八插件）+ deploy/（本工具）。发现链接指向 modes/，只扫九个干净预设；
+// plugins/（十五插件）+ deploy/（本工具）。发现链接指向 modes/，只扫九个干净预设；
 // 其余目录在链接之外不会入 roster。
 // 移交方式：打包 dsh-redteam-model（--bundle 产出 dsh-redteam-model-bundle-<date>.tar.gz），
 // 目标机解压后一条命令完成部署。
@@ -22,7 +22,7 @@ import os from "node:os";
 import { spawnSync, spawn } from "node:child_process";
 
 const IS_WIN = process.platform === "win32";
-// 布局：dsh-redteam-model/{ modes/<九预设>, shared/, plugins/<十四插件>, deploy/ }。
+// 布局：dsh-redteam-model/{ modes/<九预设>, shared/, plugins/<十五插件>, deploy/ }。
 // 预设发现链接指向 modes/（发现器只扫其直接子目录=九个干净预设；shared/plugins/deploy
 // 平铺在 modes 之外，避免被当成缺 agent.cordis.yml 的损坏预设行）。
 const MODEL_ROOT = path.resolve(import.meta.dirname, ".."); // dsh-redteam-model/ 本身
@@ -47,6 +47,7 @@ const PLUGINS = [
 	{ name: "dsh-hunter", hostPlane: true },
 	{ name: "dsh-mode-group", hostPlane: true },
 	{ name: "dsh-scanner-tools", hostPlane: false },
+	{ name: "dsh-semgrep-audit", hostPlane: false },
 	{ name: "dsh-webshell-mgr", hostPlane: true }
 ];
 const MODE = process.argv[2] ?? "";
