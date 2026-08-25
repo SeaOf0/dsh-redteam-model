@@ -22,7 +22,7 @@ const en = {
   batchUpdateAll: 'Update all',
   batchUninstallAll: 'Uninstall all',
   busyHint: 'An operation is running. Other actions are disabled.',
-  restartHint: 'Host-plane plugins take effect after restarting dsh web; preset links and this settings page take effect after a page refresh.',
+  restartHint: 'Host-plane plugins and manager updates take effect after restarting dsh web; refresh the page to update copied-mode status.',
 
   modesTitle: 'Security modes',
   modesEmpty: 'No modes reported by the host.',
@@ -102,7 +102,7 @@ export const zh: Record<LocaleKey, string> = {
   batchUpdateAll: '全部更新',
   batchUninstallAll: '全部卸载',
   busyHint: '有操作正在运行，其他操作已禁用。',
-  restartHint: '宿主平面插件需要重启 dsh web 后生效；模式链接与本设置页刷新页面即可生效。',
+  restartHint: '宿主平面插件及管理器自身更新需要重启 dsh web 后生效；模式复制状态刷新页面即可更新。',
 
   modesTitle: '安全模式',
   modesEmpty: '宿主未上报任何模式。',

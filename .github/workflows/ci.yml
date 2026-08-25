@@ -40,7 +40,11 @@ jobs:
           exit $status
 
   manager:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -48,5 +52,7 @@ jobs:
           node-version: 22
       - name: install root dev dependencies
         run: npm ci
-      - name: typecheck and build manager bundles
+      - name: typecheck, build and test manager
         run: npm run check
+      - name: verify committed manager bundles
+        run: git diff --exit-code -- lib

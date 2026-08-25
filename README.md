@@ -56,13 +56,13 @@ dsh plugin --profile web add github:SeaOf0/dsh-redteam-model
 
 打开 dsh web 设置页 → **Redteam Manager**，即可：
 
-- 一键部署九个安全模式（`.agent-presets` 链接）；
+- 一键部署九个安全模式（空目录使用整体链接；已有实体 `.agent-presets` 时写入管理器持有的实体副本）；
 - 安装 / 更新 / 卸载十五个运行时插件；
-- 查看操作进度与失败原因。
+- 查看操作进度与失败原因；最近 50 条记录按 profile 保留，重启时未完成任务会标记为中断失败。
 
-模式链接与设置页刷新页面即可生效；宿主平面插件安装 / 卸载后需**重启 dsh web** 生效。
+模式复制状态刷新页面即可更新；宿主平面插件安装 / 卸载以及管理器自身更新后需**重启 dsh web** 生效。
 
-管理台只修改当前 profile，写文件前自动备份；卸载只会移除运行态声明，不会删除源码。
+插件依赖与 bundle 声明只修改当前 profile；模式位于当前 `DSH_HOME` 的全局 `.agent-presets`，会被该 DSH home 下的 profile 共享。写入 profile 前会备份声明，安装失败时恢复 `package.json` 与 lockfile；卸载子插件只移除运行态声明，不会删除源码。
 
 ### 方式二：源码一键部署 CLI
 

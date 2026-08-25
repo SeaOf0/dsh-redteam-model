@@ -5,13 +5,16 @@
  * mutations are triggered by the settings page through the loopback RPC.
  */
 
-import { deployModes, getStatus, scanModes, scanPlugins } from './manager.ts'
+import path from 'node:path'
+
+import { deployModes, dshHome, getStatus, installOne, profileWebDir, repairMode, scanModes, scanPlugins, uninstallOne } from './manager.ts'
 import { OperationQueue } from './operations.ts'
 import { registerModelRpc } from './rpc.ts'
 import type { HostConnectionHandle } from './types.ts'
 
 export { OperationQueue }
-export { deployModes, getStatus, scanModes, scanPlugins }
+export { deployModes, dshHome, getStatus, installOne, repairMode, scanModes, scanPlugins, uninstallOne }
+export { registerModelRpc }
 
 export const name = 'dsh-redteam-model'
 export const inject = ['connection']
@@ -23,7 +26,7 @@ export interface HostContext {
 }
 
 export function apply(ctx: HostContext): void {
-  const queue = new OperationQueue()
+  const queue = new OperationQueue(path.join(profileWebDir(), '.dsh-redteam-model-operations.json'))
 
   ctx.inject(['connection'], (web: Record<string, unknown>) => {
     const { connection } = web as { connection: HostConnectionHandle }

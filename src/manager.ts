@@ -18,6 +18,7 @@ import {
   readdirSync,
   readlinkSync,
   renameSync,
+  rmdirSync,
   rmSync,
   symlinkSync,
   unlinkSync,
@@ -55,6 +56,7 @@ export interface ModeDescriptor {
   readonly name: string
   readonly summary: string
   readonly dir: string
+  readonly digest?: string
   readonly order?: number
 }
 
@@ -80,7 +82,13 @@ export function locateRoot(): string {
 }
 
 export function dshHome(): string {
-  return process.env.DSH_HOME ?? path.join(homedir(), '.dsh')
+  const configured = process.env.DSH_HOME?.trim()
+  if (configured === undefined || configured === '') return path.join(homedir(), '.dsh')
+  if (configured === '~') return homedir()
+  if (configured.startsWith('~/') || configured.startsWith('~\\')) {
+    return path.resolve(homedir(), configured.slice(2))
+  }
+  return path.resolve(configured)
 }
 
 /** The profile this host process actually booted (`--profile <name>`), default web. */
@@ -153,6 +161,7 @@ export function scanPlugins(root = locateRoot()): PluginDescriptor[] {
 export function scanModes(root = locateRoot()): ModeDescriptor[] {
   const modesRoot = path.join(root, 'modes')
   if (!existsSync(modesRoot)) return []
+  const digests = readModeDigests(root)
   const ids = readdirSync(modesRoot, { withFileTypes: true })
     .filter(entry => entry.isDirectory())
     .map(entry => entry.name)
@@ -164,7 +173,8 @@ export function scanModes(root = locateRoot()): ModeDescriptor[] {
     const summary = /^description:\s*(.+)$/m.exec(text)?.[1]?.trim() ?? ''
     const orderRaw = /^order:\s*(\d+)$/m.exec(text)?.[1]
     const order = orderRaw === undefined ? undefined : Number(orderRaw)
-    return { id, name, summary, dir, ...(order === undefined ? {} : { order }) }
+    const digest = digests[id]
+    return { id, name, summary, dir, ...(digest === undefined ? {} : { digest }), ...(order === undefined ? {} : { order }) }
   }).filter((mode): mode is ModeDescriptor => mode !== null)
   return modes.sort((left, right) => {
     const lo = left.order ?? 99
@@ -172,6 +182,20 @@ export function scanModes(root = locateRoot()): ModeDescriptor[] {
     if (lo !== ro) return lo - ro
     return left.id.localeCompare(right.id)
   })
+}
+
+function readModeDigests(root: string): Record<string, string> {
+  const raw = readJsonFile(path.join(root, 'lib', 'mode-digests.json'))
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
+  const manifest = raw as { schemaVersion?: unknown; modes?: unknown }
+  if (manifest.schemaVersion !== 1 || typeof manifest.modes !== 'object' || manifest.modes === null || Array.isArray(manifest.modes)) {
+    return {}
+  }
+  const digests: Record<string, string> = {}
+  for (const [id, digest] of Object.entries(manifest.modes)) {
+    if (typeof digest === 'string' && /^sha256:[0-9a-f]{64}$/.test(digest)) digests[id] = digest
+  }
+  return digests
 }
 
 export function requirePlugin(name: string, root = locateRoot()): PluginDescriptor {
@@ -255,11 +279,9 @@ function atomicWriteJson(file: string, value: unknown): void {
   writeFileSync(temp, body, 'utf8')
   try {
     renameSync(temp, file)
-  } catch {
-    // Fall back to a direct write only if the atomic rename is unavailable
-    // (e.g. some Windows filesystems). The backup was already made by callers.
-    writeFileSync(file, body, 'utf8')
-    try { lstatSync(temp) } catch { /* already gone */ }
+  } catch (error) {
+    rmSync(temp, { force: true })
+    throw error
   }
 }
 
@@ -270,9 +292,43 @@ function writeProfileWithBackup(profile: ProfilePackage): string | undefined {
   return backup
 }
 
-function restoreProfile(backup: string | undefined): void {
-  if (backup === undefined || !existsSync(backup)) return
-  copyFileSync(backup, profilePackageFile())
+interface FileSnapshot {
+  readonly file: string
+  readonly existed: boolean
+  readonly body?: Buffer
+}
+
+function snapshotFile(file: string): FileSnapshot {
+  return existsSync(file)
+    ? { file, existed: true, body: readFileSync(file) }
+    : { file, existed: false }
+}
+
+function restoreFileSnapshot(snapshot: FileSnapshot): void {
+  if (!snapshot.existed) {
+    rmSync(snapshot.file, { force: true })
+    return
+  }
+  if (snapshot.body === undefined) throw new Error(`snapshot body missing: ${snapshot.file}`)
+  const temp = `${snapshot.file}.restore-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  try {
+    writeFileSync(temp, snapshot.body, { flag: 'wx' })
+    renameSync(temp, snapshot.file)
+  } catch (error) {
+    rmSync(temp, { force: true })
+    throw error
+  }
+}
+
+function profileMutationSnapshots(): readonly [FileSnapshot, FileSnapshot] {
+  return [
+    snapshotFile(profilePackageFile()),
+    snapshotFile(path.join(profileWebDir(), 'pnpm-lock.yaml')),
+  ]
+}
+
+function restoreFileSnapshots(snapshots: readonly FileSnapshot[]): void {
+  for (const snapshot of snapshots) restoreFileSnapshot(snapshot)
 }
 
 function addBundle(profile: ProfilePackage, pkg: string): void {
@@ -285,8 +341,13 @@ function addBundle(profile: ProfilePackage, pkg: string): void {
 function removeBundle(profile: ProfilePackage, pkg: string): void {
   const bundles = profile.dsh?.profile?.bundles
   if (bundles === undefined) return
-  const index = bundles.indexOf(pkg)
-  if (index >= 0) bundles.splice(index, 1)
+  profile.dsh!.profile!.bundles = bundles.filter(candidate => candidate !== pkg)
+}
+
+function normalizeBundle(profile: ProfilePackage, plugin: PluginDescriptor): void {
+  const pkg = pluginDependencyName(plugin)
+  removeBundle(profile, pkg)
+  if (plugin.mountPlane === 'host') addBundle(profile, pkg)
 }
 
 function pluginDependencyName(plugin: PluginDescriptor): string {
@@ -316,6 +377,16 @@ function modeStatus(mode: ModeDescriptor, root: string): ModeStatus {
   const link = presetsLinkPath()
   const modesRoot = path.join(root, 'modes')
   const modeDir = mode.dir
+  if (mode.digest === undefined) {
+    return {
+      id: mode.id,
+      name: mode.name,
+      summary: mode.summary,
+      linkState: 'error',
+      linkPath: path.join(link, mode.id),
+      ready: false,
+    }
+  }
   let linkState: ModeStatus['linkState'] = 'missing'
   let linkPath: string | undefined
 
@@ -332,26 +403,34 @@ function modeStatus(mode: ModeDescriptor, root: string): ModeStatus {
       // copies each packaged mode in as a real directory and records it in a
       // marker file. Judge that managed copy instead.
       linkPath = path.join(link, mode.id)
-      const entry = readModeMarker(link)[mode.id]
       let stat: ReturnType<typeof lstatSync> | null = null
       try {
         stat = lstatSync(linkPath)
       } catch {
         stat = null
       }
-      if (entry?.source === mode.dir && stat !== null && stat.isDirectory()) {
-        linkState = 'ok'
-      } else if (stat !== null && stat.isSymbolicLink()) {
-        try {
-          const current = readlinkSync(linkPath)
-          linkState = path.resolve(current) === path.resolve(modeDir) ? 'stale' : 'error'
-        } catch {
+      try {
+        const marker = readModeMarker(link)
+        const entry = marker.marker.modes[mode.id]
+        const legacyOwned = marker.legacyOwned.has(mode.id)
+        if (entry?.digest === mode.digest && stat !== null && stat.isDirectory()) {
+          linkState = 'ok'
+        } else if ((entry !== undefined || legacyOwned) && stat !== null && stat.isDirectory()) {
+          linkState = 'stale'
+        } else if (stat !== null && stat.isSymbolicLink()) {
+          try {
+            const current = readlinkSync(linkPath)
+            linkState = path.resolve(current) === path.resolve(modeDir) ? 'stale' : 'error'
+          } catch {
+            linkState = 'error'
+          }
+        } else if (stat !== null) {
           linkState = 'error'
+        } else {
+          linkState = 'missing'
         }
-      } else if (stat !== null) {
+      } catch {
         linkState = 'error'
-      } else {
-        linkState = 'missing'
       }
     } else {
       linkState = 'missing'
@@ -384,7 +463,8 @@ function pluginStatus(plugin: PluginDescriptor): PluginStatus {
   } else {
     const expectedLink = `link:${plugin.dir}`
     const linked = dependency === expectedLink
-    const bundled = plugin.mountPlane !== 'host' || profile.dsh?.profile?.bundles?.includes(pkg) === true
+    const bundleCount = profile.dsh?.profile?.bundles?.filter(candidate => candidate === pkg).length ?? 0
+    const bundled = plugin.mountPlane === 'host' ? bundleCount === 1 : bundleCount === 0
     if (!linked) {
       installState = installedVersion === undefined ? 'broken' : 'update-available'
     } else if (!bundled || installedVersion === undefined) {
@@ -507,15 +587,17 @@ function spawnCollect(
 async function runPnpmInstall(cwd: string, onProgress?: ProgressCallback): Promise<void> {
   onProgress?.('running pnpm install', 50)
   const runArgs = ['-y', 'pnpm', 'install', '--prefer-offline', '--no-frozen-lockfile']
+  const hadLockfile = existsSync(path.join(cwd, 'pnpm-lock.yaml'))
   let result = await spawnCollect('npx', runArgs, cwd, line => {
     if (line !== '') onProgress?.(line.slice(0, 200))
   })
-  // pnpm's supply-chain policy rejects lockfiles whose existing entries were
-  // published inside the minimumReleaseAge window. That is a property of the
-  // profile's other plugins, not of this install: retry once with the
-  // one-shot bypass so a fresh profile lockfile does not block the operation.
-  if (result.code !== 0 && `${result.stdout}\n${result.stderr}`.includes('minimumReleaseAge')) {
-    onProgress?.('retrying install with fresh-release bypass', 55)
+  // pnpm 11 can reject every later mutation when an existing lockfile already
+  // contains a release inside its minimumReleaseAge window. Match only pnpm's
+  // two known error codes, require a pre-existing lock, and retry once.
+  const output = `${result.stdout}\n${result.stderr}`
+  const releaseAgeError = /(?:^|[^A-Za-z0-9_])ERR_PNPM_(?:MINIMUM_RELEASE_AGE_VIOLATION|NO_MATURE_MATCHING_VERSION)(?![A-Za-z0-9_])/m
+  if (result.code !== 0 && hadLockfile && releaseAgeError.test(output)) {
+    onProgress?.('retrying locked profile after release-age verification failure', 55)
     result = await spawnCollect('npx', [...runArgs, '--config.minimumReleaseAge=0'], cwd, line => {
       if (line !== '') onProgress?.(line.slice(0, 200))
     })
@@ -542,6 +624,49 @@ function makeDirLink(src: string, dst: string): boolean {
   return true
 }
 
+interface PeerLinkChange {
+  readonly source: string
+  readonly destination: string
+  readonly backup?: string
+}
+
+function replacePeerLink(source: string, destination: string, changes: PeerLinkChange[]): boolean {
+  if (IS_WIN && !existsAny(source)) return false
+  let current: string | null = null
+  try {
+    current = readlinkSync(destination)
+  } catch {
+    // Not a symlink or missing.
+  }
+  if (current !== null && path.resolve(current) === path.resolve(source)) return false
+
+  let backup: string | undefined
+  if (existsAny(destination)) {
+    backup = `${destination}.bak-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    renameSync(destination, backup)
+  }
+  try {
+    if (!makeDirLink(source, destination)) {
+      if (backup !== undefined) renameSync(backup, destination)
+      return false
+    }
+    changes.push({ source, destination, ...(backup === undefined ? {} : { backup }) })
+    return true
+  } catch (error) {
+    if (backup !== undefined && !existsAny(destination) && existsAny(backup)) renameSync(backup, destination)
+    throw error
+  }
+}
+
+function rollbackPeerLinks(changes: readonly PeerLinkChange[]): void {
+  for (const change of [...changes].reverse()) {
+    if (isOurSymlink(change.destination, change.source)) unlinkSync(change.destination)
+    if (change.backup !== undefined && !existsAny(change.destination) && existsAny(change.backup)) {
+      renameSync(change.backup, change.destination)
+    }
+  }
+}
+
 /** Replicate deploy.mjs: bridge @deepseek-ai/* and @dsh-external/* into plugins/node_modules. */
 export function linkPluginPeers(root = locateRoot()): { deepseek: number; external: number } {
   const runtime = path.join(dshHome(), 'profiles', 'node_modules', '@deepseek-ai')
@@ -559,50 +684,48 @@ export function linkPluginPeers(root = locateRoot()): { deepseek: number; extern
     if (!names.includes(extra)) names.push(extra)
   }
 
-  let deepseek = 0
-  for (const pkg of names) {
-    const src = path.join(runtime, pkg)
-    const dst = path.join(localDeepseek, pkg)
-    let current: string | null = null
-    try {
-      current = readlinkSync(dst)
-    } catch {
-      // Not a symlink or missing.
+  const changes: PeerLinkChange[] = []
+  try {
+    let deepseek = 0
+    for (const pkg of names) {
+      const src = path.join(runtime, pkg)
+      const dst = path.join(localDeepseek, pkg)
+      if (replacePeerLink(src, dst, changes)) deepseek += 1
     }
-    if (current === src) continue
-    if (existsAny(dst)) renameSync(dst, `${dst}.bak-${Date.now()}`)
-    if (!makeDirLink(src, dst)) continue
-    deepseek += 1
-  }
 
-  const localExternal = path.join(root, 'plugins', 'node_modules', '@dsh-external')
-  mkdirSync(localExternal, { recursive: true })
-  let external = 0
-  for (const plugin of scanPlugins(root)) {
-    const src = plugin.dir
-    const dst = path.join(localExternal, plugin.name)
-    let current: string | null = null
-    try {
-      current = readlinkSync(dst)
-    } catch {
-      // Not a symlink or missing.
+    const localExternal = path.join(root, 'plugins', 'node_modules', '@dsh-external')
+    mkdirSync(localExternal, { recursive: true })
+    let external = 0
+    for (const plugin of scanPlugins(root)) {
+      const src = plugin.dir
+      const dst = path.join(localExternal, plugin.name)
+      if (replacePeerLink(src, dst, changes)) external += 1
     }
-    if (current === src) continue
-    if (existsAny(dst)) renameSync(dst, `${dst}.bak-${Date.now()}`)
-    if (!makeDirLink(src, dst)) continue
-    external += 1
+    return { deepseek, external }
+  } catch (error) {
+    try {
+      rollbackPeerLinks(changes)
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], 'plugin peer linking failed and rollback was incomplete')
+    }
+    throw error
   }
-
-  return { deepseek, external }
 }
 
 /** Deploy (or repair) the nine modes into ~/.dsh/.agent-presets. */
-export function deployModes(root = locateRoot(), onProgress?: ProgressCallback): string {
+export function deployModes(root = locateRoot(), onProgress?: ProgressCallback, ids?: readonly string[]): string {
   const target = path.join(root, 'modes')
+  const requested = ids === undefined ? undefined : new Set(ids)
+  for (const mode of scanModes(root)) {
+    if ((requested === undefined || requested.has(mode.id)) && mode.digest === undefined) {
+      throw new Error(`mode digest missing: ${mode.id}`)
+    }
+  }
   const link = presetsLinkPath()
   mkdirSync(dshHome(), { recursive: true })
   onProgress?.('checking agent presets link', 20)
 
+  let previousLinkBackup: string | undefined
   if (existsAny(link)) {
     let current: string | null = null
     try {
@@ -611,19 +734,26 @@ export function deployModes(root = locateRoot(), onProgress?: ProgressCallback):
       // Existing real directory: never replace the user's presets. DSH's
       // preset discovery skips symlinked children, so copy each packaged mode
       // in as a real directory and record the managed copies in a marker.
-      return deployModesIntoDirectory(link, root, onProgress)
+      return deployModesIntoDirectory(link, root, onProgress, ids)
     }
     if (current !== null && path.resolve(current) === path.resolve(target)) {
       onProgress?.('agent presets link ok', 100)
       return `agent presets link ok: ${link} -> ${target}`
     }
     // Existing symlink to something else: a link can be moved aside safely.
-    const backup = `${link}.bak-${Date.now()}`
-    renameSync(link, backup)
-    onProgress?.(`backed up existing agent presets link to ${backup}`, 50)
+    previousLinkBackup = `${link}.bak-${Date.now()}`
+    renameSync(link, previousLinkBackup)
+    onProgress?.(`backed up existing agent presets link to ${previousLinkBackup}`, 50)
   }
 
-  symlinkSync(target, link, ensureLinkType())
+  try {
+    symlinkSync(target, link, ensureLinkType())
+  } catch (error) {
+    if (previousLinkBackup !== undefined && !existsAny(link) && existsAny(previousLinkBackup)) {
+      renameSync(previousLinkBackup, link)
+    }
+    throw error
+  }
   onProgress?.('agent presets link ready', 100)
   return `agent presets link ready: ${link} -> ${target}`
 }
@@ -635,31 +765,137 @@ export function deployModes(root = locateRoot(), onProgress?: ProgressCallback):
  */
 
 const MODE_MARKER_FILE = '.dsh-redteam-model.json'
+const MODE_MARKER_BACKUP_FILE = '.dsh-redteam-model.backup.json'
+const MODE_MARKER_OWNER = '@dsh-external/dsh-redteam-model'
+const LEGACY_STALE_DIGEST = `sha256:${'0'.repeat(64)}`
+
+interface ModeMarkerEntry {
+  readonly digest: string
+  readonly deployedAt: number
+}
 
 interface ModeMarker {
-  [id: string]: { readonly source: string; readonly deployedAt: number }
+  readonly schemaVersion: 2
+  readonly owner: typeof MODE_MARKER_OWNER
+  readonly modes: Record<string, ModeMarkerEntry>
+}
+
+interface ModeMarkerRead {
+  readonly marker: ModeMarker
+  readonly legacyOwned: ReadonlySet<string>
+  readonly recoveredFromBackup: boolean
+}
+
+function emptyModeMarker(): ModeMarker {
+  return { schemaVersion: 2, owner: MODE_MARKER_OWNER, modes: {} }
 }
 
 function modeMarkerFile(directory: string): string {
   return path.join(directory, MODE_MARKER_FILE)
 }
 
-function readModeMarker(directory: string): ModeMarker {
-  const raw = readJsonFile(modeMarkerFile(directory))
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return {}
-  const marker: ModeMarker = {}
-  for (const [id, value] of Object.entries(raw)) {
-    if (typeof value !== 'object' || value === null) continue
-    const entry = value as { source?: unknown; deployedAt?: unknown }
-    if (typeof entry.source === 'string') {
-      marker[id] = { source: entry.source, deployedAt: typeof entry.deployedAt === 'number' ? entry.deployedAt : 0 }
-    }
+function modeMarkerBackupFile(directory: string): string {
+  return path.join(directory, MODE_MARKER_BACKUP_FILE)
+}
+
+function readMarkerJson(file: string): unknown | undefined {
+  if (!existsAny(file)) return undefined
+  const info = lstatSync(file)
+  if (!info.isFile() || info.isSymbolicLink()) throw new Error(`unsafe mode marker: ${file}`)
+  return JSON.parse(readFileSync(file, 'utf8')) as unknown
+}
+
+function assertSafeModeMarkerPaths(directory: string): void {
+  for (const file of [modeMarkerFile(directory), modeMarkerBackupFile(directory)]) {
+    if (!existsAny(file)) continue
+    const info = lstatSync(file)
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error(`unsafe mode marker: ${file}`)
   }
-  return marker
+}
+
+function parseModeMarker(raw: unknown): Omit<ModeMarkerRead, 'recoveredFromBackup'> | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
+  const candidate = raw as { schemaVersion?: unknown; owner?: unknown; modes?: unknown }
+  if (candidate.schemaVersion === 2) {
+    if (candidate.owner !== MODE_MARKER_OWNER || typeof candidate.modes !== 'object' || candidate.modes === null || Array.isArray(candidate.modes)) {
+      return null
+    }
+    const modes: Record<string, ModeMarkerEntry> = {}
+    for (const [id, value] of Object.entries(candidate.modes)) {
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+      const entry = value as { digest?: unknown; deployedAt?: unknown }
+      if (typeof entry.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(entry.digest)) return null
+      modes[id] = { digest: entry.digest, deployedAt: typeof entry.deployedAt === 'number' ? entry.deployedAt : 0 }
+    }
+    return { marker: { schemaVersion: 2, owner: MODE_MARKER_OWNER, modes }, legacyOwned: new Set() }
+  }
+
+  const legacyOwned = new Set<string>()
+  for (const [id, value] of Object.entries(raw)) {
+    if (typeof value !== 'object' || value === null || Array.isArray(value)) return null
+    const entry = value as { source?: unknown }
+    if (typeof entry.source !== 'string') return null
+    legacyOwned.add(id)
+  }
+  return { marker: emptyModeMarker(), legacyOwned }
+}
+
+function readModeMarker(directory: string): ModeMarkerRead {
+  assertSafeModeMarkerPaths(directory)
+  const primary = modeMarkerFile(directory)
+  const backup = modeMarkerBackupFile(directory)
+  let primaryError: unknown
+  try {
+    const raw = readMarkerJson(primary)
+    if (raw === undefined) {
+      const backupRaw = readMarkerJson(backup)
+      if (backupRaw === undefined) return { marker: emptyModeMarker(), legacyOwned: new Set(), recoveredFromBackup: false }
+      const backupParsed = parseModeMarker(backupRaw)
+      if (backupParsed !== null) return { ...backupParsed, recoveredFromBackup: true }
+      throw new Error(`invalid mode marker backup: ${backup}`)
+    }
+    const parsed = parseModeMarker(raw)
+    if (parsed !== null) return { ...parsed, recoveredFromBackup: false }
+    primaryError = new Error(`invalid mode marker: ${primary}`)
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('unsafe mode marker:')) throw error
+    primaryError = error
+  }
+
+  try {
+    const raw = readMarkerJson(backup)
+    const parsed = raw === undefined ? null : parseModeMarker(raw)
+    if (parsed !== null) return { ...parsed, recoveredFromBackup: true }
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('unsafe mode marker:')) throw error
+  }
+  const detail = primaryError instanceof Error ? primaryError.message : String(primaryError)
+  throw new Error(`invalid mode marker: ${primary}: ${detail}`)
+}
+
+function atomicWriteRegularFile(file: string, body: string): void {
+  if (existsAny(file)) {
+    const info = lstatSync(file)
+    if (!info.isFile() || info.isSymbolicLink()) throw new Error(`unsafe mode marker: ${file}`)
+  }
+  const directory = path.dirname(file)
+  const temp = path.join(directory, `.${path.basename(file)}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`)
+  try {
+    writeFileSync(temp, body, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
+    renameSync(temp, file)
+  } catch (error) {
+    rmSync(temp, { force: true })
+    throw error
+  }
 }
 
 function writeModeMarker(directory: string, marker: ModeMarker): void {
-  writeFileSync(modeMarkerFile(directory), `${JSON.stringify(marker, null, 2)}\n`, 'utf8')
+  const body = `${JSON.stringify(marker, null, 2)}\n`
+  const backup = modeMarkerBackupFile(directory)
+  const primary = modeMarkerFile(directory)
+  assertSafeModeMarkerPaths(directory)
+  atomicWriteRegularFile(backup, body)
+  atomicWriteRegularFile(primary, body)
 }
 
 function isOurSymlink(destination: string, source: string): boolean {
@@ -670,41 +906,100 @@ function isOurSymlink(destination: string, source: string): boolean {
   }
 }
 
-function deployModesIntoDirectory(directory: string, root: string, onProgress?: ProgressCallback): string {
-  const modes = scanModes(root)
-  const marker = readModeMarker(directory)
+function deployModesIntoDirectory(
+  directory: string,
+  root: string,
+  onProgress?: ProgressCallback,
+  ids?: readonly string[],
+): string {
+  const requested = ids === undefined ? undefined : new Set(ids)
+  const allModes = scanModes(root)
+  const modes = allModes.filter(mode => requested === undefined || requested.has(mode.id))
+  const current = readModeMarker(directory)
+  const marker: ModeMarker = {
+    schemaVersion: 2,
+    owner: MODE_MARKER_OWNER,
+    modes: { ...current.marker.modes },
+  }
+  const knownModes = new Set(allModes.map(mode => mode.id))
+  for (const id of current.legacyOwned) {
+    if (knownModes.has(id) && marker.modes[id] === undefined) {
+      marker.modes[id] = { digest: LEGACY_STALE_DIGEST, deployedAt: 0 }
+    }
+  }
   let copied = 0
+  let unchanged = 0
   const skipped: string[] = []
 
   for (const mode of modes) {
+    if (mode.digest === undefined) throw new Error(`mode digest missing: ${mode.id}`)
     const destination = path.join(directory, mode.id)
-    const owned = marker[mode.id]?.source === mode.dir
+    const entry = marker.modes[mode.id]
+    const owned = entry !== undefined
+    const destinationExists = existsAny(destination)
+    const legacySymlink = destinationExists && isOurSymlink(destination, mode.dir)
 
-    if (existsAny(destination)) {
-      if (isOurSymlink(destination, mode.dir)) {
-        // A leftover from the older symlink-based deploy; replace it with a
-        // real directory copy, which DSH's discovery can see.
-        unlinkSync(destination)
-      } else if (!owned || !lstatSync(destination).isDirectory()) {
+    if (destinationExists) {
+      if (!legacySymlink && (!owned || !lstatSync(destination).isDirectory())) {
         skipped.push(`${mode.id} (existing entry)`)
         continue
       }
     }
 
-    if (owned && existsAny(destination)) {
-      // Managed copy from a previous deploy: move it aside rather than
-      // deleting in place, then lay down the fresh tree.
-      renameSync(destination, `${destination}.bak-${Date.now()}`)
+    if (!legacySymlink && owned && entry?.digest === mode.digest && destinationExists && lstatSync(destination).isDirectory()) {
+      unchanged += 1
+      continue
     }
-    cpSync(mode.dir, destination, { recursive: true })
-    marker[mode.id] = { source: mode.dir, deployedAt: Date.now() }
+
+    const suffix = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    const staging = path.join(directory, `.${mode.id}.dsh-redteam-model.tmp-${suffix}`)
+    const backup = `${destination}.bak-${suffix}`
+    const markerSnapshots = [
+      snapshotFile(modeMarkerFile(directory)),
+      snapshotFile(modeMarkerBackupFile(directory)),
+    ]
+    let backedUp = false
+    let promoted = false
+    let markerWriteAttempted = false
+    try {
+      cpSync(mode.dir, staging, { recursive: true })
+      if ((owned || legacySymlink) && existsAny(destination)) {
+        renameSync(destination, backup)
+        backedUp = true
+      }
+      renameSync(staging, destination)
+      promoted = true
+      marker.modes[mode.id] = { digest: mode.digest, deployedAt: Date.now() }
+      markerWriteAttempted = true
+      writeModeMarker(directory, marker)
+    } catch (error) {
+      const rollbackErrors: unknown[] = []
+      try { rmSync(staging, { recursive: true, force: true }) } catch (rollbackError) { rollbackErrors.push(rollbackError) }
+      if (promoted) {
+        try { rmSync(destination, { recursive: true, force: true }) } catch (rollbackError) { rollbackErrors.push(rollbackError) }
+      }
+      if (backedUp && !existsAny(destination) && existsAny(backup)) {
+        try { renameSync(backup, destination) } catch (rollbackError) { rollbackErrors.push(rollbackError) }
+      }
+      if (markerWriteAttempted) {
+        try { restoreFileSnapshots(markerSnapshots) } catch (rollbackError) { rollbackErrors.push(rollbackError) }
+      }
+      if (rollbackErrors.length > 0) {
+        throw new AggregateError([error, ...rollbackErrors], `mode deployment failed and rollback was incomplete: ${mode.id}`)
+      }
+      throw error
+    }
     copied += 1
   }
 
-  writeModeMarker(directory, marker)
+  if (copied === 0 && (current.recoveredFromBackup || current.legacyOwned.size > 0
+    || !existsAny(modeMarkerFile(directory)) || !existsAny(modeMarkerBackupFile(directory)))) {
+    writeModeMarker(directory, marker)
+  }
   const suffix = skipped.length > 0 ? `; skipped existing entries: ${skipped.join(', ')}` : ''
-  onProgress?.(`copied ${copied} modes into existing agent presets directory${suffix}`, 100)
-  return `copied ${copied} modes into existing agent presets directory${suffix}`
+  const detail = `copied ${copied} modes into existing agent presets directory; ${unchanged} already current${suffix}`
+  onProgress?.(detail, 100)
+  return detail
 }
 
 /** Validate/rebuild the .agent-presets link for one named mode. */
@@ -712,30 +1007,34 @@ export function repairMode(id: string, root = locateRoot(), onProgress?: Progres
   const mode = requireMode(id, root)
   if (!existsSync(mode.dir)) throw new Error(`mode directory missing: ${mode.dir}`)
   onProgress?.(`repairing agent presets link for ${id}`, 10)
-  const detail = deployModes(root, onProgress)
+  const detail = deployModes(root, onProgress, [id])
   return `${mode.id}: ${detail}`
 }
 
 /** Install one plugin into the web profile and run pnpm install. */
 export async function installOne(name: string, options: InstallOptions = {}, root = locateRoot()): Promise<string> {
   const plugin = requirePlugin(name, root)
-  const profile = ensureProfile()
-  options.onProgress?.('writing profile', 10)
-
-  const pkg = pluginDependencyName(plugin)
-  profile.dependencies ??= {}
-  profile.dependencies[pkg] = `link:${plugin.dir}`
-  if (plugin.mountPlane === 'host') addBundle(profile, pkg)
-  const backup = writeProfileWithBackup(profile)
-
+  const profileDirectoryExisted = existsAny(profileWebDir())
+  const snapshots = profileMutationSnapshots()
   try {
+    const profile = ensureProfile()
+    options.onProgress?.('writing profile', 10)
+    const pkg = pluginDependencyName(plugin)
+    profile.dependencies ??= {}
+    profile.dependencies[pkg] = `link:${plugin.dir}`
+    normalizeBundle(profile, plugin)
+    if (snapshots[0].existed) writeProfileWithBackup(profile)
+    else atomicWriteJson(profilePackageFile(), profile)
     await runPnpmInstall(profileWebDir(), options.onProgress)
     options.onProgress?.('linking plugin peers', 90)
     linkPluginPeers(root)
     options.onProgress?.('done', 100)
     return `installed ${name}@${plugin.version}`
   } catch (error) {
-    restoreProfile(backup)
+    restoreFileSnapshots(snapshots)
+    if (!profileDirectoryExisted) {
+      try { rmdirSync(profileWebDir()) } catch { /* Keep a non-empty directory created by pnpm. */ }
+    }
     throw error
   }
 }
@@ -743,6 +1042,7 @@ export async function installOne(name: string, options: InstallOptions = {}, roo
 /** Uninstall one plugin from the web profile and run pnpm install. */
 export async function uninstallOne(name: string, options: InstallOptions = {}, root = locateRoot()): Promise<string> {
   const plugin = requirePlugin(name, root)
+  const snapshots = profileMutationSnapshots()
   const profile = readProfile()
   const pkg = pluginDependencyName(plugin)
   if (profile === null || profile.dependencies?.[pkg] === undefined) {
@@ -750,19 +1050,18 @@ export async function uninstallOne(name: string, options: InstallOptions = {}, r
     return `${name} is not installed`
   }
 
-  options.onProgress?.('writing profile', 10)
-  delete profile.dependencies?.[pkg]
-  removeBundle(profile, pkg)
-  const backup = writeProfileWithBackup(profile)
-
   try {
+    options.onProgress?.('writing profile', 10)
+    delete profile.dependencies?.[pkg]
+    removeBundle(profile, pkg)
+    writeProfileWithBackup(profile)
     await runPnpmInstall(profileWebDir(), options.onProgress)
     options.onProgress?.('linking plugin peers', 90)
     linkPluginPeers(root)
     options.onProgress?.('done', 100)
     return `uninstalled ${name}`
   } catch (error) {
-    restoreProfile(backup)
+    restoreFileSnapshots(snapshots)
     throw error
   }
 }
