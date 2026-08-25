@@ -1,27 +1,42 @@
-/** Redteam Manager settings section: status, batch actions, modes, plugins, operations. */
+/** Redteam Manager settings section: overview, modes, plugins, and logs. */
 import { useCallback, useEffect, useState, type ReactElement } from 'react'
 import { Button, IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
 import { type AdminOperationStart, type AdminStatus, type PluginStatus, type Translate } from './contracts.js'
+import {
+  DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  type ConversationViewField,
+  type ConversationViewSettingsScope,
+} from './conversationViewSettings.js'
 import { errorMessage, type AdminFace } from './controller.js'
 import { ConfirmDialog } from './ConfirmDialog.js'
 import { ModeSection } from './ModeSection.js'
 import { OperationsPanel } from './OperationsPanel.js'
+import { OverviewPanel, type ManagerPage } from './OverviewPanel.js'
 import { PluginSection } from './PluginSection.js'
-import { StatusSummary } from './StatusSummary.js'
 
 const ACTIVE_POLL_MS = 2_000
 const IDLE_POLL_MS = 10_000
+
+const MANAGER_PAGES = [
+  { id: 'overview', label: 'pageOverview' },
+  { id: 'modes', label: 'pageModes' },
+  { id: 'plugins', label: 'pagePlugins' },
+  { id: 'logs', label: 'pageLogs' },
+] as const satisfies ReadonlyArray<{ id: ManagerPage; label: 'pageOverview' | 'pageModes' | 'pagePlugins' | 'pageLogs' }>
 
 function hasActiveOperations(status: AdminStatus | null): boolean {
   return status !== null && (status.summary.busy || status.operations.some(op => op.state === 'queued' || op.state === 'running'))
 }
 
-export function createAdminPage(face: AdminFace, t: Translate): () => ReactElement {
+export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: ConversationViewSettingsScope): () => ReactElement {
   return function AdminPage(): ReactElement {
+    const [activePage, setActivePage] = useState<ManagerPage>('overview')
     const [status, setStatus] = useState<AdminStatus | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [pending, setPending] = useState(false)
     const [uninstallTargets, setUninstallTargets] = useState<PluginStatus[] | null>(null)
+    const [visibilitySnapshot, setVisibilitySnapshot] = useState(() => visibilityScope.getSnapshot())
+    const [visibilityPending, setVisibilityPending] = useState<ConversationViewField | null>(null)
 
     const refresh = useCallback(async () => {
       try {
@@ -58,6 +73,33 @@ export function createAdminPage(face: AdminFace, t: Translate): () => ReactEleme
         if (timer !== undefined) window.clearTimeout(timer)
       }
     }, [face])
+
+    // The settings mirror is independent of the status poll and is bound once in apply().
+    useEffect(() => {
+      const publish = () => setVisibilitySnapshot(visibilityScope.getSnapshot())
+      const unsubscribe = visibilityScope.subscribe(publish)
+      publish()
+      return unsubscribe
+    }, [visibilityScope])
+
+    const visibility = visibilitySnapshot.value ?? DEFAULT_CONVERSATION_VIEW_SETTINGS
+    const visibilityWritable = visibilitySnapshot.status === 'ready'
+      && visibilitySnapshot.mode === 'host'
+      && visibilitySnapshot.writable
+
+    const setViewVisible = useCallback(async (field: ConversationViewField, visible: boolean) => {
+      if (!visibilityWritable) return
+      setVisibilityPending(field)
+      setError(null)
+      try {
+        await visibilityScope.set(field, visible)
+        setVisibilitySnapshot(visibilityScope.getSnapshot())
+      } catch (cause) {
+        setError(errorMessage(cause))
+      } finally {
+        setVisibilityPending(null)
+      }
+    }, [visibilityScope, visibilityWritable])
 
     const runStart = useCallback(async (request: AdminOperationStart) => {
       setPending(true)
@@ -145,6 +187,7 @@ export function createAdminPage(face: AdminFace, t: Translate): () => ReactEleme
     const batchDisabled = busy || pending
     const confirmOpen = uninstallTargets !== null
     const confirmTargets = uninstallTargets?.map(plugin => plugin.name) ?? []
+    const activePageButtonId = `dsh-rtm-page-${activePage}`
 
     return (
       <div className="dsh-rtm">
@@ -181,75 +224,112 @@ export function createAdminPage(face: AdminFace, t: Translate): () => ReactEleme
           </div>
         )}
 
-        <StatusSummary summary={status.summary} runningCount={runningCount} t={t} />
-
         <p className="dsh-rtm-restart-hint">{t('restartHint')}</p>
 
-        <div className="dsh-rtm-batchbar">
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={batchDisabled || missingPlugins.length === 0}
-            onClick={() => void runStart({
-              kind: 'install',
-              target: 'missing',
-              targets: missingPlugins.map(plugin => plugin.name),
-            })}
-          >
-            {t('batchInstallMissing')} ({missingPlugins.length})
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            disabled={batchDisabled || updatablePlugins.length === 0}
-            onClick={() => void runStart({
-              kind: 'update',
-              target: 'updates',
-              targets: updatablePlugins.map(plugin => plugin.name),
-            })}
-          >
-            {t('batchUpdateAll')} ({updatablePlugins.length})
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            className="dsh-rtm-btn--danger"
-            disabled={batchDisabled || installedPlugins.length === 0}
-            onClick={() => setUninstallTargets(installedPlugins)}
-          >
-            {t('batchUninstallAll')} ({installedPlugins.length})
-          </Button>
-          {busy && <span className="dsh-rtm-batchbar-hint">{t('busyHint')}</span>}
+        <nav className="dsh-rtm-page-nav" aria-label={t('managerPages')}>
+          {MANAGER_PAGES.map(page => (
+            <button
+              key={page.id}
+              id={`dsh-rtm-page-${page.id}`}
+              type="button"
+              className={activePage === page.id ? 'dsh-rtm-page-button is-active' : 'dsh-rtm-page-button'}
+              aria-current={activePage === page.id ? 'page' : undefined}
+              aria-controls="dsh-rtm-page-content"
+              onClick={() => setActivePage(page.id)}
+            >
+              {t(page.label)}
+            </button>
+          ))}
+        </nav>
+
+        <div id="dsh-rtm-page-content" className="dsh-rtm-page-content" role="region" aria-labelledby={activePageButtonId}>
+          {activePage === 'overview' && (
+            <OverviewPanel status={status} runningCount={runningCount} t={t} onNavigate={setActivePage} />
+          )}
+
+          {activePage === 'modes' && (
+            <ModeSection
+              modes={status.modes}
+              t={t}
+              busy={busy}
+              pending={pending}
+              onDeploy={mode => void runStart({ kind: 'deploy-modes', target: mode.id })}
+              onRepair={mode => void runStart({ kind: 'repair', target: mode.id })}
+            />
+          )}
+
+          {activePage === 'plugins' && (
+            <>
+              <div className="dsh-rtm-batchbar">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={batchDisabled || missingPlugins.length === 0}
+                  onClick={() => void runStart({
+                    kind: 'install',
+                    target: 'missing',
+                    targets: missingPlugins.map(plugin => plugin.name),
+                  })}
+                >
+                  {t('batchInstallMissing')} ({missingPlugins.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={batchDisabled || updatablePlugins.length === 0}
+                  onClick={() => void runStart({
+                    kind: 'update',
+                    target: 'updates',
+                    targets: updatablePlugins.map(plugin => plugin.name),
+                  })}
+                >
+                  {t('batchUpdateAll')} ({updatablePlugins.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="dsh-rtm-btn--danger"
+                  disabled={batchDisabled || installedPlugins.length === 0}
+                  onClick={() => setUninstallTargets(installedPlugins)}
+                >
+                  {t('batchUninstallAll')} ({installedPlugins.length})
+                </Button>
+                {busy && <span className="dsh-rtm-batchbar-hint">{t('busyHint')}</span>}
+              </div>
+
+              <PluginSection
+                plugins={status.plugins}
+                t={t}
+                busy={busy}
+                pending={pending}
+                visibility={visibility}
+                visibilityWritable={visibilityWritable}
+                visibilityPending={visibilityPending}
+                onSetEnabled={(plugin, enabled) => {
+                  if (enabled) {
+                    void runStart({ kind: 'install', target: plugin.name })
+                    return
+                  }
+                  setUninstallTargets([plugin])
+                }}
+                onSetViewVisible={(field, visible) => void setViewVisible(field, visible)}
+                onUpdate={plugin => void runStart({ kind: 'update', target: plugin.name })}
+                onRepair={plugin => void runStart({ kind: 'repair', target: plugin.name })}
+              />
+            </>
+          )}
+
+          {activePage === 'logs' && (
+            <OperationsPanel
+              operations={status.operations}
+              t={t}
+              busy={busy}
+              pending={pending}
+              onCancel={id => void runCancel(id)}
+              onClear={() => void runClear()}
+            />
+          )}
         </div>
-
-        <ModeSection
-          modes={status.modes}
-          t={t}
-          busy={busy}
-          pending={pending}
-          onDeploy={mode => void runStart({ kind: 'deploy-modes', target: mode.id })}
-          onRepair={mode => void runStart({ kind: 'repair', target: mode.id })}
-        />
-
-        <PluginSection
-          plugins={status.plugins}
-          t={t}
-          busy={busy}
-          pending={pending}
-          onInstall={plugin => void runStart({ kind: 'install', target: plugin.name })}
-          onUpdate={plugin => void runStart({ kind: 'update', target: plugin.name })}
-          onRepair={plugin => void runStart({ kind: 'repair', target: plugin.name })}
-          onUninstall={plugin => setUninstallTargets([plugin])}
-        />
-
-        <OperationsPanel
-          operations={status.operations}
-          t={t}
-          busy={busy}
-          pending={pending}
-          onCancel={id => void runCancel(id)}
-          onClear={() => void runClear()}
-        />
 
         {confirmOpen && uninstallTargets !== null && (
           <ConfirmDialog

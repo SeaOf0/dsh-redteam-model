@@ -104,6 +104,18 @@ export interface SettingsSectionComponent {
 export interface ClientContext {
   effect(factory: () => void | (() => void), label?: string): void
   connection: AdminConnectionHandle
+  settingsScope: {
+    bind<T>(spec: { namespace: string; decode?: (section: unknown) => T | undefined }): {
+      getSnapshot(): {
+        status: 'loading' | 'ready' | 'unavailable'
+        value: T | undefined
+        writable: boolean
+        mode: 'host' | 'memory'
+      }
+      subscribe(listener: () => void): () => void
+      set(field: string, value: unknown): Promise<void>
+    }
+  }
   locale: {
     register(namespace: string, dictionaries: { readonly zh: Record<string, string>; readonly en: Record<string, string> }): () => void
     bind(namespace: string): Translate
