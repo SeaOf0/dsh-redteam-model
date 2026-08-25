@@ -1958,9 +1958,41 @@ function ResultsView(props) {
 					: React.createElement(ModePage, { sessionId: sessionId, mode: mode[0], onRefreshCounts: refreshCounts })));
 }
 
+var REDTEAM_MANAGER_UI_NAMESPACE = "redteam-manager-ui";
+
+function injectVisibleConversationView(ctx, field, register) {
+	var settings = ctx.settingsScope.bind({ namespace: REDTEAM_MANAGER_UI_NAMESPACE });
+	ctx.slots.inject("conversation.view", function () {
+		var disposeView;
+		function isVisible() {
+			var snapshot = settings.getSnapshot();
+			return snapshot.status !== "ready" || !snapshot.value || snapshot.value[field] !== false;
+		}
+		function reconcile() {
+			if (isVisible()) {
+				if (!disposeView) disposeView = register();
+				return;
+			}
+			if (disposeView) {
+				disposeView();
+				disposeView = undefined;
+			}
+		}
+		var unsubscribe = settings.subscribe(reconcile);
+		reconcile();
+		return function () {
+			unsubscribe();
+			if (disposeView) {
+				disposeView();
+				disposeView = undefined;
+			}
+		};
+	});
+}
+
 function apply(ctx) {
 	ctx.effect(function () { return installStyles(); }, "dsh-redteam-results: styles");
-	ctx.slots.inject("conversation.view", function () {
+	injectVisibleConversationView(ctx, "showRedteamResults", function () {
 		return ctx.slots.register({
 			name: "conversation.view",
 			id: "redteam-results",
@@ -1972,5 +2004,5 @@ function apply(ctx) {
 	});
 }
 
-module.exports = { name: "dsh-redteam-results-client", inject: ["slots"], apply: apply };
+module.exports = { name: "dsh-redteam-results-client", inject: ["slots", "settingsScope"], apply: apply };
 return module.exports; } });
