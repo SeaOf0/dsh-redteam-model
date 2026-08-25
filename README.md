@@ -165,6 +165,15 @@ dsh-redteam-model/
 
 使用中遇到 bug、误报/漏报、文档与行为不符，请到 [Issues](https://github.com/SeaOf0/dsh-redteam-model/issues) 提交，附：模式名、复现步骤、期望与实际行为、相关日志片段（gate-log/enforce-log/会话输出）。
 
+## 贡献者
+
+感谢参与本项目的贡献者：
+
+- [@yzke](https://github.com/yzke) —— [设置页 Redteam Manager 管理台](https://github.com/SeaOf0/dsh-redteam-model/pull/3)（一键部署/安装/更新/卸载）
+- [@SeaOf0](https://github.com/SeaOf0) —— 项目作者与维护者
+
+欢迎通过 Pull Request 参与贡献。
+
 ## 致谢
 
 感谢以下项目中的知识点，在这里向作者表达致谢：
