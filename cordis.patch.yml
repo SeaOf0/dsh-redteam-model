@@ -1,0 +1,6 @@
+# One installable bundle row for the whole redteam model collection:
+# the Host plugin owns the /dsh-redteam-model loopback RPC, and the
+# published client bundle renders the Redteam Manager settings section.
+- insert:
+    - id: dsh-redteam-model
+      name: '@dsh-external/dsh-redteam-model'

@@ -46,6 +46,24 @@
 
 前置：**Node.js >= 22**（DSH 本身要求）。无需预装 pnpm/dsh（经 npx 拉起）；bash/python 非必需。
 
+### 方式一：设置页管理台（推荐）
+
+把整个合集作为一个 dsh 插件安装（需 dsh web 0.1.0-rc.6+，验证于 0.1.1-rc.2）：
+
+```sh
+dsh plugin --profile web add github:SeaOf0/dsh-redteam-model
+```
+
+打开 dsh web 设置页 → **Redteam Manager**，即可：
+
+- 一键部署九个安全模式（`.agent-presets` 链接）；
+- 安装 / 更新 / 卸载十五个运行时插件；
+- 查看操作进度与失败原因。
+
+管理台只修改当前 profile，写文件前自动备份；卸载只会移除运行态声明，不会删除源码。
+
+### 方式二：源码一键部署 CLI
+
 获取源码任选其一：`git clone https://github.com/SeaOf0/dsh-redteam-model.git`，或仓库页 Code → Download ZIP 解压。
 
 ```bash
