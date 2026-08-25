@@ -60,6 +60,8 @@ dsh plugin --profile web add github:SeaOf0/dsh-redteam-model
 - 安装 / 更新 / 卸载十五个运行时插件；
 - 查看操作进度与失败原因。
 
+模式链接与设置页刷新页面即可生效；宿主平面插件安装 / 卸载后需**重启 dsh web** 生效。
+
 管理台只修改当前 profile，写文件前自动备份；卸载只会移除运行态声明，不会删除源码。
 
 ### 方式二：源码一键部署 CLI

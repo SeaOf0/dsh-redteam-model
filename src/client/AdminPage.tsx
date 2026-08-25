@@ -183,6 +183,8 @@ export function createAdminPage(face: AdminFace, t: Translate): () => ReactEleme
 
         <StatusSummary summary={status.summary} runningCount={runningCount} t={t} />
 
+        <p className="dsh-rtm-restart-hint">{t('restartHint')}</p>
+
         <div className="dsh-rtm-batchbar">
           <Button
             size="sm"

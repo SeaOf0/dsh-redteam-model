@@ -49,6 +49,7 @@ const CSS_TEXT = String.raw`
 .dsh-rtm-section-title{margin:0;font-size:11px;font-weight:700;line-height:17px;color:var(--dsw-alias-label-secondary,#57606a);text-transform:uppercase;letter-spacing:.06em}
 
 .dsh-rtm-batchbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:10px 14px;border:1px solid var(--dsw-alias-border-l2,#e5e6eb);border-radius:12px;background:var(--dsw-alias-bg-layer-1,#fff)}
+.dsh-rtm-restart-hint{margin:0;padding:8px 12px;border:1px dashed color-mix(in srgb,var(--dsw-alias-state-warn-primary,#d97706) 45%,var(--dsw-alias-border-l2,#e5e6eb));border-radius:10px;background:color-mix(in srgb,var(--dsw-alias-state-warn-primary,#d97706) 6%,transparent);color:var(--dsw-alias-label-secondary,#57606a);font-size:11px;line-height:17px}
 .dsh-rtm-batchbar-hint{margin-left:auto;color:var(--dsw-alias-label-tertiary,#8a919f);font-size:10.5px;line-height:16px}
 
 /* ---- modes ---- */
