@@ -53,9 +53,12 @@ const CSS_TEXT = String.raw`
 .dsh-rtm-batchbar-hint{margin-left:auto;color:var(--dsw-alias-label-tertiary,#8a919f);font-size:10.5px;line-height:16px}
 
 /* ---- modes ---- */
-.dsh-rtm-modes{display:flex;flex-direction:column}
+.dsh-rtm-modes{display:flex;flex-direction:column;gap:8px}
+.dsh-rtm-disclosure{padding:6px 14px}
+.dsh-rtm-mode-actions{display:inline-flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap;justify-content:flex-end}
+.dsh-rtm-mode-actions .dsh-rtm-mode-state{margin-left:0}
 .dsh-rtm-mode-state{display:inline-flex;align-items:center;gap:6px;margin-left:auto;color:var(--dsw-alias-label-secondary,#57606a);font-size:10.5px;font-weight:650;line-height:16px;white-space:nowrap}
-.dsh-rtm-mode-body{display:flex;flex-direction:column;gap:10px;padding:4px 16px 14px}
+.dsh-rtm-mode-body{display:flex;flex-direction:column;gap:10px;padding:4px 0 14px}
 .dsh-rtm-mode-summary{display:flex;align-items:baseline;gap:8px;color:var(--dsw-alias-label-secondary,#57606a)}
 .dsh-rtm-mode-summary .dsh-rtm-mode-state{margin-left:0}
 .dsh-rtm-path{display:flex;align-items:baseline;gap:8px;min-width:0;color:var(--dsw-alias-label-tertiary,#8a919f);font-size:11px}

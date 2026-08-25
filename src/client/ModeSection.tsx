@@ -53,13 +53,40 @@ export function ModeSection({
         <div className="dsh-rtm-modes">
           {modes.map(mode => {
             const labelKey = modeLabelKey(mode.linkState)
+            const disabled = busy || pending || mode.linkState === 'ok'
             const state = (
               <span className="dsh-rtm-mode-state">
                 <StateDot state={modeDot(mode.linkState)} size={7} />
                 <span>{t(labelKey)}</span>
               </span>
             )
-            const disabled = busy || pending || mode.linkState === 'ok'
+            const rowActions = (
+              <span className="dsh-rtm-mode-actions">
+                {state}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={event => {
+                    event.stopPropagation()
+                    onDeploy(mode)
+                  }}
+                >
+                  {t('modeDeploy')}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={disabled}
+                  onClick={event => {
+                    event.stopPropagation()
+                    onRepair(mode)
+                  }}
+                >
+                  {t('modeRepair')}
+                </Button>
+              </span>
+            )
             return (
               <DisclosureRow
                 key={mode.id}
@@ -69,13 +96,12 @@ export function ModeSection({
                 expandable
                 expandOnRowClick
                 onToggle={() => toggle(mode.id)}
-                collapsedContent={state}
+                collapsedContent={rowActions}
                 keepContentWhenOpen
                 className="dsh-rtm-disclosure"
               >
                 <div className="dsh-rtm-mode-body">
                   <div className="dsh-rtm-mode-summary">
-                    {state}
                     <span className="dsh-rtm-muted">{mode.summary}</span>
                   </div>
                   {mode.linkPath !== undefined && mode.linkPath !== '' ? (
@@ -88,24 +114,6 @@ export function ModeSection({
                       <span>{t('modeNoPath')}</span>
                     </div>
                   )}
-                  <div className="dsh-rtm-actions">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={disabled}
-                      onClick={() => onDeploy(mode)}
-                    >
-                      {t('modeDeploy')}
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      disabled={disabled}
-                      onClick={() => onRepair(mode)}
-                    >
-                      {t('modeRepair')}
-                    </Button>
-                  </div>
                 </div>
               </DisclosureRow>
             )
