@@ -7,6 +7,12 @@
 
 import path from 'node:path'
 
+import {
+  CONVERSATION_VIEW_SETTINGS_NAMESPACE,
+  ConversationViewSettingsSchema,
+  DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  registerConversationViewSettings,
+} from './conversationViewSettings.ts'
 import { deployModes, dshHome, getStatus, installOne, profileWebDir, repairMode, scanModes, scanPlugins, uninstallOne } from './manager.ts'
 import { OperationQueue } from './operations.ts'
 import { registerModelRpc } from './rpc.ts'
@@ -15,6 +21,12 @@ import type { HostConnectionHandle } from './types.ts'
 export { OperationQueue }
 export { deployModes, dshHome, getStatus, installOne, repairMode, scanModes, scanPlugins, uninstallOne }
 export { registerModelRpc }
+export {
+  CONVERSATION_VIEW_SETTINGS_NAMESPACE,
+  ConversationViewSettingsSchema,
+  DEFAULT_CONVERSATION_VIEW_SETTINGS,
+  registerConversationViewSettings,
+}
 
 export const name = 'dsh-redteam-model'
 export const inject = ['connection']
@@ -26,6 +38,8 @@ export interface HostContext {
 }
 
 export function apply(ctx: HostContext): void {
+  registerConversationViewSettings(ctx)
+
   const queue = new OperationQueue(path.join(profileWebDir(), '.dsh-redteam-model-operations.json'))
 
   ctx.inject(['connection'], (web: Record<string, unknown>) => {
