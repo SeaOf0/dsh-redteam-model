@@ -1,9 +1,21 @@
-# One installable bundle row: the refusal-repair proximity injector for the
+# One installable bundle row: the refusal-repair runtime backstop for the
 # nine security presets. Host plane — the context contribution registers in
 # the global systemPrompt layer and gates on the session's composed preset at
 # assembly time, so only the nine security modes ever see the reminder.
+#
+# v0.2.0 escalation ladder: streak 1 = re-anchor reminder (with the original
+# request excerpt re-attached); streak 2 = correction note + automatic retry
+# via agent.followup(); streak 3 = human-visible audit row in
+# <cwd>/refusal-audit.md and stop. Clean/tool turns reset the streak.
+#
+# These values are the base layer; the settings namespace
+# "dsh-refusal-guard" (same schema) resolves on top at runtime.
 - insert:
     - id: dsh-refusal-guard
       name: '@dsh-external/dsh-refusal-guard'
       config:
         maxChars: 700
+        excerptChars: 300
+        escalate: true
+        retry: true
+        auditLog: true
