@@ -163,6 +163,23 @@ function install() {
 	log("安装完成");
 }
 
+// 全局指令：~/.dsh/AGENTS.md 是 dsh 原生的用户全局指令文件（dsh-agent-instructions
+// 对所有会话生效）。无则落地随包版本；已有则不装不覆盖，提示用户自行处理；相同则跳过。
+function installGlobalAgents() {
+	const src = path.join(MODEL_ROOT, "AGENTS.md");
+	if (!fs.existsSync(src)) { warn("源 AGENTS.md 缺失，跳过全局指令落地"); return; }
+	const dst = path.join(DSH_HOME, "AGENTS.md");
+	if (!existsAny(dst)) {
+		fs.copyFileSync(src, dst);
+		log(`全局指令已落地：${dst}（新会话生效）`);
+		return;
+	}
+	let same = false;
+	try { same = fs.readFileSync(src).equals(fs.readFileSync(dst)); } catch { /* 不可读按不同处理 */ }
+	if (same) { log("全局 AGENTS.md 已是本包版本，跳过"); return; }
+	warn(`检测到已有全局 ${dst}，未覆盖——如需改用本包版本，请自行备份后覆盖（cp "${src}" "${dst}"）`);
+}
+
 function start() {
 	const logFile = path.join(DSH_HOME, "deploy-web.log");
 	const out = fs.openSync(logFile, "a");
@@ -202,6 +219,7 @@ if (MODE === "--check") {
 	linkPresets();
 	patchProfile();
 	install();
+	installGlobalAgents();
 	if (MODE === "--start") start();
 	else log("完成。启动：--start；校验：--check（新环境须先跑本脚本 install 建立桥接后再 --check）；打包：--bundle");
 }

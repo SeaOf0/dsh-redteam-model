@@ -6,6 +6,7 @@
  */
 
 import {
+  deployGlobalAgents,
   deployModes,
   getStatus,
   installOne,
@@ -104,7 +105,14 @@ function operationRunner(kind: OperationKind, target: string) {
         : detail
     }
     if (kind === 'deploy-modes') {
-      return modeResult(target === 'modes' ? deployModes(undefined, onProgress) : repairMode(target, undefined, onProgress))
+      // The batch deploy also seeds the DSH user-global instruction file
+      // (install-if-absent; an existing file is never overwritten).
+      if (target === 'modes') {
+        const agentsNotice = deployGlobalAgents(undefined, onProgress)
+        const detail = deployModes(undefined, onProgress)
+        return modeResult(`${agentsNotice}\n${detail}`)
+      }
+      return modeResult(repairMode(target, undefined, onProgress))
     }
     if (kind === 'repair') {
       if (knownModeNames().includes(target)) return modeResult(repairMode(target, undefined, onProgress))

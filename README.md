@@ -77,6 +77,8 @@ node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
 
 也支持 `npx ./deploy`。Windows（Win10+ 自带 bsdtar）：流程一致，预设链接用 junction 免管理员。
 
+两种安装方式都会把随包的 `AGENTS.md` 落地为 dsh 全局指令文件 `~/.dsh/AGENTS.md`（dsh 原生机制，对所有会话生效，新会话读入）：仅当该文件不存在时安装；已存在则**不覆盖**，安装输出会提示如何自行改用本包版本。
+
 部署后 2 分钟人工验证：
 
 1. 打开 [http://127.0.0.1:3080](http://127.0.0.1:3080)，roster 列出九个模式（redteam 安全研究员 + 八个专业模式）；

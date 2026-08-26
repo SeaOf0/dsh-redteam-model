@@ -1011,6 +1011,35 @@ export function repairMode(id: string, root = locateRoot(), onProgress?: Progres
   return `${mode.id}: ${detail}`
 }
 
+/**
+ * Deploy the packaged AGENTS.md as the DSH user-global instruction file
+ * (`~/.dsh/AGENTS.md`, read natively by dsh-agent-instructions for every
+ * session). Never overwrites: absent → install; already present and
+ * different → leave untouched and point the user at the manual copy;
+ * identical → already installed.
+ */
+export function deployGlobalAgents(root = locateRoot(), onProgress?: ProgressCallback): string {
+  const src = path.join(root, 'AGENTS.md')
+  if (!existsSync(src)) return 'global AGENTS.md source missing from package: skipped'
+  const dst = path.join(dshHome(), 'AGENTS.md')
+  onProgress?.('checking global AGENTS.md')
+  if (!existsAny(dst)) {
+    mkdirSync(dshHome(), { recursive: true })
+    copyFileSync(src, dst)
+    const detail = `global instructions installed: ${dst} (effective on new sessions)`
+    onProgress?.(detail)
+    return detail
+  }
+  let identical = false
+  try {
+    identical = readFileSync(src).equals(readFileSync(dst))
+  } catch {
+    // Unreadable target (dangling link, permissions): treat as different and never touch it.
+  }
+  if (identical) return `global AGENTS.md already matches this package: ${dst}`
+  return `existing global AGENTS.md left untouched: ${dst} — to adopt this package version, back it up and copy ${src} over it manually`
+}
+
 /** Install one plugin into the web profile and run pnpm install. */
 export async function installOne(name: string, options: InstallOptions = {}, root = locateRoot()): Promise<string> {
   const plugin = requirePlugin(name, root)

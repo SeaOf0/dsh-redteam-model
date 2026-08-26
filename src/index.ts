@@ -15,13 +15,13 @@ import {
   effectiveConversationViewSettings,
   registerConversationViewSettings,
 } from './conversationViewSettings.ts'
-import { deployModes, dshHome, getStatus, installOne, profileWebDir, repairMode, scanModes, scanPlugins, uninstallOne } from './manager.ts'
+import { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, profileWebDir, repairMode, scanModes, scanPlugins, uninstallOne } from './manager.ts'
 import { OperationQueue } from './operations.ts'
 import { registerModelRpc } from './rpc.ts'
 import type { HostConnectionHandle } from './types.ts'
 
 export { OperationQueue }
-export { deployModes, dshHome, getStatus, installOne, repairMode, scanModes, scanPlugins, uninstallOne }
+export { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, repairMode, scanModes, scanPlugins, uninstallOne }
 export { registerModelRpc }
 export {
   CONVERSATION_VIEW_SETTINGS_NAMESPACE,
