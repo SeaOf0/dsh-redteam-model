@@ -1,6 +1,11 @@
 /** Plugin rows: install state, description, versions, and per-row actions. */
 import { Button, IconCordisPluginOutline14, StateDot } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { PluginInstallState, PluginStatus, Translate } from './contracts.js'
+import {
+  VIEW_FIELD_BY_PLUGIN,
+  type ConversationViewField,
+  type ConversationViewSettings,
+} from './conversationViewSettings.js'
 
 function pluginDot(state: PluginInstallState): 'done' | 'warning' | 'error' {
   if (state === 'installed') return 'done'
@@ -24,39 +29,93 @@ function versionLabel(plugin: PluginStatus, t: Translate): string {
   return installed
 }
 
+function isEnabledInProfile(plugin: PluginStatus): boolean {
+  return plugin.installState !== 'not-installed'
+}
+
+function conversationViewField(plugin: PluginStatus): ConversationViewField | undefined {
+  return VIEW_FIELD_BY_PLUGIN[plugin.name as keyof typeof VIEW_FIELD_BY_PLUGIN]
+}
+
 export function PluginSection({
   plugins,
   t,
   busy,
   pending,
-  onInstall,
+  visibility,
+  visibilityWritable,
+  visibilityPending,
+  onSetEnabled,
+  onSetViewVisible,
   onUpdate,
   onRepair,
-  onUninstall,
 }: {
   plugins: PluginStatus[]
   t: Translate
   busy: boolean
   pending: boolean
-  onInstall: (plugin: PluginStatus) => void
+  visibility: ConversationViewSettings
+  visibilityWritable: boolean
+  visibilityPending: ConversationViewField | null
+  onSetEnabled: (plugin: PluginStatus, enabled: boolean) => void
+  onSetViewVisible: (field: ConversationViewField, visible: boolean) => void
   onUpdate: (plugin: PluginStatus) => void
   onRepair: (plugin: PluginStatus) => void
-  onUninstall: (plugin: PluginStatus) => void
 }) {
+  const conversationViewPlugins = plugins.filter(plugin => conversationViewField(plugin) !== undefined)
+
   return (
-    <section className="dsh-rtm-card">
-      <div className="dsh-rtm-section-head">
-        <h3 className="dsh-rtm-section-title">{t('pluginsTitle')}</h3>
-      </div>
-      {plugins.length === 0 ? (
-        <p className="dsh-rtm-empty">{t('pluginsEmpty')}</p>
-      ) : (
-        <div className="dsh-rtm-plugins">
-          {plugins.map(plugin => {
-            const labelKey = pluginLabelKey(plugin.installState)
-            const state = plugin.installState
+    <>
+      <section className="dsh-rtm-card">
+        <div className="dsh-rtm-section-head">
+          <h3 className="dsh-rtm-section-title">{t('pluginViewSettingsTitle')}</h3>
+        </div>
+        <div className="dsh-rtm-view-settings-summary">
+          <p className="dsh-rtm-view-settings-note">{t('pluginViewSettingsScope')}</p>
+          {!visibilityWritable && (
+            <p className="dsh-rtm-view-settings-unavailable" role="status">{t('pluginViewSettingsUnavailable')}</p>
+          )}
+        </div>
+        <div className="dsh-rtm-view-settings-grid">
+          {conversationViewPlugins.map(plugin => {
+            const viewField = conversationViewField(plugin)
+            if (viewField === undefined) return null
             return (
-              <div key={plugin.name} className="dsh-rtm-plugin-row">
+              <label key={plugin.name} className="dsh-rtm-switch-row dsh-rtm-view-setting" title={t('pluginViewScopeHint')}>
+                <span className="dsh-rtm-switch-copy">
+                  <span>{plugin.title}</span>
+                  <small>{t('pluginViewLiveHint')}</small>
+                </span>
+                <span className="dsh-rtm-switch">
+                  <input
+                    type="checkbox"
+                    role="switch"
+                    checked={visibility[viewField]}
+                    disabled={!visibilityWritable || visibilityPending !== null}
+                    aria-label={`${plugin.title}: ${t('pluginShowConversationView')}`}
+                    onChange={event => onSetViewVisible(viewField, event.target.checked)}
+                  />
+                  <i aria-hidden="true" />
+                </span>
+              </label>
+            )
+          })}
+        </div>
+      </section>
+
+      <section className="dsh-rtm-card">
+        <div className="dsh-rtm-section-head">
+          <h3 className="dsh-rtm-section-title">{t('pluginsTitle')}</h3>
+        </div>
+        {plugins.length === 0 ? (
+          <p className="dsh-rtm-empty">{t('pluginsEmpty')}</p>
+        ) : (
+          <div className="dsh-rtm-plugins">
+            {plugins.map(plugin => {
+              const labelKey = pluginLabelKey(plugin.installState)
+              const state = plugin.installState
+              return (
+                <div key={plugin.name} className="dsh-rtm-plugin-row">
                 <IconCordisPluginOutline14 size={14} />
                 <div className="dsh-rtm-plugin-main">
                   <div className="dsh-rtm-plugin-title-row">
@@ -73,14 +132,25 @@ export function PluginSection({
                   </div>
                 </div>
                 <div className="dsh-rtm-plugin-actions">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={busy || pending || state !== 'not-installed'}
-                    onClick={() => onInstall(plugin)}
-                  >
-                    {t('pluginInstall')}
-                  </Button>
+                  <div className="dsh-rtm-plugin-switches">
+                    <label className="dsh-rtm-switch-row" title={t('pluginEnabledRestartHint')}>
+                      <span className="dsh-rtm-switch-copy">
+                        <span>{t('pluginEnabledInProfile')}</span>
+                        <small>{t('pluginEnabledRestartHint')}</small>
+                      </span>
+                      <span className="dsh-rtm-switch">
+                        <input
+                          type="checkbox"
+                          role="switch"
+                          checked={isEnabledInProfile(plugin)}
+                          disabled={busy || pending}
+                          aria-label={`${plugin.title}: ${t('pluginEnabledInProfile')}`}
+                          onChange={event => onSetEnabled(plugin, event.target.checked)}
+                        />
+                        <i aria-hidden="true" />
+                      </span>
+                    </label>
+                  </div>
                   <Button
                     size="sm"
                     variant="outline"
@@ -97,21 +167,13 @@ export function PluginSection({
                   >
                     {t('pluginRepair')}
                   </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="dsh-rtm-btn--danger"
-                    disabled={busy || pending || state === 'not-installed'}
-                    onClick={() => onUninstall(plugin)}
-                  >
-                    {t('pluginUninstall')}
-                  </Button>
                 </div>
-              </div>
-            )
-          })}
-        </div>
-      )}
-    </section>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </section>
+    </>
   )
 }

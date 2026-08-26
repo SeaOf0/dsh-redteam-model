@@ -17,7 +17,7 @@ import {
   uninstallOne,
   updateOne,
 } from './manager.ts'
-import type { OperationQueue } from './operations.ts'
+import type { OperationOutcome, OperationQueue } from './operations.ts'
 import {
   RPC_CHANNEL,
   type HostConnectionHandle,
@@ -55,7 +55,7 @@ function knownModeNames(): string[] {
   return scanModes().map(mode => mode.id)
 }
 
-function validateTargets(kind: OperationKind, target: string, targets: readonly string[] | undefined): string[] {
+function validateTargets(kind: OperationKind, target: string, targets: readonly unknown[] | undefined): string[] {
   if (kind === 'deploy-modes') {
     const allowed = new Set([...knownModeNames(), 'modes'])
     if (!allowed.has(target)) throw new Error(`unknown deploy-modes target: ${target}`)
@@ -94,13 +94,20 @@ function validateTargets(kind: OperationKind, target: string, targets: readonly 
 }
 
 function operationRunner(kind: OperationKind, target: string) {
-  return async (update: (patch: { detail?: string; percent?: number }) => void): Promise<string> => {
+  return async (update: (patch: { detail?: string; percent?: number }) => void): Promise<string | OperationOutcome> => {
     const onProgress = (phase: string, percent?: number): void => {
       update({ detail: phase, ...(percent === undefined ? {} : { percent }) })
     }
-    if (kind === 'deploy-modes') return deployModes(undefined, onProgress)
+    const modeResult = (detail: string): string | OperationOutcome => {
+      return detail.includes('skipped existing entries:')
+        ? { state: 'warned', detail }
+        : detail
+    }
+    if (kind === 'deploy-modes') {
+      return modeResult(target === 'modes' ? deployModes(undefined, onProgress) : repairMode(target, undefined, onProgress))
+    }
     if (kind === 'repair') {
-      if (knownModeNames().includes(target)) return repairMode(target, undefined, onProgress)
+      if (knownModeNames().includes(target)) return modeResult(repairMode(target, undefined, onProgress))
       // Plugin repair re-points the link and reinstalls the package.
       return installOne(target, { onProgress }, undefined)
     }
@@ -119,8 +126,9 @@ function handleStart(payload: Record<string, unknown>, queue: OperationQueue): R
   const target = payload.target
   if (typeof target !== 'string' || target === '') throw new Error('target must be a non-empty string')
 
-  const names = validateTargets(kind as OperationKind, target, payload.targets as string[] | undefined)
-  let firstId: string | undefined
+  const rawTargets = payload.targets
+  if (rawTargets !== undefined && !Array.isArray(rawTargets)) throw new Error('targets must be an array')
+  const names = validateTargets(kind as OperationKind, target, rawTargets)
   for (const name of names) {
     // validateTargets already checked allowlists; require* re-checks cheaply.
     if (kind === 'install' || kind === 'update' || kind === 'uninstall') requirePlugin(name)
@@ -128,6 +136,12 @@ function handleStart(payload: Record<string, unknown>, queue: OperationQueue): R
       if (knownModeNames().includes(name)) requireMode(name)
       else requirePlugin(name)
     }
+  }
+
+  // Reject an oversized batch before enqueueing any of it.
+  queue.ensureCapacity(names.length)
+  let firstId: string | undefined
+  for (const name of names) {
     const id = queue.enqueue(kind as OperationKind, name, operationRunner(kind as OperationKind, name))
     if (firstId === undefined) firstId = id
   }

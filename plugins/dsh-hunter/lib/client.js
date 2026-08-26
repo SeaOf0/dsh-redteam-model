@@ -310,9 +310,41 @@ function HunterView() {
 		showSettings ? React.createElement(SettingsModal, { config: config, onClose: function () { setShowSettings(false); loadConfig(); }, onSaved: setConfig }) : null);
 }
 
+var REDTEAM_MANAGER_UI_NAMESPACE = "redteam-manager-ui";
+
+function injectVisibleConversationView(ctx, field, register) {
+	var settings = ctx.settingsScope.bind({ namespace: REDTEAM_MANAGER_UI_NAMESPACE });
+	ctx.slots.inject("conversation.view", function () {
+		var disposeView;
+		function isVisible() {
+			var snapshot = settings.getSnapshot();
+			return snapshot.status !== "ready" || !snapshot.value || snapshot.value[field] !== false;
+		}
+		function reconcile() {
+			if (isVisible()) {
+				if (!disposeView) disposeView = register();
+				return;
+			}
+			if (disposeView) {
+				disposeView();
+				disposeView = undefined;
+			}
+		}
+		var unsubscribe = settings.subscribe(reconcile);
+		reconcile();
+		return function () {
+			unsubscribe();
+			if (disposeView) {
+				disposeView();
+				disposeView = undefined;
+			}
+		};
+	});
+}
+
 function apply(ctx) {
 	ctx.effect(function () { return installStyles(); }, "dsh-hunter: styles");
-	ctx.slots.inject("conversation.view", function () {
+	injectVisibleConversationView(ctx, "showHunter", function () {
 		return ctx.slots.register({
 			name: "conversation.view",
 			id: "hunter",
@@ -324,5 +356,5 @@ function apply(ctx) {
 	});
 }
 
-module.exports = { name: "dsh-hunter-client", inject: ["slots"], apply: apply };
+module.exports = { name: "dsh-hunter-client", inject: ["slots", "settingsScope"], apply: apply };
 return module.exports; } });

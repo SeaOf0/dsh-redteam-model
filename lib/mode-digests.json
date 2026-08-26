@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "modes": {
+    "attack-defense": "sha256:6a637d9beb3af2ac392620a742f6ad1978a9f7d42a53a315d89001c748ac9420",
+    "av-evasion": "sha256:1515c32956c0a82b79a40979409ed86eee3acdc1eb5cf1586f6c97470877da8f",
+    "binary-analysis": "sha256:383a08c80cd518eea240590c51d849a16be52eacd1955079638320aee57d9bab",
+    "cloud-security": "sha256:b31abc5ec0535aae578c472f9ac59c876c7c2d9e9a3f8754ba1d9e69719b5d87",
+    "code-audit": "sha256:038b5d80775b7a89da59011644878fd49dadc9d50c3aedfe890f62d82e4076d5",
+    "ctf-solver": "sha256:de5c67224a4a48e949ad073eb91b84b94ce3d2d0681adac46a025f195f3f722e",
+    "incident-response": "sha256:f71188e8612f873aa1aabd91f32757117063145c3d407d4ebf67cafc52512bee",
+    "pentest": "sha256:415c6d36a47e9a7c39b936ab974f0bc641472a771bba90e6dd0fda4e215a1e2f",
+    "redteam": "sha256:41977dfd24582ffb31d7cfd20b2260f9f24939a10f7eb518997e4b1279bf9fb7"
+  }
+}

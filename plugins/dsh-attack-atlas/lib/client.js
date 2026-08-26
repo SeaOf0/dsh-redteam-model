@@ -1511,11 +1511,43 @@ function Popover(props) {
 
 //#endregion
 
+var REDTEAM_MANAGER_UI_NAMESPACE = "redteam-manager-ui";
+
+function injectVisibleConversationView(ctx, field, register) {
+	var settings = ctx.settingsScope.bind({ namespace: REDTEAM_MANAGER_UI_NAMESPACE });
+	ctx.slots.inject("conversation.view", function () {
+		var disposeView;
+		function isVisible() {
+			var snapshot = settings.getSnapshot();
+			return snapshot.status !== "ready" || !snapshot.value || snapshot.value[field] !== false;
+		}
+		function reconcile() {
+			if (isVisible()) {
+				if (!disposeView) disposeView = register();
+				return;
+			}
+			if (disposeView) {
+				disposeView();
+				disposeView = undefined;
+			}
+		}
+		var unsubscribe = settings.subscribe(reconcile);
+		reconcile();
+		return function () {
+			unsubscribe();
+			if (disposeView) {
+				disposeView();
+				disposeView = undefined;
+			}
+		};
+	});
+}
+
 function apply(ctx) {
 	ctx.effect(function () { return installStyles(); }, "dsh-attack-atlas: styles");
 	ctx.inject(["sessions"], function (scope) {
 		var sessionsStore = scope.sessions;
-		ctx.slots.inject("conversation.view", function () {
+		injectVisibleConversationView(ctx, "showAttackAtlas", function () {
 			return ctx.slots.register({
 				name: "conversation.view",
 				id: "attack-atlas",
@@ -1529,5 +1561,5 @@ function apply(ctx) {
 	});
 }
 
-module.exports = { name: "dsh-attack-atlas-client", inject: ["slots"], apply: apply };
+module.exports = { name: "dsh-attack-atlas-client", inject: ["slots", "settingsScope"], apply: apply };
 return module.exports; } });
