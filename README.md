@@ -6,6 +6,13 @@
 
 **该项目是为 [https://github.com/deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 赋能的项目，先装好 deepseek-harness 以后，再装该项目；最快捷的安装方式：下载仓库源码包，并让 DeepSeek 自行给 deepseek-harness 装好即可；在 dsh web 的新会话中选择相应的模式即可开始任务。**
 
+如果各位对插件的方法存在不适用自身的情况，那么可以进行两种更改：
+
+1、源码层，调整各个模式的方法论。
+2、在"AttackAtlas"插件中，右上角具备两个功能"自定义工作方法论"&"能力库"，如果内置能力中，没有你需要的能力，可以在"能力库"中添加主类、子类，完成以后再到"自定义工作方法论"中构建属于你的工作方法论（类似于workflow），有问题欢迎提或者自己再改。
+
+UI这块儿不太会，AI处理的，见谅。
+
 ## 九个工作模式
 
 | 模式 | 定位 | 核心纪律 |
