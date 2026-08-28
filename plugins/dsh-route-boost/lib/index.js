@@ -23,12 +23,38 @@ import { detectScope } from "./scope.mjs";
 export { detectScope };
 
 const name = "dsh-route-boost";
-const inject = ["systemPrompt", "agentPresets"];
+const inject = ["tools", "systemPrompt", "agentPresets"];
 
 const Config = z.object({
 	maxChars: z.natural().default(1200),
-	includeRefs: z.boolean().default(true)
+	includeRefs: z.boolean().default(true),
+	phaseSurface: z.boolean().default(true),
+	wrapDeny: z.array(z.string()).default(["subagent", "subagent_fork", "subagent_claude_code", "subagent_codex", "workflow"])
 });
+
+/** 收尾相位（八模式报告相位 id 实测集）：report / summary / review。 */
+export const WRAP_PHASE_IDS = new Set(["report", "summary", "review"]);
+export function isWrapPhase(phaseId) {
+	return WRAP_PHASE_IDS.has(String(phaseId ?? ""));
+}
+
+/** 相位工具面 guard（纯函数，供测试与装配复用）：收尾相位收起派单类工具——
+ *  收尾优先级最高（停止开新方向/新扇出），先收口台账与报告；新方向须用户明示。
+ *  phaseLookup(agentId) → 当前粘滞相位 id（装配期维护，guard 执行期读取）。 */
+export function buildSurfaceGuard({ config, phaseLookup, resolveMode }) {
+	const cfg = { phaseSurface: true, wrapDeny: ["subagent", "subagent_fork", "subagent_claude_code", "subagent_codex", "workflow"], ...config };
+	const denySet = new Set(cfg.wrapDeny);
+	return function surfaceGuard(exec) {
+		if (!cfg.phaseSurface) return undefined;
+		const agent = exec?.agent;
+		if (!agent || !denySet.has(exec.name)) return undefined;
+		const mode = resolveMode(agent);
+		if (mode === undefined || !Object.prototype.hasOwnProperty.call(MODES, mode)) return undefined;
+		const phaseId = phaseLookup(agent.id);
+		if (!isWrapPhase(phaseId)) return undefined;
+		return `收尾相位工具面：「${exec.name}」已收起——收尾优先级最高（停止开新方向/新扇出）：先收口台账（operation_progress：准则 met / 意图收口 / 覆盖声明）再写报告；确需新派单，请用户明示或等用户消息把相位切回执行。`;
+	};
+}
 
 /** Only genuine human input steers routing: web-submitted prompts carry
  * source.kind === "user" (the apiproxy's lastPromptAt uses the same test).
@@ -165,7 +191,7 @@ export function purposeLine(text, max = 120) {
 	return oneLine.length > max ? oneLine.slice(0, max) + "…" : oneLine;
 }
 
-export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1200, includeRefs = true, negated = false, tools, scope, purpose }) {
+export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence = "unknown", gates, operation, maxChars = 1200, includeRefs = true, negated = false, tools, scope, purpose, surface = "" }) {
 	const gateTable = gates?.[presetId] ?? {};
 	const gateLines = phase.gates
 		.map((id) => gateTable[id] ? `${id} ${gateTable[id].title}` : `${id}`)
@@ -176,6 +202,7 @@ export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidenc
 			? `gates: ${gateLines} —— 结构校验调 stage_gate；语义门禁归复核员（independent-review）`
 			: "gates: 本模式无自建门——总控只消费专业模式 gate-pass 落盘产物；台账终态见 router-playbook",
 		`boundary: ${mode.boundary}`,
+		...(surface === "wrap" ? ["工具面: 收尾相位——subagent/workflow 派单已收起（收口台账与报告优先，新方向须用户明示）"] : []),
 		`review: ${mode.review ?? "关键 finding 双签 = DSH 独立复核 + subagent_claude_code 复核一致；仅确认/挑战二选一"}`,
 		`evidence: ${evidence}（confirmed=按已验证引用；partial/unknown=下结论前先补证据）`
 	];
@@ -202,7 +229,12 @@ export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidenc
 		const op = operation;
 		const gateKeys = Object.keys(op.gates ?? {});
 		const lastGate = gateKeys.length > 0 ? `${gateKeys[gateKeys.length - 1]} ${op.gates[gateKeys[gateKeys.length - 1]]?.pass ? "pass" : "fail"}` : "无";
-		lines.splice(1, 0, `operation 恢复: goal=${String(op.goal ?? "").slice(0, 80) || "（未登记）"}｜准则 ${op.met ?? 0}/${op.total ?? 0} met${(op.openIds ?? []).length ? `（未收口 ${op.openIds.join(",")}）` : ""}｜待办 ${(op.pending ?? []).length}｜最近门 ${lastGate}——先读 operation-state.json 对齐；准则全 met+报告门过才可写 reports/；压缩续接先读四件套（WORKSPACE.md/gate-log 尾/evidence-index 认知节/findings）再动门禁`);
+		const cov = op.coverage ? `｜覆盖 ${op.coverage.tested}/${op.coverage.scope}${(op.coverage.untestedIds ?? []).length ? `（未测 ${op.coverage.untestedIds.slice(0, 5).join(",")}${op.coverage.untestedIds.length > 5 ? " 等" : ""}——operation_progress tested 补记）` : ""}` : "";
+		const intents = (op.openIntents ?? []).length ? `｜意图 ${op.openIntents.length} 未收口（${op.openIntents.slice(0, 5).join(",")}${op.openIntents.length > 5 ? " 等" : ""}——operation_progress intent_done/blocked/dropped 收口）` : "";
+		if ((op.constraints ?? []).length) {
+			lines.splice(2, 0, `约束红线: ${op.constraints.join("；")}${op.constraintsNote ?? ""}`);
+		}
+		lines.splice(1, 0, `operation 恢复: goal=${String(op.goal ?? "").slice(0, 80) || "（未登记）"}｜准则 ${op.met ?? 0}/${op.total ?? 0} met${(op.openIds ?? []).length ? `（未收口 ${op.openIds.join(",")}）` : ""}${cov}${intents}｜待办 ${(op.pending ?? []).length}｜最近门 ${lastGate}——先读 operation-state.json 对齐；准则全 met+报告门过才可写 reports/（scope 已登记时报告须声明一致「覆盖：M/N」）；压缩续接先读四件套（WORKSPACE.md/gate-log 尾/evidence-index 认知节/findings）再动门禁`);
 	}
 	if (negated) {
 		lines.push("语境: 学习/防御语境——攻击执行相位已抑制，按讲解/防御口径作答");
@@ -281,7 +313,7 @@ export function buildAuditRow(nowIso, modeId, phaseId, trigger) {
 }
 
 /** 读工作区 operation-state.json 的恢复盘摘要（无契约/读取失败返回 undefined——信封不投递该行）。
- * 仅在有「未收口准则或待办」时投递：全 met 的终态契约不再占信封预算。 */
+ * 仅在有「未收口准则、待办、覆盖度未测项、或未收口意图」时投递：全收口的终态契约不占信封预算。 */
 function readOperationSummary(cwd) {
 	if (!cwd) return undefined;
 	try {
@@ -289,8 +321,16 @@ function readOperationSummary(cwd) {
 		if (!st || !Array.isArray(st.criteria) || st.criteria.length === 0) return undefined;
 		const openIds = st.criteria.filter((c) => c && c.status !== "met").map((c) => c.id);
 		const pending = Array.isArray(st.pending) ? st.pending : [];
-		if (openIds.length === 0 && pending.length === 0) return undefined;
-		return { goal: st.goal, total: st.criteria.length, met: st.criteria.length - openIds.length, openIds, pending, gates: st.gates };
+		// 覆盖度台账（scope/tested）：登记即纳入摘要——有未测项时即使准则全 met 也投递
+		const scope = Array.isArray(st.scope) ? st.scope.filter((s) => s && typeof s.id === "string") : [];
+		const testedIds = new Set((Array.isArray(st.tested) ? st.tested : []).map((t) => t?.id));
+		const untestedIds = scope.filter((s) => !testedIds.has(s.id)).map((s) => s.id);
+		// 意图台账：open 意图存在时投递
+		const openIntents = (Array.isArray(st.intents) ? st.intents : []).filter((i) => i && i.status === "open").map((i) => i.id);
+		// 约束台账：登记即投递独立行（防压缩丢失——用户红线必须每轮可见）
+		const constraints = Array.isArray(st.constraints) ? st.constraints.filter((c) => c && (c.kind === "deny" || c.kind === "allow") && typeof c.text === "string" && c.text.trim()) : [];
+		if (openIds.length === 0 && pending.length === 0 && openIntents.length === 0 && constraints.length === 0 && (scope.length === 0 || untestedIds.length === 0)) return undefined;
+		return { goal: st.goal, total: st.criteria.length, met: st.criteria.length - openIds.length, openIds, pending, gates: st.gates, coverage: scope.length > 0 ? { scope: scope.length, tested: scope.length - untestedIds.length, untestedIds } : undefined, openIntents, constraints: constraints.slice(0, 6).map((c) => `${c.kind === "deny" ? "禁" : "允"}：${String(c.text).slice(0, 60)}`) };
 	} catch { /* 无状态或损坏：不投递 */ }
 	return undefined;
 }
@@ -305,6 +345,14 @@ async function apply(ctx, config) {
 	// Per-agent routing state: latest human text + last inferred phase (sticky).
 	const agentState = new Map();
 	latestUserTracker(ctx, agentState);
+	// 相位工具面：guard 在执行期读装配期维护的粘滞相位，收尾相位收起派单类工具
+	ctx.tools.guard(buildSurfaceGuard({
+		config,
+		phaseLookup: (agentId) => agentState.get(agentId)?.phaseId,
+		resolveMode: (agent) => {
+			try { return ctx.agentPresets.composedPreset(agent.ctx); } catch { return undefined; }
+		}
+	}));
 	/** 相位变化审计（设计点③）：写 <workspace>/route-audit.md；失败静默（审计
 	 * 不得阻塞装配）。只在相位真正变化时落一行，稳态零写入。 */
 	const auditRoute = (agent, modeId, phaseId, trigger) => {
@@ -344,7 +392,7 @@ async function apply(ctx, config) {
 			let purpose = state?.purpose ?? "";
 			if (scope.directed && text) purpose = purposeLine(text);
 			else if (!purpose && text && state?.rev === undefined) purpose = purposeLine(text);
-			const detailed = buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence, gates, operation, maxChars: config.maxChars, includeRefs: config.includeRefs, negated, tools, scope, purpose });
+			const detailed = buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidence, gates, operation, maxChars: config.maxChars, includeRefs: config.includeRefs, negated, tools, scope, purpose, surface: config.phaseSurface !== false && isWrapPhase(phase.id) ? "wrap" : "" });
 			let rev = state?.rev ?? 0;
 			if (state?.lastBody !== detailed.text) {
 				rev += 1;

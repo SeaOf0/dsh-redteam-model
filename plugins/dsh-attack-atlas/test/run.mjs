@@ -1,7 +1,7 @@
 // dsh-attack-atlas 离线单测：类目体系完整性（key 唯一/形态合法）+ SQLite 覆盖态
 // （终态白名单/N-A 必附原因/会话×模式隔离/清除）+ 通道纯逻辑（端点分发/派单文案/信任栅栏）。
 import assert from "node:assert/strict";
-import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, addChainNode, addChainEdge, listChain, clearChain, chainRefIndex, CHAIN_NODE_KINDS, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps } from "../lib/store.js";
+import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, addChainNode, addChainEdge, listChain, clearChain, chainRefIndex, CHAIN_NODE_KINDS, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, recordMiss, missSummary } from "../lib/store.js";
 import { TAXONOMIES, ATLAS_MODES, locate, itemsInForm, validateTaxonomy, refPaths } from "../lib/taxonomy.js";
 import fs2 from "node:fs";
 import path2 from "node:path";
@@ -989,6 +989,23 @@ await ok("autoLight·P3 覆盖提醒：每主类一次限流、文案带剩余�
 	assert.equal(nudges.length, 1, "同主类第二次不重复提醒");
 	await autoLightFromFinding(null, st, "nudge-1", { title: "F3", type: "SQL 注入" }, deps);
 	assert.equal(nudges.length, 2, "新主类（sink 全集）新提醒");
+	// 模式语态：三选一词表进提醒 + 本模式收口纪律子句
+	assert.match(nudges[1].content[0].text, /已审·有 finding \/ 已审·无 finding/);
+	assert.match(nudges[1].content[0].text, /已审结论附 sink 指位与复现链/);
+	st.close();
+});
+
+await ok("覆盖提醒模式语态：IR 词表+先保全纪律，pentest 词表+无附加纪律句", async () => {
+	const st = openStore(":memory:");
+	const irItem = TAXONOMIES["incident-response"].categories[0].items[0].label;
+	const irNudges = [];
+	await autoLightFromFinding(null, st, "nudge-ir", { title: "F1", type: irItem }, { mode: "incident-response", findFindingId: async () => "", followup: (m) => irNudges.push(m) });
+	assert.ok(irNudges.length >= 1, "IR 首亮即提醒");
+	assert.ok(irNudges[0].content[0].text.includes("查实·有证据") && irNudges[0].content[0].text.includes("先保全证据（附证据指位与时间线位置）"), "IR 词表+保全纪律");
+	const ptNudges = [];
+	await autoLightFromFinding(null, st, "nudge-pt", { title: "F1", type: "任意文件上传" }, { mode: "pentest", findFindingId: async () => "", followup: (m) => ptNudges.push(m) });
+	assert.ok(ptNudges.length >= 1 && ptNudges[0].content[0].text.includes("已验·有发现"), "pentest 词表");
+	assert.ok(!/——已审结论|——查实项|——判定结果/.test(ptNudges[0].content[0].text), "pentest 无五模式附加纪律句");
 	st.close();
 });
 
@@ -1321,6 +1338,61 @@ await ok("链路边类型学：edgeType 落库、未知回落未分类、chain-g
 	assert.match(msg, /discovered_on/);
 	assert.match(msg, /edgeType/);
 	st.close();
+});
+
+
+// ── MISS 缺口台账：未命中落库 + 聚合 + dispatch 端点（v1.1.4）──
+await ok("recordMiss/missSummary：落库、聚合计数、频次降序、limit 生效", async () => {
+	const st = openStore(":memory:");
+	recordMiss(st, { mode: "pentest", kind: "cell", query: "注入/ORM 注入", error: "子项不存在", sessionId: "s1" });
+	recordMiss(st, { mode: "pentest", kind: "cell", query: "注入/ORM 注入", error: "子项不存在", sessionId: "s2" });
+	recordMiss(st, { mode: "ctf-solver", kind: "stage", query: "pwning", error: "阶段不存在", sessionId: "s3" });
+	const sum = missSummary(st, {});
+	assert.equal(sum.total, 3, "total=3");
+	assert.equal(sum.rows[0].query, "注入/ORM 注入", "高频在前");
+	assert.equal(sum.rows[0].n, 2, "同 query 聚合计数");
+	assert.equal(sum.rows[0].last_at.length, 19, "最近时间字段");
+	assert.equal(sum.rows[1].n, 1, "次频");
+	assert.equal(missSummary(st, { limit: 1 }).rows.length, 1, "limit 生效");
+	const viaDispatch = await dispatch(null, st, "misses.list", {});
+	assert.equal(viaDispatch.total, 3, "dispatch misses.list");
+	let threw = false;
+	try { await dispatch(null, st, "misses.nope", {}); } catch { threw = true; }
+	assert.ok(threw, "未知端点仍拒绝");
+	// recordMiss 脏输入不炸（best-effort）
+	recordMiss(st, {});
+	assert.equal(missSummary(st, {}).total, 4, "脏输入静默落库不抛");
+	st.close();
+});
+
+await ok("triggerMessage 模式语态：动词+要求句逐模式分化，机制原子八模式统一", async () => {
+	const expect = {
+		"incident-response": ["整组排查", "先保全后分析、只读优先", "证据指位与时间线位置"],
+		"code-audit": ["整组审计", "扫描链禁网", "复现链与 sink 指位"],
+		"binary-analysis": ["整组分析", "假设台账", "IOC 假设"],
+		"av-evasion": ["整组实验", "experiment-plan 为基线", "判定环境与判定依据"],
+		"ctf-solver": ["平台规则即边界", "challenge-board 同步"],
+		pentest: ["整组开测", "已验·有发现", "速率与红线"],
+		"attack-defense": ["整组开测", "速率与红线"],
+		"cloud-security": ["整组开测", "速率与红线"]
+	};
+	for (const [mode, kws] of Object.entries(expect)) {
+		const t = TAXONOMIES[mode];
+		const cat = triggerMessage(t, { level: "category", categoryId: t.categories[0].id });
+		for (const kw of kws) assert.ok(cat.includes(kw), `${mode} 缺「${kw}」`);
+		assert.ok(cat.includes("终态三选一") && cat.includes("redteam_coverage_mark") && cat.includes("redteam_finding_register"), `${mode} 机制原子缺失`);
+	}
+});
+
+await ok("triggerMessage 格子档：动词与姿势语态同步（audit 审计姿势禁网/IR 取证姿势排查）+ pentest 词表定制", async () => {
+	const au = TAXONOMIES["code-audit"];
+	const cell = triggerMessage(au, { level: "item", categoryId: au.categories[0].id, itemId: au.categories[0].items?.[0]?.id ?? "" });
+	assert.ok(cell.includes("对以下格子审计") && cell.includes("审计姿势") && cell.includes("扫描链禁网"), "代审格子语态");
+	const ir = TAXONOMIES["incident-response"];
+	const irCell = triggerMessage(ir, { level: "item", categoryId: ir.categories[0].id, itemId: ir.categories[0].items?.[0]?.id ?? "" });
+	assert.ok(irCell.includes("对以下格子排查") && irCell.includes("取证姿势"), "IR 格子语态");
+	const pentestCat = triggerMessage(TAXONOMIES.pentest, { level: "category", categoryId: "hardcoded" });
+	assert.ok(pentestCat.includes("已验·有发现") && !pentestCat.includes("已测·有发现"), "pentest 词表从默认已测定制为已验");
 });
 
 console.log(`\n${passed} passed`);

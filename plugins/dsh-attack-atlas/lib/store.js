@@ -94,6 +94,16 @@ CREATE TABLE IF NOT EXISTS capabilities (
 	PRIMARY KEY (id)
 );
 CREATE INDEX IF NOT EXISTS caps_mode ON capabilities(mode);
+CREATE TABLE IF NOT EXISTS misses (
+	id         INTEGER PRIMARY KEY AUTOINCREMENT,
+	mode       TEXT NOT NULL,
+	kind       TEXT NOT NULL,
+	query      TEXT NOT NULL,
+	error      TEXT NOT NULL DEFAULT '',
+	session_id TEXT NOT NULL DEFAULT '',
+	created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS misses_mode ON misses(mode, query);
 `;
 
 export const TARGET_KINDS = ["domain", "web", "ip", "api", "miniprogram", "android", "ios", "desktop", "component", "cloud", "ai", "repo", "sample", "payload", "webshell", "loader", "memshell", "c2", "host", "case", "challenge", "account", "tenant", "cluster", "other"];
@@ -489,6 +499,28 @@ export function importCaps(st, rows, validModes) {
 		}
 	}
 	return { imported, skipped };
+}
+
+//#endregion
+
+//#region MISS 缺口台账：模型想点亮但体系里不存在的 key——数据驱动的能力库补缺依据
+
+/** 未命中落库（best-effort：任何失败静默——统计面不阻塞业务路径）。kind: cell/stage。 */
+export function recordMiss(st, { mode, kind, query, error = "", sessionId = "" }) {
+	try {
+		st.db.prepare("INSERT INTO misses (mode, kind, query, error, session_id, created_at) VALUES (?, ?, ?, ?, ?, ?)")
+			.run(clean(mode, 40), clean(kind, 20), clean(query, 120), clean(error, 500), clean(sessionId, 80), now());
+	} catch { /* 统计面尽力而为 */ }
+}
+
+/** 聚合视图：按 (mode, kind, query) 计数 + 最近出现，频次降序——高频未命中即「值得建自定义模块」清单。 */
+export function missSummary(st, { limit = 50 } = {}) {
+	const rows = st.db.prepare(
+		`SELECT mode, kind, query, COUNT(*) AS n, MAX(created_at) AS last_at
+		 FROM misses GROUP BY mode, kind, query ORDER BY n DESC, last_at DESC LIMIT ?`
+	).all(Math.min(Math.max(Number(limit) || 50, 1), 200));
+	const total = st.db.prepare("SELECT COUNT(*) AS n FROM misses").get().n;
+	return { total, rows };
 }
 
 //#endregion

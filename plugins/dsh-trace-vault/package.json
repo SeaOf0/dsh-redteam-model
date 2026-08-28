@@ -1,0 +1,34 @@
+{
+	"name": "@dsh-external/dsh-trace-vault",
+	"version": "0.3.0",
+	"description": "Process vault for the nine security presets: zero-touch capture of every tool call (tool/call + tool/result paired by callId) into a local SQLite store with outcome classification (ok / blocked / error), plus model-side trace_search / trace_get / trace_recent tools — cross-compaction process memory and the failure-attribution data plane. Security-mode sessions only; capture never intercepts or rewrites; stored text is capped (index, not archive). Adds the failure-attribution envelope: a systemPrompt context block renders a blocked-aggregation hint (403/WAF/429 cluster) per assembly, change-only delivery, security modes only. v0.2.1: result text extraction handles the real pipeline nested tool-result blocks (text lives in the inner content array), found by live-model probing.",
+	"keywords": [
+		"deepseek",
+		"deepseek-harness",
+		"dsh-plugin",
+		"dsh-bundle",
+		"trace-vault",
+		"process-memory"
+	],
+	"type": "module",
+	"main": "./lib/index.js",
+	"exports": {
+		".": "./lib/index.js",
+		"./package.json": "./package.json"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/dsh-tools": "*",
+		"@deepseek-ai/dsh-agent-presets": "*"
+	},
+	"license": "MIT",
+	"author": "SeaOf0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+	},
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		}
+	}
+}

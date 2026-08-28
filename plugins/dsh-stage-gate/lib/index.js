@@ -52,12 +52,14 @@ const GATES = {
 			manual: ["对照三件套的语义成立（差分真实翻转、marker 逐字回显）与复核员确认/双签记录由复核员判定"]
 		},
 		"P3": {
-			title: "覆盖度（资产×漏洞类全集）",
+			title: "覆盖度（资产×漏洞类全集）+ 复核汇总账",
 			checks: [
 				{ kind: "file", file: "coverage-matrix.md" },
-				{ kind: "table", file: "coverage-matrix.md", minRows: 3, minCells: 3 }
+				{ kind: "table", file: "coverage-matrix.md", minRows: 3, minCells: 3 },
+				{ kind: "file", file: "review-log.md" },
+				{ kind: "markers", file: "review-log.md", markers: ["复核"] }
 			],
-			manual: ["N-A 格理由是否成立由复核员抽查"]
+			manual: ["N-A 格理由是否成立由复核员抽查", "review-log 复核结论（确认/挑战）语义由复核员判定；跨 harness 双签（DSH+claude/codex 复核一致）才可在行内标「双签」"]
 		}
 	},
 	"code-audit": {
@@ -431,6 +433,19 @@ export function runGate(fsm, { mode, stage, workspace, file }) {
 	};
 	if (gate.requiresFile && !file) throw new Error(`gate ${mode}/${stage} 需要 file 参数（${gate.fileHint}）`);
 	const results = gate.checks.map((check) => ({ id: `${check.kind}:${check.file ?? check.dir}`, ...runCheck(fsm, check, resolve) }));
+	// 报告门追加覆盖度算术对账：scope 已登记才激活（未登记=零影响）。
+	// 目标文件：传参 file 优先，否则门 schema 的第一个固定文件。
+	if (REPORT_GATES[mode] === stage) {
+		let reportFile = resolve.file;
+		if (!reportFile) {
+			const fixed = gate.checks.find((c) => c.file && c.file !== "$file");
+			if (fixed) reportFile = path.resolve(workspace, fixed.file);
+		}
+		if (reportFile) {
+			const cov = coverageCheck(fsm, workspace, reportFile);
+			if (cov) results.push({ id: "coverage:report", kind: "coverage", file: path.basename(reportFile), ...cov });
+		}
+	}
 	return {
 		mode,
 		stage,
@@ -462,7 +477,7 @@ export function listGates(mode) {
 //#region plugin
 
 const name = "stage-gate";
-const inject = ["tools"];
+const inject = ["tools", "agentPresets"];
 
 /** Append the verdict line to <workspace>/gate-log.md (audit trail); write failure never flips the verdict. */
 function appendGateLog(workspace, verdict) {
@@ -523,7 +538,7 @@ function setGoal(workspace, goal, criteriaText) {
 }
 
 /** 收口准则 / 维护待办；返回摘要（verdict=all-met 表示目标契约已全部达成）。 */
-function updateProgress(workspace, { met = "", failed = "", reopened = "", pending = "", note = "" }) {
+function updateProgress(workspace, { met = "", failed = "", reopened = "", pending = "", note = "", intent_done = "", intent_blocked = "", intent_dropped = "" }) {
 	const st = readOperationState(fs, workspace);
 	if (st === null) throw new Error("operation-state.json 不存在——先 operation_goal 登记目标契约");
 	const byId = new Map(st.criteria.map((c) => [c.id, c]));
@@ -536,12 +551,431 @@ function updateProgress(workspace, { met = "", failed = "", reopened = "", pendi
 		}
 	}
 	if (unknown.length) throw new Error(`未知准则 id：${unknown.join(", ")}（有效：${[...byId.keys()].join(", ") || "无"}）`);
+	// 意图收口：done=有产出收口 / blocked=受阻终态 / dropped=放弃（blocked/dropped 须在 note 说明原因）
+	const intents = normalizeIntents(st);
+	if (intents.length > 0 || intent_done || intent_blocked || intent_dropped) {
+		const byIntent = new Map(intents.map((i) => [i.id, i]));
+		const unknownIntents = [];
+		for (const [list, status] of [[intent_done, "done"], [intent_blocked, "blocked"], [intent_dropped, "dropped"]]) {
+			for (const id of parseIds(list)) {
+				const i = byIntent.get(id);
+				if (i === undefined) unknownIntents.push(id);
+				else { i.status = status; i.closed_at = new Date().toISOString(); }
+			}
+		}
+		if (unknownIntents.length) throw new Error(`未知意图 id：${unknownIntents.join(", ")}（有效：${[...byIntent.keys()].join(", ") || "无"}）`);
+		if ((intent_blocked || intent_dropped) && !note) throw new Error("blocked/dropped 收口须在 note 说明原因（受阻依据/放弃理由——终态可追溯）");
+		st.intents = intents;
+	}
 	if (pending !== "") st.pending = pending.split(/\r?\n/).map((l) => cleanLine(l, 200)).filter(Boolean);
 	if (note) st.note = cleanLine(note, 500);
 	st.updated_at = new Date().toISOString();
 	fs.writeFileSync(path.join(workspace, STATE_FILE), JSON.stringify(st, null, 2) + "\n");
 	const openIds = st.criteria.filter((c) => c.status !== "met").map((c) => c.id);
-	return { goal: st.goal, total: st.criteria.length, met: st.criteria.length - openIds.length, open: openIds.length, openIds, pending: st.pending, verdict: openIds.length === 0 ? "all-met" : "open-remaining" };
+	return { goal: st.goal, total: st.criteria.length, met: st.criteria.length - openIds.length, open: openIds.length, openIds, pending: st.pending, intents: intentSummary(st), verdict: openIds.length === 0 ? "all-met" : "open-remaining" };
+}
+
+//#region 覆盖度台账（scope/分子登记 + 报告门算术对账）
+
+/** 每模式的报告门（与 sec-enforce REPORT_GATE 对齐）——覆盖度对账挂在这些门的判定里。 */
+const REPORT_GATES = { pentest: "P3", "code-audit": "A3", "binary-analysis": "B2", "attack-defense": "report", "av-evasion": "V4", "incident-response": "I5", "cloud-security": "C7", "ctf-solver": "flag" };
+
+/** 范围台账归一：scope 数组（每项 {id,label}）。 */
+function normalizeScope(st) {
+	if (!Array.isArray(st?.scope)) return [];
+	return st.scope.filter((s) => s && typeof s === "object" && typeof s.id === "string" && s.id).map((s) => ({ id: s.id, label: String(s.label ?? s.id).slice(0, 200) }));
+}
+function normalizeTested(st) {
+	if (!Array.isArray(st?.tested)) return [];
+	return st.tested.filter((t) => t && typeof t === "object" && typeof t.id === "string" && t.id).map((t) => ({ id: t.id, evidence: String(t.evidence ?? "").slice(0, 300), at: t.at }));
+}
+
+/** 登记范围台账（分母）：items 每行一项（「标签」或「id: 标签」），重登记整表替换。
+ *  scope 一经登记，报告门激活算术对账——报告/覆盖矩阵必须声明与台账一致的「覆盖：M/N」。 */
+export function setScope(workspace, itemsText) {
+	const lines = String(itemsText ?? "").split(/\r?\n/).map((l) => cleanLine(l, 200)).filter(Boolean);
+	if (lines.length === 0) throw new Error("items required（至少一项，每行一条：标签 或 id: 标签）");
+	if (lines.length > 200) throw new Error("scope 最多 200 项");
+	const seen = new Set();
+	const items = lines.map((line, i) => {
+		const m = /^([A-Za-z0-9_-]{1,16}):\s*(.+)$/.exec(line);
+		const id = m ? m[1] : `s${i + 1}`;
+		if (seen.has(id)) throw new Error(`scope id 重复：${id}`);
+		seen.add(id);
+		return { id, label: (m ? m[2] : line).slice(0, 200) };
+	});
+	const st = readOperationState(fs, workspace);
+	if (st === null) throw new Error("operation-state.json 不存在——先 operation_goal 登记目标契约，再 operation_scope 登记范围");
+	st.scope = items;
+	if (!Array.isArray(st.tested)) st.tested = [];
+	// 重登记范围后，越界的 tested 行剔除（id 不在新 scope 内的丢弃）
+	st.tested = normalizeTested(st).filter((t) => seen.has(t.id));
+	st.updated_at = new Date().toISOString();
+	fs.writeFileSync(path.join(workspace, STATE_FILE), JSON.stringify(st, null, 2) + "\n");
+	return scopeSummary(st);
+}
+
+/** 标记已测（分子）：ids 来自 scope，evidence 必填（证据指位）。幂等（重复标记刷新证据与时间）。 */
+export function markTested(workspace, ids, evidence) {
+	const list = parseIds(ids);
+	if (list.length === 0) throw new Error("tested ids required");
+	if (!cleanLine(evidence, 300)) throw new Error("evidence required（tested 必须带证据指位——evidence 编号/矩阵行/输出文件）");
+	const st = readOperationState(fs, workspace);
+	if (st === null) throw new Error("operation-state.json 不存在——先 operation_goal 登记目标契约");
+	const scope = normalizeScope(st);
+	if (scope.length === 0) throw new Error("scope 未登记——先 operation_scope 登记范围分母");
+	const known = new Set(scope.map((s) => s.id));
+	const unknown = list.filter((id) => !known.has(id));
+	if (unknown.length) throw new Error(`未知 scope id：${unknown.join(", ")}（有效：${[...known].join(", ")}）`);
+	const tested = normalizeTested(st).filter((t) => !list.includes(t.id));
+	const at = new Date().toISOString();
+	for (const id of list) tested.push({ id, evidence: cleanLine(evidence, 300), at });
+	st.tested = tested;
+	st.updated_at = at;
+	fs.writeFileSync(path.join(workspace, STATE_FILE), JSON.stringify(st, null, 2) + "\n");
+	return scopeSummary(st);
+}
+
+/** 覆盖度摘要（tested 只计 scope 内 id）。 */
+function scopeSummary(st) {
+	const scope = normalizeScope(st);
+	const tested = normalizeTested(st);
+	const testedIds = new Set(tested.map((t) => t.id));
+	const untestedIds = scope.filter((s) => !testedIds.has(s.id)).map((s) => s.id);
+	return { scope: scope.length, tested: tested.filter((t) => testedIds.has(t.id)).length, untested: untestedIds.length, untestedIds };
+}
+
+/** 报告门覆盖度对账（纯函数，fsm 可注入供测试）。scope 未登记返回 null（对账不激活）。
+ *  规则：报告/矩阵文件须声明「覆盖：M/N」（或 coverage: M/N），且 M/N 必须等于台账实测——
+ *  部分覆盖照实声明可过，虚报/漏报拦。 */
+export function coverageCheck(fsm, workspace, reportFile) {
+	let st;
+	try {
+		const raw = fsm.readFileSync(path.join(workspace, STATE_FILE), "utf8");
+		st = JSON.parse(raw);
+	} catch { return null; }
+	const scope = normalizeScope(st);
+	if (scope.length === 0) return null;
+	const summary = scopeSummary(st);
+	let text = "";
+	try { text = fsm.readFileSync(reportFile, "utf8"); } catch {
+		return { ok: false, detail: `覆盖度对账：报告文件不可读（${path.basename(reportFile)}）` };
+	}
+	const m = /覆盖度?\s*[：:]\s*(\d+)\s*[/／]\s*(\d+)|coverage\s*[：:]\s*(\d+)\s*[/／]\s*(\d+)/i.exec(text);
+	if (!m) {
+		return { ok: false, detail: `覆盖度对账：scope 已登记 ${summary.scope} 项（已测 ${summary.tested}），报告须声明「覆盖：${summary.tested}/${summary.scope}」——部分覆盖照实声明可过（未测项 ${summary.untestedIds.join(", ") || "无"} 须列入未覆盖清单），虚报或漏报拦截` };
+	}
+	const declaredTested = Number(m[1] ?? m[3]);
+	const declaredTotal = Number(m[2] ?? m[4]);
+	if (declaredTested !== summary.tested || declaredTotal !== summary.scope) {
+		return { ok: false, detail: `覆盖度对账：报告声明 ${declaredTested}/${declaredTotal} 与台账不符——程序实测：已测 ${summary.tested} / 共 ${summary.scope}（未测：${summary.untestedIds.join(", ") || "无"}）。先 operation_progress tested 补登记，或修正报告声明` };
+	}
+	return { ok: true, detail: `覆盖度对账通过：${summary.tested}/${summary.scope}${summary.untested > 0 ? `（部分覆盖，未测 ${summary.untested} 项照实声明）` : ""}` };
+}
+
+//#endregion
+
+//#region 意图台账（八专业模式）：方向登记带锚 + 收口联动
+
+export const ANCHOR_KINDS = ["boot", "criterion", "scope", "finding", "chain"];
+
+/** 意图台账归一：intents 数组。status: open / done / blocked / dropped。 */
+function normalizeIntents(st) {
+	if (!Array.isArray(st?.intents)) return [];
+	return st.intents.filter((i) => i && typeof i === "object" && typeof i.id === "string" && i.id);
+}
+
+/** 锚点校验（纯函数，跨库解析器注入供测试）。返回 "" = 通过；非空 = 拒绝理由。
+ *  语义：意图只能锚在「已确立的证据」上——criterion/scope 查本文件，finding/chain 查
+ *  当前会话的成果库/链路库（意图登记会话=发现登记会话），boot=开局/顶层全新方向豁免。 */
+export function validateAnchor(st, { kind, ref }, resolvers = {}, sessionId = "", mode = "") {
+	const k = ANCHOR_KINDS.includes(kind) ? kind : "";
+	if (!k) return `anchor_kind 非法：${kind}（合法：${ANCHOR_KINDS.join(" / ")}——boot=开局豁免、criterion=准则 id、scope=范围 id、finding=成果 id、chain=链路节点 id）`;
+	if (k === "boot") return "";
+	const r = String(ref ?? "").trim();
+	if (!r) return `anchor_ref 必填（${k} 锚必须带具体 id；顶层全新方向才用 boot 豁免）`;
+	if (k === "criterion") {
+		const ids = new Set((Array.isArray(st?.criteria) ? st.criteria : []).map((c) => c?.id).filter(Boolean));
+		return ids.has(r) ? "" : `准则 id 不存在：${r}（有效：${[...ids].join(", ") || "无——先 operation_goal 登记"}）`;
+	}
+	if (k === "scope") {
+		const ids = new Set(normalizeScope(st).map((s) => s.id));
+		return ids.has(r) ? "" : `scope id 不存在：${r}（有效：${[...ids].join(", ") || "无——先 operation_scope 登记"}）`;
+	}
+	if (k === "finding") {
+		if (typeof resolvers.findingExists === "function") {
+			try {
+				if (resolvers.findingExists(sessionId, r)) return "";
+				return `finding 不存在（当前会话）：${r}——成果 id 形如 pentest-3（本会话 redteam_finding_register 登记；跨会话成果不可锚，改用 chain 或材料路径）`;
+			} catch {
+				return ""; // 解析器故障降级放行（不 brick 意图登记）
+			}
+		}
+		return /^[a-z][a-z0-9-]*-\d+$/.test(r) ? "" : `finding id 形如 pentest-3（模式-序号）：${r} 格式不符`;
+	}
+	if (k === "chain") {
+		if (typeof resolvers.chainExists === "function") {
+			try {
+				if (resolvers.chainExists(sessionId, mode, r)) return "";
+				return `链路节点不存在（当前会话）：${r}——链路节点由 redteam_chain_node 登记，查「链路」标签页或 redteam_chain_list`;
+			} catch {
+				return ""; // 同上降级
+			}
+		}
+		return /^[\w-]{1,64}$/.test(r) ? "" : `链路节点 id 格式不符：${r}`;
+	}
+	return "";
+}
+
+/** 登记意图（方向带锚）。返回 {total, open}；校验失败 throw。 */
+export function registerIntent(workspace, { summary, anchorKind, anchorRef, note = "", sessionId = "", mode = "" }, resolvers = {}) {
+	const s = cleanLine(summary, 200);
+	if (!s) throw new Error("summary required（一句话方向，≤200 字符）");
+	const bad = validateAnchor(readOperationState(fs, workspace), { kind: anchorKind, ref: anchorRef }, resolvers, sessionId, mode);
+	if (bad) throw new Error(bad);
+	const st = readOperationState(fs, workspace);
+	if (st === null) throw new Error("operation-state.json 不存在——先 operation_goal 登记目标契约");
+	const intents = normalizeIntents(st);
+	const id = `i${intents.length + 1}`;
+	intents.push({ id, summary: s, anchor: { kind: anchorKind, ref: cleanLine(anchorRef, 80) }, status: "open", note: cleanLine(note, 300), created_at: new Date().toISOString() });
+	st.intents = intents;
+	st.updated_at = new Date().toISOString();
+	fs.writeFileSync(path.join(workspace, STATE_FILE), JSON.stringify(st, null, 2) + "\n");
+	return intentSummary(st);
+}
+
+/** 意图摘要。 */
+export function intentSummary(st) {
+	const intents = normalizeIntents(st);
+	const openIds = intents.filter((i) => i.status === "open").map((i) => i.id);
+	return { total: intents.length, open: openIds.length, openIds };
+}
+
+/** 跨库锚点解析器（默认实现：动态 import 同 bundle 兄弟插件 store；不可达的键缺省——
+ *  validateAnchor 对缺省解析器走格式校验降级，不 brick 意图登记）。 */
+async function defaultResolvers() {
+	const out = {};
+	try {
+		const { openStore: openResults } = await import("@dsh-external/dsh-redteam-results/store");
+		const results = openResults(path.join(process.env.HOME || "", ".dsh", "redteam-results", "results.db"));
+		out.findingExists = (sessionId, id) => {
+			try { return Boolean(results.getFinding(sessionId, id)); } catch { return false; }
+		};
+	} catch { /* 成果库不可达：finding 锚走格式校验降级 */ }
+	try {
+		const { openStore: openAtlas, listChain } = await import("@dsh-external/dsh-attack-atlas/store");
+		const atlas = openAtlas(path.join(process.env.HOME || "", ".dsh", "attack-atlas", "atlas.db"));
+		out.chainExists = (sessionId, mode, id) => {
+			try { return listChain(atlas, sessionId, mode).nodes.some((n) => n.id === id); } catch { return false; }
+		};
+	} catch { /* 图谱库不可达：chain 锚走格式校验降级 */ }
+	return out;
+}
+let resolverCache;
+function theResolvers() {
+	if (resolverCache === undefined) resolverCache = defaultResolvers().catch(() => ({}));
+	return resolverCache;
+}
+
+//#endregion
+
+//#region 模式化拆分理论（DECOMPOSITION 注入）——机制骨架统一，理论血肉模式化
+
+/** 九模式拆分理论映射（提炼自各 playbook 骨架章，实施时对回原文核）。
+ *  机制层不写模式分支——理论以数据注入：operation_goal/scope/constraints 的 render
+ *  按会话模式带出对应条目，kickoff 提醒（auto-advance）与 redteam 任务书预拆同源消费。 */
+export const DECOMPOSITION = {
+	pentest: {
+		theory: "作战流程×资产×漏洞类矩阵：被动收集→入口面盘点→验证",
+		criteriaGuide: "准则按「每入口资产一条终态 + 漏洞类覆盖格全终态」拆，覆盖矩阵格不落空",
+		scopeSemantics: "分母=入口资产面（主机/站点/API/客户端），每行一项资产单元",
+		constraintHints: "速率纪律/资金类只读重放/破坏操作禁执行/授权边界",
+		example: "①demo 站 Web 面每漏洞类格有终态 ②10.0.0.5 服务面终态 ③高危发现附 PoC 复现"
+	},
+	"code-audit": {
+		theory: "对象形态→triage→模块×sink 矩阵→双链（全量扫描链+深度审计链）",
+		criteriaGuide: "准则按「每模块终态 + sink 类覆盖 + 扫描命中对账守恒（扫描器报告数=终态数）」拆",
+		scopeSemantics: "分母=模块/路由/文件全集，每行一个审计单元",
+		constraintHints: "审计对象只读/semgrep 禁网/不修被审代码",
+		example: "①全部 12 条路由每条给终态 ②sink 五类各有覆盖结论 ③扫描命中 100% 对账"
+	},
+	"binary-analysis": {
+		theory: "样本登记→家族指纹分诊→假设台账循环→多视角→IOC",
+		criteriaGuide: "准则按「每样本每分析维度终态 + 假设台账全收口（未决不得写成事实）」拆",
+		scopeSemantics: "分母=样本集×分析维度，每行一个样本或一个维度面",
+		constraintHints: "干净 VM 铁律/样本外传登记/活体处置 SOP",
+		example: "①样本 A 静态+动态两维度终态 ②假设台账全部 confirmed/dismissed ③IOC 输出可机读"
+	},
+	"attack-defense": {
+		theory: "五阶段编排（侦察→突破→横向→持久化→报告），每阶段只基于上一阶段已验证结果",
+		criteriaGuide: "准则按「每阶段产物过门 + 链级分布（L1-L5）+ 战果登记」拆",
+		scopeSemantics: "分母=授权网段/凭据面/高价值线，每行一个作战面",
+		constraintHints: "监测姿态分叉（§0.5 姿态卡）/破坏性步骤默认关/痕迹双轨",
+		example: "①外网拿到初始访问 ②横向覆盖授权网段 80% ③链级分布呈报"
+	},
+	"av-evasion": {
+		theory: "配对实验：载荷↔判定引擎矩阵，四类载荷标准时序",
+		criteriaGuide: "准则按「每载荷类×引擎终态（过检/被检出附指纹）」拆——配对完整是硬约束",
+		scopeSemantics: "分母=载荷类×引擎矩阵（登记制，不自动派生）",
+		constraintHints: "授权立场/产物限实验室目录/清痕顺序纪律",
+		example: "①CS 载荷过 360 全家桶（附指纹）②四类载荷各至少一引擎终态"
+	},
+	"incident-response": {
+		theory: "证据保全→时间线重建→定性→处置建议→报告（I1-I5 五门）",
+		criteriaGuide: "准则按「时间线节点收口 + 五维定损 + IOC 富化」拆",
+		scopeSemantics: "分母=主机/时间窗/案件范围，每行一台主机或一个调查面",
+		constraintHints: "只读优先/证据四级/先固定后分析",
+		example: "①入口点定位附证据 ②完整时间线（含横向路径）③影响范围五维定损"
+	},
+	"cloud-security": {
+		theory: "资产测绘→攻击路径四要素（身份→权限→资源→影响）→场景卡",
+		criteriaGuide: "准则按「每条攻击路径验证 + 权限链收口 + 场景卡终态」拆",
+		scopeSemantics: "分母=账号/区域/服务面，每行一个云资源或信任面",
+		constraintHints: "只读 API 优先/写操作过门/环境还原义务",
+		example: "①目标账号权限链收口 ②至少一条路径打通到影响 ③环境还原登记"
+	},
+	"ctf-solver": {
+		theory: "题面登记→模块路由→board/solve 两门→flag 台账",
+		criteriaGuide: "准则按「每题终态（已解附平台验证/卡点附原因）」拆",
+		scopeSemantics: "分母=题目集（含分值权重），每行一题（登记制，不自动派生）",
+		constraintHints: "flag 真实性=平台回显/不猜不撞/爆破限速最后手段",
+		example: "①全部题目终态三选一（已解/卡点/放弃附因）②flag 全部平台验证"
+	},
+	redteam: {
+		theory: "任务分类路由→轻重判→任务书（依据锚+模式理论摘要）；总控不设自身准则——消费专业模式 gate-pass 产物",
+		criteriaGuide: "（总控不拆准则——路由到专业模式后由其按自身理论登记）",
+		scopeSemantics: "（总控不设分母——由接手模式登记）",
+		constraintHints: "三边界：不越权 gate 判定/只消费 gate-pass 产物/读盘可见性",
+		example: "任务书带依据锚与建议模式的理论摘要行，接手模式照此开工三登记"
+	}
+};
+
+/** 会话模式解析（工具 execute 用；未知/无模式返回 ""）。 */
+function modeOfExec(ctx, exec) {
+	const agent = exec?.agent;
+	if (!agent) return "";
+	let preset = "";
+	try { preset = String(ctx.agentPresets?.composedPreset?.(agent.ctx) ?? ""); } catch { /* 组合未就绪 */ }
+	if (!DECOMPOSITION[preset]) {
+		const header = agent?.session?.header?.agentPreset;
+		preset = DECOMPOSITION[header] ? header : "";
+	}
+	return preset;
+}
+
+//#endregion
+
+//#region 约束层（deny/allow 登记与匹配数据面）+ scope 保守派生
+
+export const CONSTRAINT_KINDS = ["deny", "allow"];
+
+/** 约束台账归一：constraints 数组（id c1..、kind deny/allow、text、keywords 匹配词）。 */
+export function normalizeConstraints(st) {
+	if (!Array.isArray(st?.constraints)) return [];
+	return st.constraints
+		.filter((c) => c && typeof c === "object" && CONSTRAINT_KINDS.includes(c.kind) && typeof c.text === "string" && c.text.trim())
+		.map((c) => ({ id: c.id, kind: c.kind, text: c.text.slice(0, 200), keywords: Array.isArray(c.keywords) ? c.keywords.filter((k) => typeof k === "string" && k).slice(0, 12) : [] }));
+}
+
+/** 登记约束（整表替换，同 criteria/scope 语义）。行格式：`deny: 文本` / `allow: 文本`，
+ *  可选匹配词 `deny: 文本 :: kw1,kw2`（有匹配词的 deny 条目会接 sec-enforce 确定性拦截：
+ *  bash 命令/fetch URL 命中即拦；无匹配词=提示层注入，不拦截）。拿不准 kind 用 deny（保守）。 */
+export function setConstraints(workspace, itemsText) {
+	const lines = String(itemsText ?? "").split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+	if (lines.length === 0) throw new Error("items required（至少一条，每行：deny: 文本 [:: 匹配词]）");
+	if (lines.length > 30) throw new Error("约束最多 30 条");
+	const seen = new Set();
+	const items = lines.map((line, i) => {
+		const m = /^(deny|allow)\s*[：:]\s*(.+)$/.exec(line);
+		if (!m) throw new Error(`行 ${i + 1} 格式非法：「${line.slice(0, 40)}」——须以 deny: 或 allow: 开头`);
+		let text = m[2];
+		let keywords = [];
+		const kw = /\s*::\s*(.+)$/.exec(text);
+		if (kw) {
+			keywords = kw[1].split(/[,，]/).map((k) => k.trim()).filter(Boolean).slice(0, 12);
+			text = text.slice(0, kw.index).trim();
+		}
+		const id = `c${i + 1}`;
+		if (seen.has(id)) throw new Error(`约束 id 重复：${id}`);
+		seen.add(id);
+		return { id, kind: m[1], text: text.slice(0, 200), keywords };
+	});
+	const st = readOperationState(fs, workspace);
+	if (st === null) throw new Error("operation-state.json 不存在——先 operation_goal 登记目标契约");
+	st.constraints = items;
+	st.updated_at = new Date().toISOString();
+	fs.writeFileSync(path.join(workspace, STATE_FILE), JSON.stringify(st, null, 2) + "\n");
+	return constraintSummary(st);
+}
+
+/** 约束摘要（guard 与信封消费的数据面）。 */
+export function constraintSummary(st) {
+	const list = normalizeConstraints(st);
+	const deny = list.filter((c) => c.kind === "deny");
+	return {
+		total: list.length,
+		deny: deny.length,
+		allow: list.length - deny.length,
+		denyGuarded: deny.filter((c) => c.keywords.length > 0).length,
+		lines: list.map((c) => `${c.kind === "deny" ? "禁" : "允"}：${c.text}${c.keywords.length ? `（匹配词 ${c.keywords.join("/")}）` : ""}`)
+	};
+}
+
+/** scope 保守派生（纯函数，模式感知）：统一提取器（URL 主机/多标签裸域/IPv4）+ 模式增补
+ *  ——audit 加文件路径与路由前缀、binary 加样本哈希、cloud 加 ARN/账号/区域、ad 加 CIDR；
+ *  av/ctf/redteam 登记制不派生（返回空）。排除版本号与常见误伤；**不放大到根域**。
+ *  只出草稿不落库，模型确认后 operation_scope 登记。 */
+export function deriveScopeDraft(texts, mode = "") {
+	const raw = Array.isArray(texts) ? texts.join("\n") : String(texts ?? "");
+	const hosts = new Set();
+	for (const m of raw.matchAll(/https?:\/\/([A-Za-z0-9.-]+)[:/]/gi)) hosts.add(m[1].toLowerCase());
+	for (const m of raw.matchAll(/https?:\/\/([A-Za-z0-9.-]+)(?:$|[\s。）)，,；;])/gm)) hosts.add(m[1].toLowerCase());
+	for (const m of raw.matchAll(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/g)) {
+		const ip = m[1];
+		if (ip.split(".").every((o) => Number(o) <= 255)) hosts.add(ip);
+	}
+	for (const m of raw.matchAll(/(?:^|[\s（(，,【\[])((?:[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?\.)+[A-Za-z]{2,12})(?:$|[\s。）)，,】\]:：/])/gm)) {
+		const h = m[1].toLowerCase();
+		if (!/^\d+(\.\d+)+$/.test(h)) hosts.add(h);
+	}
+	const skip = new Set(["e.g", "example.com", "localhost"]);
+	const unified = () => [...hosts].filter((h) => !skip.has(h) && h.includes(".")).sort();
+
+	switch (mode) {
+		case "code-audit": {
+			const out = new Set();
+			for (const m of raw.matchAll(/[\w.-]+(?:\/[\w.-]+){1,6}\.(?:js|ts|py|java|go|php|rb|rs|cs|vue|jsx|tsx)/g)) out.add(m[0]);
+			for (const m of raw.matchAll(/(?:^|[\s（(，,])(\/[a-z][\w-]*(?:\/[a-z][\w-]*){1,4})(?:$|[\s。）)，,])/gim)) out.add(m[1].toLowerCase());
+			return [...out].sort().slice(0, 50);
+		}
+		case "binary-analysis": {
+			const out = new Set();
+			for (const m of raw.matchAll(/\b[0-9a-f]{32}\b|\b[0-9a-f]{40}\b|\b[0-9a-f]{64}\b/gi)) out.add(m[0].toLowerCase());
+			for (const m of raw.matchAll(/[\w.-]+\.(?:exe|dll|bin|elf|so|dylib|apk|ipa|dmg|sys)\b/gi)) out.add(m[0]);
+			return [...out].sort().slice(0, 50);
+		}
+		case "cloud-security": {
+			const out = new Set(unified());
+			for (const m of raw.matchAll(/\barn:(?:aws|acs):[a-z0-9-]*:[a-z0-9-]*:\d{6,}:[\w:\/.-]+/gi)) out.add(m[0]);
+			for (const m of raw.matchAll(/\b(?:aws|aliyun|tencent|huawei)\s*[_-]?\s*(?:account|uid)\s*[=:=]?\s*(\d{8,20})\b|(?:账号|账户)\s*[=:=]?\s*(\d{8,20})\b/gi)) { const id = m[1] ?? m[2]; if (id) out.add("account:" + id); }
+			for (const m of raw.matchAll(/\b(ap-[a-z]+-\d|cn-[a-z]+[a-z]|us-[a-z]+-\d|eu-[a-z]+-\d)\b/g)) out.add(m[1]);
+			return [...out].sort().slice(0, 50);
+		}
+		case "attack-defense": {
+			const out = new Set(unified());
+			for (const m of raw.matchAll(/\b\d{1,3}(?:\.\d{1,3}){3}\/\d{1,2}\b/g)) {
+				const mask = Number(m[0].split("/")[1]);
+				if (mask >= 8 && mask <= 32) { out.add(m[0]); out.delete(m[0].split("/")[0]); }
+			}
+			return [...out].sort().slice(0, 50);
+		}
+		case "av-evasion":
+		case "ctf-solver":
+		case "redteam":
+			return [];
+		default:
+			return unified().slice(0, 50);
+	}
 }
 
 //#endregion
@@ -586,12 +1020,37 @@ function apply(ctx) {
 		},
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
-			render: (_args, v) => [{ type: "text", text: v.ok ? `目标契约已登记：${v.total} 条准则（${v.ids.join(", ")}）。逐条 met 用 operation_progress；全部 met + 报告门通过后才可写 reports/。` : `登记失败：${v.error}` }]
+			render: (_args, v) => [{ type: "text", text: v.ok ? `${v.mode ? `【${v.mode} 拆分理论】${v.theory}——准则结构：${v.criteriaGuide}（例：${v.example}）。` : ""}目标契约已登记：${v.total} 条准则（${v.ids.join(", ")}）。逐条 met 用 operation_progress；全部 met + 报告门通过后才可写 reports/。${v.scopeDraft?.length ? `下一步（开工三登记）：operation_constraints 登记用户约束（deny/allow）；operation_scope 登记范围分母${v.scopeSemantics ? `（${v.scopeSemantics}）` : ""}——草稿已从目标提取：${v.scopeDraft.join("、")}（确认或改，保守派生只取精确形态不放大）。` : "下一步：operation_constraints 登记用户约束、operation_scope 登记范围分母（登记即激活对账/推进/门禁）。"}` : `登记失败：${v.error}` }]
 		},
-		execute(args) {
+		execute(args, exec) {
 			try {
-				const st = setGoal(path.resolve(args.workspace), args.goal, args.criteria);
-				return Promise.resolve({ ok: true, total: st.criteria.length, ids: st.criteria.map((c) => c.id) });
+				const workspace = path.resolve(args.workspace);
+				const st = setGoal(workspace, args.goal, args.criteria);
+				const mode = modeOfExec(ctx, exec);
+				const prevScope = Array.isArray(readOperationState(fs, workspace)?.scope) && readOperationState(fs, workspace).scope.length > 0;
+				const scopeDraft = prevScope ? [] : deriveScopeDraft([args.goal, args.criteria], mode);
+				const d = mode ? DECOMPOSITION[mode] : undefined;
+				return Promise.resolve({ ok: true, total: st.criteria.length, ids: st.criteria.map((c) => c.id), scopeDraft, mode, theory: d?.theory, criteriaGuide: d?.criteriaGuide, example: d?.example, scopeSemantics: d?.scopeSemantics });
+			} catch (e) {
+				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
+			}
+		}
+	}));
+	ctx.tools.register(defineTool({
+		name: "operation_constraints",
+		description: "Register the task's operational constraints (deny/allow) into <workspace>/operation-state.json（开工三登记之三，operation_goal 之后）：用户口头约束的结构化落地——不碰生产库/只测某子域/禁止爆破等，压缩后仍在台账与信封里可见。行格式 `deny: 文本`（禁止）或 `allow: 文本`（明确允许/限定），可选匹配词 `deny: 文本 :: kw1,kw2`——带匹配词的 deny 条目接确定性拦截（bash 命令/fetch URL 命中即拦，报错引用约束原文）；无匹配词=提示层注入不拦截。约束自包含写死具体值（「当前目标」这类指代词换成具体主机/路径名）；只登记用户明确说出的约束，严禁臆造；拿不准 kind 用 deny（保守）。整表替换重登记。",
+		parameters: {
+			workspace: { type: "string", required: true, description: "Task workspace root" },
+			items: { type: "string", required: true, description: "约束条目，每行一条：`deny: 不碰支付接口 :: pay,payment,refund`、`allow: 仅测 x.example.com`——≤30 条" }
+		},
+		output: {
+			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
+			render: (_args, v) => [{ type: "text", text: v.ok ? `${v.constraintHints ? `【${v.mode} 约束面提示】${v.constraintHints}。` : ""}约束已登记：${v.total} 条（禁 ${v.deny}·含确定性拦截 ${v.denyGuarded} / 允 ${v.allow}）——${v.lines.slice(0, 5).join("；")}。带匹配词的 deny 命中 bash/fetch 即拦；全部约束每轮进信封防压缩丢失。` : `登记失败：${v.error}` }]
+		},
+		execute(args, exec) {
+			try {
+				const mode = modeOfExec(ctx, exec);
+				return Promise.resolve({ ok: true, ...setConstraints(path.resolve(args.workspace), args.items), mode, constraintHints: mode ? DECOMPOSITION[mode]?.constraintHints : undefined });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
 			}
@@ -605,6 +1064,8 @@ function apply(ctx) {
 			met: { type: "string", description: "已达成准则 id（逗号/空格分隔，如 g1 g3）" },
 			failed: { type: "string", description: "证伪准则 id（该准则按失败收口）" },
 			reopened: { type: "string", description: "重开准则 id（回 open）" },
+			tested: { type: "string", description: "标记已测的 scope id（逗号/空格分隔；须先 operation_scope 登记）" },
+			evidence: { type: "string", description: "tested 的证据指位（必填：evidence 编号/覆盖矩阵行/输出文件路径）" },
 			pending: { type: "string", description: "待办动作清单（整表替换，每行一条；空串=清空）" },
 			note: { type: "string", description: "进度注记（≤500 字符）" }
 		},
@@ -614,10 +1075,63 @@ function apply(ctx) {
 		},
 		execute(args) {
 			try {
-				return Promise.resolve(updateProgress(path.resolve(args.workspace), args));
+				const workspace = path.resolve(args.workspace);
+				const summary = updateProgress(workspace, args);
+				if (args.tested) summary.coverage = markTested(workspace, args.tested, args.evidence);
+				return Promise.resolve(summary);
 			} catch (e) {
 				return Promise.resolve({ verdict: "error", error: e?.message ?? String(e) });
 			}
+		}
+	}));
+	ctx.tools.register(defineTool({
+		name: "operation_scope",
+		description: "Register the task's coverage denominator into <workspace>/operation-state.json (after operation_goal): one scope item per line (a bare label auto-ids s1..sN; 'id: label' pins the id). Use asset/task units the goal actually demands covering (hosts, routes, modules, flags, accounts…) — 最小范围原则：只登记目标明确点到或派生必需的面，绝不擅自放大. Once registered, the mode's report gate runs arithmetic reconciliation: the report/coverage matrix must declare 「覆盖：M/N」matching the ledger exactly (tested marked via operation_progress tested+evidence; partial coverage passes when declared honestly, inflated or missing declarations fail the gate). Re-registering replaces the table and drops out-of-scope tested rows.",
+		parameters: {
+			workspace: { type: "string", required: true, description: "Task workspace root" },
+			items: { type: "string", required: true, description: "范围项，每行一条（标签 或 id: 标签），≤200 项——如「10.0.0.5 Web 前台\n10.0.0.6 API 网关\napi-docs 路由全集」" }
+		},
+		output: {
+			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
+			render: (_args, v) => [{ type: "text", text: v.ok ? `${v.scopeSemantics ? `【${v.mode} 分母语义】${v.scopeSemantics}。` : ""}范围台账已登记：${v.scope} 项（已测 ${v.tested}${v.untested ? `，未测 ${v.untestedIds.slice(0, 10).join(", ")}${v.untested > 10 ? " 等" : ""}` : ""}）。已测标记：operation_progress tested=<ids> evidence=<指位>；报告门将按台账对账「覆盖：${v.tested}/${v.scope}」。` : `登记失败：${v.error}` }]
+		},
+		execute(args, exec) {
+			try {
+				const mode = modeOfExec(ctx, exec);
+				return Promise.resolve({ ok: true, ...setScope(path.resolve(args.workspace), args.items), mode, scopeSemantics: mode ? DECOMPOSITION[mode]?.scopeSemantics : undefined });
+			} catch (e) {
+				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
+			}
+		}
+	}));
+	ctx.tools.register(defineTool({
+		name: "operation_intent",
+		description: "Register a direction/intent with a mandatory evidence anchor (八专业模式的意图台账)：开新方向（子代理派单/阶段切换/追一条线索）前登记，防凭空规划——方向只能锚在已确立的证据上。anchor：boot=开局/顶层全新方向豁免（仅开局或用户直接指定时用）｜criterion=目标准则 id（g1..）｜scope=范围项 id（s1..）｜finding=本会话成果 id（如 pentest-3，跨会话成果不可锚）｜chain=本会话链路节点 id。收口走 operation_progress（intent_done/blocked/dropped，blocked/dropped 须 note 原因）；未收口意图会拦报告落盘。凭空开方向（无锚）是审计红旗——登记让「这个方向当时凭什么开」可追溯。",
+		parameters: {
+			workspace: { type: "string", required: true, description: "Task workspace root" },
+			summary: { type: "string", required: true, description: "一句话方向（做什么、追什么线索）≤200 字符" },
+			anchor_kind: { type: "string", required: true, enum: ANCHOR_KINDS, description: "锚点类型（boot=开局豁免，其余须带 anchor_ref）" },
+			anchor_ref: { type: "string", description: "锚点 id（boot 省略；criterion/scope/finding/chain 必填）" },
+			note: { type: "string", description: "备注（派单对象/预期产出等 ≤300 字符）" }
+		},
+		output: {
+			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
+			render: (_args, v) => [{ type: "text", text: v.ok ? `意图已登记：${v.id}（锚=${v.anchor}）。收口：operation_progress intent_done/intent_blocked/intent_dropped（blocked/dropped 附原因）；未收口意图拦报告。当前 ${v.open}/${v.total} 未收口。` : `登记失败：${v.error}` }]
+		},
+		execute(args, exec) {
+			(async () => {
+				try {
+					const agent = exec?.agent;
+					const sessionId = agent?.session?.id ? String(agent.session.id) : "";
+					let mode = "";
+					try { mode = String(ctx.agentPresets?.composedPreset?.(agent?.ctx) ?? ""); } catch { /* 组合未就绪 */ }
+					const resolvers = await theResolvers();
+					const s = registerIntent(path.resolve(args.workspace), { summary: args.summary, anchorKind: args.anchor_kind, anchorRef: args.anchor_ref, note: args.note, sessionId, mode }, resolvers);
+					return { ok: true, id: `i${s.total}`, anchor: `${args.anchor_kind}${args.anchor_ref ? ":" + args.anchor_ref : ""}`, open: s.open, total: s.total };
+				} catch (e) {
+					return { ok: false, error: e?.message ?? String(e) };
+				}
+			})()
 		}
 	}));
 	ctx.tools.register(defineTool({
@@ -636,6 +1150,6 @@ function apply(ctx) {
 	}));
 }
 
-export { GATES, apply, inject, name, setGoal, updateProgress, syncOperationState, STATE_FILE };
+export { GATES, REPORT_GATES, apply, inject, name, setGoal, updateProgress, syncOperationState, STATE_FILE };
 
 //#endregion

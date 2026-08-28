@@ -37,6 +37,8 @@ export const TAXONOMIES = {
 			{ id: "cloud", label: "云" },
 			{ id: "ai", label: "AI" }
 		],
+		stateLabels: { "tested-found": "已验·有发现", "tested-clear": "已验·未命中", na: "不适用（附原因）", "budget-stop": "未验·让位/预算" },
+		stateShort: { found: "已验", clear: "未命中", na: "不适用", budget: "让位" },
 		formCategories: {
 			web: CORE9,
 			api: CORE9,

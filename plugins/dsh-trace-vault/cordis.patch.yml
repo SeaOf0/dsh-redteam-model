@@ -1,0 +1,15 @@
+# One installable bundle row: the process vault for the nine security
+# presets. Host plane — listens to session tool events (call/result paired by
+# callId), stores every security-mode tool call (args + result text, capped,
+# outcome classified ok/blocked/error) into ~/.dsh/trace-vault/traces.db, and
+# exposes trace_search / trace_get / trace_recent to the model. Capture is
+# zero-touch: nothing is intercepted, rewritten, or injected; non-security
+# sessions are never stored.
+- insert:
+    - id: dsh-trace-vault
+      name: '@dsh-external/dsh-trace-vault'
+      config:
+        capture: true
+        tools: true
+        retentionDays: 14
+        maxRows: 50000

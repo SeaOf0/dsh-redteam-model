@@ -1,0 +1,33 @@
+{
+	"name": "@dsh-external/dsh-auto-advance",
+	"version": "0.3.1",
+	"description": "Auto-advancer for the eight professional security presets: when a subagent-class executor returns and the intent ledger still has open directions, a followup nudge is injected carrying the ledger state — close the intent (done with output pointer / blocked with reason), then anchor-dispatch the next step or finish quietly. Guardrailed autonomy: consecutive-turn cap (human input resets), opt-in via the intent ledger (open intents required), self-describing nudges, and a cooldown window that coalesces parallel returns. Injects only — never intercepts or rewrites; non-professional or ledger-less sessions are untouched. v0.2.0 kickoff nudge: the first human message in a professional-mode session with no operation-state draws a one-time three-registration reminder (goal/constraints/scope) — no hard gate, quick tasks may ignore. v0.3.0 mode-aware kickoff: the first-registration reminder now carries the session mode's decomposition theory, criteria structure, scope semantics and constraint hints (DECOMPOSITION imported from the sibling stage-gate plugin with generic-text degrade).",
+	"keywords": [
+		"deepseek",
+		"deepseek-harness",
+		"dsh-plugin",
+		"dsh-bundle",
+		"auto-advance",
+		"intent-ledger"
+	],
+	"type": "module",
+	"main": "./lib/index.js",
+	"exports": {
+		".": "./lib/index.js",
+		"./package.json": "./package.json"
+	},
+	"peerDependencies": {
+		"@deepseek-ai/dsh-agent-presets": "*"
+	},
+	"license": "MIT",
+	"author": "SeaOf0",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+	},
+	"dsh": {
+		"bundle": {
+			"patch": "./cordis.patch.yml"
+		}
+	}
+}

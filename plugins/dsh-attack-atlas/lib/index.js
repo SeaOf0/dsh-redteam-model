@@ -15,7 +15,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, CHAIN_EDGE_TYPES, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, removeCap, exportCaps, importCaps } from "./store.js";
+import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, CHAIN_EDGE_TYPES, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, removeCap, exportCaps, importCaps, recordMiss, missSummary } from "./store.js";
 import { TAXONOMIES, ATLAS_MODES, locate } from "./taxonomy.js";
 import { validateMethod, methodRunMessage, inferTargetKind, METHOD_LIMITS } from "./method.js";
 
@@ -54,7 +54,7 @@ function theStore() {
 /** 各模式执行姿势词（派单文案用模式自己的语态，不统一用攻击措辞）。 */
 const MODE_POSTURE = {
 	pentest: "按 playbook 验证姿势执行（最小影响、非破坏性）",
-	"code-audit": "按 playbook 验证姿势执行（最小影响、非破坏性）",
+	"code-audit": "按 playbook 审计姿势执行（扫描链禁网；结论须 sink 指位与复现链）",
 	"attack-defense": "按 playbook 验证姿势执行（最小影响、非破坏性）",
 	"cloud-security": "按 playbook 验证姿势执行（只读探测优先、最小影响）",
 	"binary-analysis": "按 playbook 分析姿势执行（样本不外传；动态分析须隔离环境）",
@@ -62,11 +62,38 @@ const MODE_POSTURE = {
 	"incident-response": "按 playbook 取证姿势执行（先保全后分析、只读优先）",
 	"ctf-solver": "按 playbook 解题姿势执行（平台规则内，flag 以平台回显为准）"
 };
+/** 各模式派单动词（头部语态）：应急是排查、代审是审计、二进制是分析、免杀是实验——不是所有模式都"开测"。 */
+const MODE_VERB = {
+	"code-audit": "审计",
+	"binary-analysis": "分析",
+	"incident-response": "排查",
+	"av-evasion": "实验"
+};
+const verbOf = (taxonomy) => MODE_VERB[taxonomy?.id] || "开测";
 const postureOf = (taxonomy) => MODE_POSTURE[taxonomy?.id] || MODE_POSTURE.pentest;
 function trioWords(taxonomy) {
 	const sl = taxonomy.stateLabels || {};
 	return `${sl["tested-found"] || "已测·有发现"} / ${sl["tested-clear"] || "已测·未命中"} / ${sl.na || "N-A 附原因"}`;
 }
+/** 各模式主类派单的要求句：机制原子全模式统一（逐格推进+终态三选一+coverage_mark 回写+finding 登记），
+ *  动词与纪律子句按各模式自己的方法论语态——pentest/attack-defense/cloud 走默认速率红线句。 */
+const MODE_REQUIREMENT = {
+	"code-audit": (trio) => `要求：子项逐格审计，每格终态三选一（${trio}），逐格调用 redteam_coverage_mark 回写；finding 即 redteam_finding_register 登记（附复现链与 sink 指位，双链命中对账）；扫描链禁网，深度审计链按面映射推进。`,
+	"binary-analysis": (trio) => `要求：子项逐格分析，每格终态三选一（${trio}），逐格调用 redteam_coverage_mark 回写；有结论即 redteam_finding_register 登记（附能力与危害判定、IOC 假设指位）；静态优先、动态须隔离环境，样本外传须登记，假设台账同步更新。`,
+	"av-evasion": (trio) => `要求：子项逐格实验，每格终态三选一（${trio}），逐格调用 redteam_coverage_mark 回写；检出/过检即 redteam_finding_register 登记（附判定环境与判定依据）；判定环境以 experiment-plan 为基线不污染，本地默认验证。`,
+	"incident-response": (trio) => `要求：子项逐格排查，每格终态三选一（${trio}），逐格调用 redteam_coverage_mark 回写；查实 IOC/入侵痕迹即 redteam_finding_register 登记（附证据指位与时间线位置）；先保全后分析、只读优先，不扰动现场。`,
+	"ctf-solver": (trio) => `要求：子项逐格推进，每格终态三选一（${trio}），逐格调用 redteam_coverage_mark 回写；解出即 redteam_finding_register 登记（附 flag 与解题路径）；平台规则即边界，题面登记与 challenge-board 同步。`
+};
+const requirementOf = (taxonomy, trio) => (MODE_REQUIREMENT[taxonomy?.id] ?? ((t) => `要求：子项逐格推进，每格终态三选一（${t}），逐格调用 redteam_coverage_mark 回写；发现即 redteam_finding_register 登记；速率与红线照 playbook 执行。`))(trio);
+/** 覆盖提醒的收口纪律子句（finding 自动点亮后的余格提醒）：pentest/attack-defense/cloud 不附加
+ *  （速率红线已在主类派单要求句），五模式附本模式收口时该带什么。 */
+const MODE_CLOSE_HINT = {
+	"code-audit": "——已审结论附 sink 指位与复现链（双链命中对账）",
+	"binary-analysis": "——分析结论同步假设台账与 IOC 假设",
+	"av-evasion": "——判定结果附判定环境与判定依据",
+	"incident-response": "——查实项先保全证据（附证据指位与时间线位置）再标终态",
+	"ctf-solver": "——解出项附 flag 与解题路径"
+};
 /** 各模式锚定三元组（对象称谓/登记指引+基线/边界纪律）——词取自各模式 playbook 的既有定义，
  *  pentest/attack-defense 为原生授权目标语义走默认文案。 */
 const MODE_ANCHOR = {
@@ -109,8 +136,8 @@ export function triggerMessage(taxonomy, payload) {
 	if (payload.level === "category") {
 		const category = taxonomy.categories.find((c) => c.id === payload.categoryId);
 		return [
-			`[AttackAtlas·主类派单] 对主类「${category ? category.label : payload.categoryId}」整组开测（${taxonomy.label}模式${formLabel}）。`,
-			`要求：子项逐格推进，每格终态三选一（${trioWords(taxonomy)}），逐格调用 redteam_coverage_mark 回写；发现即 redteam_finding_register 登记；速率与红线照 playbook 执行。`,
+			`[AttackAtlas·主类派单] 对主类「${category ? category.label : payload.categoryId}」整组${verbOf(taxonomy)}（${taxonomy.label}模式${formLabel}）。`,
+			requirementOf(taxonomy, trioWords(taxonomy)),
 			anchorLines(taxonomy, payload.targets)
 		].join("\n");
 	}
@@ -118,10 +145,10 @@ export function triggerMessage(taxonomy, payload) {
 	const category = loc?.category;
 	const item = loc?.item;
 	let refHint = "";
-	if (item?.ref) refHint = item.ref.startsWith("pentest:") ? `\n知识手册：pentest refs/${item.ref.slice(8)}（开测前先读对应验证姿势）` : item.ref === "README.md" ? `\n知识手册：refs/README.md（按目标语言快速路由到对应语言手册后再读验证姿势——语言类格子不预设语言）` : `\n知识手册：refs/${item.ref}（开测前先读对应验证姿势）`;
+	if (item?.ref) { const pre = `${verbOf(taxonomy)}前先读`; refHint = item.ref.startsWith("pentest:") ? `\n知识手册：pentest refs/${item.ref.slice(8)}（${pre}）` : item.ref === "README.md" ? `\n知识手册：refs/README.md（按目标语言快速路由到对应语言手册后再读——语言类格子不预设语言）` : `\n知识手册：refs/${item.ref}（${pre}）`; }
 	else if (item?.pb) refHint = `\n打法出处：本模式 playbook ${item.pb}`;
 	return [
-		`[AttackAtlas·格子派单] 对以下格子开测（${taxonomy.label}模式${formLabel}）：`,
+		`[AttackAtlas·格子派单] 对以下格子${verbOf(taxonomy)}（${taxonomy.label}模式${formLabel}）：`,
 		`主类「${category ? category.label : payload.categoryId}」｜子项「${item ? item.label : payload.itemId}」${refHint}`,
 		`${postureOf(taxonomy)}；终态三选一（${trioWords(taxonomy)}），完成后调用 redteam_coverage_mark 回写点亮；有发现即 redteam_finding_register 登记。`,
 		anchorLines(taxonomy, payload.targets)
@@ -783,6 +810,10 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		});
 		return { ok: true };
 	}
+	if (endpoint === "misses.list") {
+		// MISS 缺口台账：模型想点亮但体系里不存在的 key 聚合——高频未命中即「值得建自定义模块」清单
+		return missSummary(st, { limit: p.limit });
+	}
 	throw new Error(`unknown endpoint ${endpoint}`);
 }
 
@@ -888,7 +919,7 @@ function nudgeUndetermined(ctx, sessionId, mode, taxonomy, doneKeys, markedCats,
 		const message = {
 			id: `atlas-nudge-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
 			role: "user",
-			content: [{ type: "text", text: `[AttackAtlas·覆盖提醒] finding 已自动点亮「${cat.label}」内关联格子。该主类仍有 ${undetermined.length} 格未终态：${names}——收口时逐格终态三选一，或用 redteam_coverage_sync 整表批量回写（key/终态均可写中文标签）。` }],
+			content: [{ type: "text", text: `[AttackAtlas·覆盖提醒] finding 已自动点亮「${cat.label}」内关联格子。该主类仍有 ${undetermined.length} 格未终态：${names}——收口时逐格终态三选一（${trioWords(taxonomy)}）${MODE_CLOSE_HINT[mode] ?? ""}，或用 redteam_coverage_sync 整表批量回写（key/终态均可写中文标签）。` }],
 			source: { kind: "user" }
 		};
 		if (deps.followup) deps.followup(message); else agent.followup(message);
@@ -946,7 +977,7 @@ function apply(ctx) {
 	//#region 模型工具（宿主平面注册；八专业模式会话内可用——light 通用模式等非图谱会话执行被拒）
 	ctx.tools.register(defineTool({
 		name: "redteam_coverage_mark",
-		description: "把攻击面图谱（「攻击面图谱」标签页）里的一个格子或主类标为终态。每个格子终态：tested-found / tested-clear / na / budget-stop（图例按模式显示对应语义——渗透=已测·有发现/未命中、免杀=已测·过检/被检出、CTF=已解·flag 验证/已试·卡点、应急=查实·有证据/已查·未命中等）。key 形如 injection/sqli（格子）或 injection（主类整组 N-A），也接受主类/格子的中文标签（自动归一）；写错时报错会列出该模式全部合法主类。tested-clear 时 reason 建议写未排除面；tested-found 时 findingRefs 填关联 finding id。逐格回写，图谱实时点亮。",
+		description: "把攻击面图谱（「攻击面图谱」标签页）里的一个格子或主类标为终态。每个格子终态：tested-found / tested-clear / na / budget-stop（图例按模式显示对应语义——渗透=已验·有发现/未命中、免杀=已测·过检/被检出、CTF=已解·flag 验证/已试·卡点、应急=查实·有证据/已查·未命中等）。key 形如 injection/sqli（格子）或 injection（主类整组 N-A），也接受主类/格子的中文标签（自动归一）；写错时报错会列出该模式全部合法主类。tested-clear 时 reason 建议写未排除面；tested-found 时 findingRefs 填关联 finding id。逐格回写，图谱实时点亮。",
 		parameters: {
 			key: { type: "string", required: true, description: "cat/item 格子 key、cat 主类 key，或主类/格子中文标签" },
 			state: { type: "string", required: true, enum: CELL_STATES, description: "终态" },
@@ -967,7 +998,10 @@ function apply(ctx) {
 				if (base && !base.pending) {
 					const tax = taxonomyWithCaps(theStore(), base, session.mode);
 					const bad = validateCoverageRef(tax, key);
-					if (bad) return Promise.resolve({ ok: false, error: bad });
+					if (bad) {
+						recordMiss(theStore(), { mode: session.mode, kind: "cell", query: key, error: bad, sessionId: session.id });
+						return Promise.resolve({ ok: false, error: bad });
+					}
 					key = canonicalKey(tax, key) ?? key;
 				}
 				const cell = markCell(theStore(), session.id, session.mode, key, { state: resolveStateLabel(args.state) || args.state, reason: args.reason, findingRefs: args.findingRefs, target: args.target });
@@ -998,7 +1032,10 @@ function apply(ctx) {
 				if (base && !base.pending) {
 					const tax = taxonomyWithCaps(theStore(), base, session.mode);
 					const bad = validateStageRef(tax, stage);
-					if (bad) return Promise.resolve({ ok: false, error: bad });
+					if (bad) {
+						recordMiss(theStore(), { mode: session.mode, kind: "stage", query: stage, error: bad, sessionId: session.id });
+						return Promise.resolve({ ok: false, error: bad });
+					}
 					stage = resolveStageId(tax, stage) || stage;
 				}
 				const marked = markStage(theStore(), session.id, session.mode, stage, args.state);

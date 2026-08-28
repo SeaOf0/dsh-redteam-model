@@ -10,9 +10,9 @@ import { createManagerFixture } from './helpers/fixture.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-test('scanPlugins discovers all 15 sub-plugins with correct planes', () => {
+test('scanPlugins discovers all 17 sub-plugins with correct planes', () => {
   const plugins = scanPlugins(repoRoot)
-  assert.equal(plugins.length, 15)
+  assert.equal(plugins.length, 17)
   assert.equal(plugins.filter(plugin => plugin.mountPlane === 'preset').map(plugin => plugin.name).sort().join(','), 'dsh-scanner-tools,dsh-semgrep-audit')
   for (const plugin of plugins) {
     assert.match(plugin.name, /^dsh-[a-z0-9-]+$/)
@@ -36,7 +36,7 @@ test('getStatus reports an untouched profile as all not-installed without profil
   try {
     const status = getStatus([], repoRoot)
     assert.equal(status.summary.modesTotal, 9)
-    assert.equal(status.summary.pluginsTotal, 15)
+    assert.equal(status.summary.pluginsTotal, 17)
     assert.equal(status.summary.pluginsInstalled, 0)
     assert.equal(status.summary.profileError, undefined)
     assert.equal(status.plugins.every(plugin => plugin.installState === 'not-installed'), true)

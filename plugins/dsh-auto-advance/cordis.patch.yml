@@ -1,0 +1,13 @@
+# One installable bundle row: the auto-advancer for the eight professional
+# security presets. Host plane — subagent-class executor returns with open
+# intents in the workspace ledger trigger a stateful followup nudge (close →
+# anchor-dispatch next → or finish). Three guardrails: consecutive-turn cap
+# (human input resets), opt-in via the intent ledger, self-describing nudges;
+# plus a cooldown window coalescing parallel returns.
+- insert:
+    - id: dsh-auto-advance
+      name: '@dsh-external/dsh-auto-advance'
+      config:
+        enable: true
+        maxAutoTurns: 5
+        cooldownMs: 30000

@@ -3,7 +3,7 @@
 import os from "node:os";
 import fs from "node:fs";
 import path from "node:path";
-import { gateLogHasPass, isReportPath, isWritable, scanDangerous, scanRate, buildGuard, REPORT_GATE, Config } from "../lib/index.js";
+import { gateLogHasPass, isReportPath, isWritable, scanDangerous, scanRate, scanAsk, buildAskListener, buildGuard, REPORT_GATE, Config } from "../lib/index.js";
 
 let pass = 0, fail = 0;
 const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); } else { fail++; console.log(`FAIL ${label}`); } };
@@ -160,6 +160,152 @@ function makeGuard(overrides = {}, gateLog = "") {
 	ok("all-met criteria allows report write", mk(allMet)(w) === undefined);
 	ok("no operation state keeps old behavior", (() => { const g = buildGuard({ readGateLog: () => passLog, appendLog: () => {}, resolveMode: (a) => a.ctx.scope }); return g(w) === undefined; })());
 	ok("gate missing still takes priority over criteria check", (() => { const g = buildGuard({ readGateLog: () => "", readOperationState: () => openState, appendLog: () => {}, resolveMode: (a) => a.ctx.scope }); return typeof g(w) === "string" && g(w).includes("stage_gate"); })());
+}
+
+// 12. ask 中间档（v1.1.0）：变更性但可逆类走人工审批而非硬拦
+{
+	ok("useradd 命中 ask", scanAsk("sudo useradd -m backdoor") !== undefined);
+	ok("改密命中 ask", scanAsk("passwd root") !== undefined);
+	ok("SQL 授权面命中 ask", scanAsk("mysql -e 'GRANT ALL ON *.* TO x@%'") !== undefined);
+	ok("iptables 清空命中 ask", scanAsk("iptables -F") !== undefined);
+	ok("nft 修改命中 ask", scanAsk("nft add rule filter input accept") !== undefined);
+	ok("ufw 开关命中 ask", scanAsk("ufw enable") !== undefined);
+	ok("flood 压测命中 ask", scanAsk("hping3 -S --flood -p 80 10.0.0.1") !== undefined);
+	ok("slowloris 命中 ask", scanAsk("perl slowloris.pl -dns target") !== undefined);
+	// 保守性：正常工作流不命中
+	ok("工作区 chmod 不命中", scanAsk("chmod +x ./exploit.py") === undefined);
+	ok("普通 nmap 不命中（归速率档管）", scanAsk("nmap -sV -p 80,443 10.0.0.1") === undefined);
+	ok("SELECT 不命中", scanAsk("mysql -e 'SELECT * FROM users'") === undefined);
+	ok("iptables 只读列表不命中", scanAsk("iptables -L -n") === undefined);
+	ok("curl 正常请求不命中", scanAsk("curl -s http://t/login") === undefined);
+	// 分级边界：deny 档命令不在 ask 档（shutdown 归 scanDangerous）
+	ok("shutdown 不重复命中 ask", scanAsk("shutdown -h now") === undefined);
+}
+
+// 13. ask 监听器（waterfall 礼仪：无候选 next；有候选且下游 allow 才覆盖；尊重更强决策）
+{
+	const logs = [];
+	const listener = buildAskListener({ appendLog: (_ws, line) => logs.push(line), resolveMode: (agent) => agent.ctx.scope });
+	const askExec = { name: "bash", arguments: { command: "useradd svc" }, agent: fakeAgent("pentest") };
+	const plainExec = { name: "bash", arguments: { command: "ls -la" }, agent: fakeAgent("pentest") };
+	ok("无候选透传下游", (await listener(plainExec, async () => ({ kind: "allow" }))).kind === "allow");
+	const ask = await listener(askExec, async () => ({ kind: "allow" }));
+	ok("下游 allow 时以 ask 覆盖", ask.kind === "ask" && ask.reason.includes("账号"));
+	ok("ask 提案落审计行", logs.length === 1 && logs[0].includes("| ask |"));
+	const denyDownstream = await listener(askExec, async () => ({ kind: "deny", reason: "强门" }));
+	ok("下游更强决策不被打断", denyDownstream.kind === "deny" && denyDownstream.reason === "强门");
+	// 非安全模式/非 bash 工具：不触发
+	const alien = await listener({ name: "bash", arguments: { command: "useradd x" }, agent: { ctx: { scope: "plain" }, session: { header: { cwd: WS } } } }, async () => ({ kind: "allow" }));
+	ok("非安全模式不触发 ask", alien.kind === "allow");
+	const notBash = await listener({ name: "fetch", arguments: { url: "http://t" }, agent: fakeAgent("pentest") }, async () => ({ kind: "allow" }));
+	ok("非 bash 工具不触发 ask", notBash.kind === "allow");
+	// askGate 关闭：透传
+	const off = buildAskListener({ config: { askGate: false }, appendLog: () => {}, resolveMode: (agent) => agent.ctx.scope });
+	ok("askGate=false 关闭", (await off(askExec, async () => ({ kind: "allow" }))).kind === "allow");
+	ok("config 默认 askGate 开", Config({}).askGate === true);
+}
+
+// 14. deny 档不变：ask 层引入后 guard 硬拦语义原样
+{
+	const { guard } = makeGuard();
+	ok("shutdown 仍硬拦（deny 档）", guard({ name: "bash", arguments: { command: "shutdown -h now" }, agent: fakeAgent("pentest") }) !== undefined);
+	ok("useradd 不硬拦（归 ask 档）", guard({ name: "bash", arguments: { command: "useradd svc" }, agent: fakeAgent("pentest") }) === undefined);
+}
+
+
+// 15. 意图台账报告门（v1.2.0）：open 意图拦报告，收口/关闭开关放行
+{
+	const passLog = "| 2026-08-18T00:00:00Z | pentest/P3 | pass | - |\n";
+	const state = { criteria: [{ id: "g1", status: "met" }], intents: [{ id: "i1", status: "open" }, { id: "i2", status: "done" }] };
+	const mk = (st, cfg = {}) => buildGuard({
+		config: cfg,
+		readGateLog: () => passLog,
+		readOperationState: () => st,
+		appendLog: () => {},
+		resolveMode: (a) => a.ctx.scope
+	});
+	const w = { name: "write", arguments: { file_path: path.join(WS, "reports/01.md"), content: "x" }, agent: fakeAgent("pentest") };
+	const g = mk(state);
+	const denied = g(w);
+	ok("open intent blocks report write", typeof denied === "string" && denied.includes("意图台账") && denied.includes("i1") && !denied.includes("i2"));
+	const closed = mk({ ...state, intents: [{ id: "i1", status: "blocked" }] })(w);
+	ok("closed intent allows report write", closed === undefined);
+	ok("no intents keeps old behavior", mk({ criteria: [{ id: "g1", status: "met" }] })(w) === undefined);
+	ok("intentGate=false disables", mk(state, { intentGate: false })(w) === undefined);
+}
+
+// 16. redteam 任务书锚点守卫（v1.2.0）：缺依据行拦，补齐放行，非任务书不拦
+{
+	const { guard } = makeGuard();
+	const brief = (content) => ({ name: "write", arguments: { file_path: path.join(WS, "task-briefs/t-001.md"), content }, agent: fakeAgent("redteam") });
+	ok("任务书无依据行被拦", typeof guard(brief("# 任务书\n\n- 目标：审计 x 服务\n")) === "string" && guard(brief("# x\n")).includes("依据"));
+	ok("任务书带依据行放行", guard(brief("# 任务书\n\n- 目标：x\n\n依据：用户要求对 x 服务做渗透（原话引用）\n")) === undefined);
+	ok("锚点行也认", guard(brief("…\n锚点：pentest-3\n")) === undefined);
+	ok("列表前缀容忍", guard(brief("…\n- 依据：材料 docs/收集.md\n")) === undefined);
+	ok("非任务书路径不拦", guard({ name: "write", arguments: { file_path: path.join(WS, "summary.md"), content: "无锚" }, agent: fakeAgent("redteam") }) === undefined);
+	ok("非 md 任务书路径不拦", guard({ name: "write", arguments: { file_path: path.join(WS, "task-briefs/t-001.json"), content: "{}" }, agent: fakeAgent("redteam") }) === undefined);
+	ok("专业模式写任务书目录不拦（守卫仅总控）", guard({ name: "write", arguments: { file_path: path.join(WS, "task-briefs/t.md"), content: "无锚" }, agent: fakeAgent("pentest") }) === undefined);
+	ok("redteam 无 content 的 write 不炸", guard({ name: "write", arguments: { file_path: path.join(WS, "task-briefs/t.md") }, agent: fakeAgent("redteam") }) === undefined);
+}
+
+
+// 17. 任务约束门（v1.3.0）：deny 带匹配词命中 bash/fetch 即拦；无匹配词/allow 不拦
+{
+	const mk = (st, cfg = {}) => buildGuard({
+		config: cfg,
+		readGateLog: () => "",
+		readOperationState: () => st,
+		appendLog: () => {},
+		resolveMode: (a) => a.ctx.scope
+	});
+	const st = { criteria: [], constraints: [
+		{ id: "c1", kind: "deny", text: "不碰支付接口", keywords: ["pay", "refund"] },
+		{ id: "c2", kind: "deny", text: "只读原则（提示层）", keywords: [] },
+		{ id: "c3", kind: "allow", text: "允许测 x 子域", keywords: ["x.example.com"] }
+	] };
+	const g = mk(st);
+	const bashPay = { name: "bash", arguments: { command: "sqlmap -u https://t/api/pay/order?id=1 --batch" }, agent: fakeAgent("pentest") };
+	const denied = g(bashPay);
+	ok("deny 匹配词命中 bash 拦", typeof denied === "string" && denied.includes("c1") && denied.includes("不碰支付接口"));
+	ok("fetch URL 命中拦", typeof g({ name: "fetch", arguments: { url: "https://t/refund/list" }, agent: fakeAgent("pentest") }) === "string");
+	ok("无匹配词 deny 不拦（提示层归信封）", g({ name: "bash", arguments: { command: "rm -rf /tmp/x && echo done" }, agent: fakeAgent("pentest") }) === undefined || !String(g({ name: "bash", arguments: { command: "echo ok" }, agent: fakeAgent("pentest") })).includes("c2"));
+	ok("allow 条目不拦", g({ name: "bash", arguments: { command: "nmap -sV x.example.com" }, agent: fakeAgent("pentest") }) === undefined);
+	ok("大小写不敏感命中", typeof g({ name: "bash", arguments: { command: "sqlmap -u https://t/PAY/id=1" }, agent: fakeAgent("pentest") }) === "string");
+	ok("无约束台账不拦", mk({ criteria: [] })({ name: "bash", arguments: { command: "curl https://t/pay" }, agent: fakeAgent("pentest") }) === undefined);
+	ok("constraintGate=false 关", mk(st, { constraintGate: false })(bashPay) === undefined);
+	ok("原有高危档优先于约束文案", (() => { const r = g({ name: "bash", arguments: { command: "shutdown -h now" }, agent: fakeAgent("pentest") }); return typeof r === "string" && r.includes("停机"); })());
+}
+
+// 16. 全局熔断（跨模式事实层）：标记文件存在拦全部工具，移除即恢复，开关可关
+{
+	const marker = path.join(os.tmpdir(), `kill-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`);
+	process.env.DSH_KILL_SWITCH_FILE = marker;
+	try {
+		const { guard } = makeGuard();
+		fs.writeFileSync(marker, "trip");
+		ok("kill: 触发时 write 拦", guard({ name: "write", arguments: { file_path: path.join(WS, "assets.md") }, agent: fakeAgent("pentest") }) !== undefined);
+		ok("kill: 触发时 bash 拦", guard({ name: "bash", arguments: { command: "ls" }, agent: fakeAgent("pentest") }) !== undefined);
+		ok("kill: 非安全模式同样拦（跨模式事实层）", guard({ name: "bash", arguments: { command: "ls" }, agent: fakeAgent("cordis") }) !== undefined);
+		ok("kill: 拦截文案含恢复方法", (() => { const r = guard({ name: "bash", arguments: { command: "ls" }, agent: fakeAgent("pentest") }); return (r?.reason ?? String(r)).includes("全局熔断已触发") && (r?.reason ?? String(r)).includes("移除标记文件"); })());
+		fs.rmSync(marker, { force: true });
+		ok("kill: 移除标记即恢复（无需重启）", guard({ name: "bash", arguments: { command: "ls" }, agent: fakeAgent("pentest") }) === undefined);
+		fs.writeFileSync(marker, "trip");
+		const { guard: gOff } = makeGuard({ killSwitch: false });
+		ok("kill: 开关关闭时标记不生效", gOff({ name: "bash", arguments: { command: "ls" }, agent: fakeAgent("pentest") }) === undefined);
+	} finally {
+		fs.rmSync(marker, { force: true });
+		delete process.env.DSH_KILL_SWITCH_FILE;
+	}
+}
+
+// 17. ask 档 passwd 语境化（T2 考场首轮实测教训：裸子串误伤 /etc/passwd 读与字面量）
+{
+	ok("passwd 命令位命中（sudo passwd）", (() => { const r = scanAsk("sudo passwd root"); return r && r.reason.includes("账号/权限体系变更"); })());
+	ok("chpasswd 管道位命中", (() => { const r = scanAsk("echo u:p | chpasswd"); return !!r; })());
+	ok("行首 passwd 命中", (() => { const r = scanAsk("passwd testx"); return !!r; })());
+	ok("/etc/passwd 读路径不误伤（LFI 验证正路）", scanAsk("curl -s 'http://t/fi/?page=/etc/passwd'") === undefined);
+	ok("代码字符串字面量不误伤（probe: passwd）", scanAsk('echo "probe: passwd"') === undefined);
+	ok("useradd 仍命中", (() => { const r = scanAsk("useradd testx"); return !!r; })());
 }
 
 console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pass} passed`);

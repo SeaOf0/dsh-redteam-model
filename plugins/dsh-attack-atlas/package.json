@@ -1,7 +1,7 @@
 {
 	"name": "@dsh-external/dsh-attack-atlas",
-	"version": "1.1.1",
-	"description": "AttackAtlas tab for the eight specialist security presets: per-mode architecture matrix (battle zones x tactics x items with per-mode terminal-state semantics), four-state coverage light-up, target anchoring, dispatch-on-double-click, attack-chain topology, custom work-methodology composer (layered run envelope, closure inquiry), tool/MCP/custom-tool modules with install-approval protocol, and a capability library of user-defined categories and items shared into the composer.",
+	"version": "1.1.6",
+	"description": "AttackAtlas tab for the eight specialist security presets: per-mode architecture matrix (battle zones x tactics x items with per-mode terminal-state semantics), four-state coverage light-up, target anchoring, dispatch-on-double-click, attack-chain topology, custom work-methodology composer (layered run envelope, closure inquiry), tool/MCP/custom-tool modules with install-approval protocol, and a capability library of user-defined categories and items shared into the composer. v1.1.4 adds the MISS ledger: unresolved coverage-key/stage lookups are recorded (best-effort) and aggregated per mode/query — the data-driven wish list for capability-library gaps, exposed via the misses.list web endpoint.",
 	"keywords": [
 		"deepseek",
 		"deepseek-harness",

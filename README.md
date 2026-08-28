@@ -29,7 +29,7 @@ UI这块儿不太会，AI处理的，见谅。
 
 每个模式自包含四层资产：**persona**（角色/认识论/边界/报告纪律）→ **playbook**（方法论与门禁文本契约）→ **skills**（可加载技能）→ **refs/**（外部知识库，原文索引化，零本机路径）。
 
-## 运行时插件（十五个）
+## 运行时插件（十七个）
 
 | 插件 | 作用 | 挂载平面 |
 |---|---|---|
@@ -37,6 +37,8 @@ UI这块儿不太会，AI处理的，见谅。
 | `dsh-route-boost` | 逐轮治理信封：阶段推断（带粘滞记忆）+ 门禁清单 + 模式边界 + 证据等级预判 + refs 指针 + 技能依赖工具面就绪行（缺件提前显形走三级兜底）+ operation 恢复行（中断续作），任务口径判定（用户显式指定项优先只做指定项并点亮，未指定走全流程矩阵）、结构化标记块注入（压缩后可识别）、整行粒度预算、变化才投递并落注入量记账 | 宿主 |
 | `dsh-sec-enforce` | 确定性工具拦截（guard 四连）：报告门（gate-log 无 PASS 或目标准则未全 met 不许写 reports/）、写边界（不出任务工作区）、高危命令先问后做、裸奔扫描限速 | 宿主 |
 | `dsh-refusal-guard` | 拒答检测与一次性临近性再注入（强/弱两级检测、工具轮豁免、3 轮冷却） | 宿主 |
+| `dsh-trace-vault` | 过程留痕库：九安全模式会话全量落库工具调用（参数/结果/outcome 三分类 ok/blocked/error，SQLite 本地持久、保留期与容量上限）；`trace_search`/`trace_get`/`trace_recent`/`trace_stats` 检索与会话画像（成功率/自救信号/人工介入计数）；拦截聚集信封（blocked 连续出现提示换路径降速） | 宿主 |
+| `dsh-auto-advance` | 自动推进器：subagent 执行体返回且意图台账有未收口方向时注入推进提醒（先收口本次意图再依锚派单或收工，不硬造方向）；开工三登记一次性提醒（含本模式拆分理论/分母语义注入）；轮数封顶/真人接管重置/冷却窗三护栏，无台账会话零干扰 | 宿主 |
 | `dsh-product-subagents` | `subagent_claude_code`/`subagent_codex` provider：无头 spawn 本机 claude/codex CLI，跨 harness 复核按建议项由用户触发 | 宿主 |
 | `dsh-mcp-studio` | MCP 加载工作台：通用类 MCP（burpsuite/yakit/chrome-dev-mcp 等）的接入、状态与诊断 | 宿主 |
 | `dsh-redteam-results` | 会话标签页「redteam 成果」：任务台账作战大屏 + 五板式成果页（发现/资产/台账/时间线/云攻击路径），九模式**跨会话**聚合与时间范围筛选（验证/删除回原始会话执行），SQLite 行级持久 | 宿主（bundles） |
@@ -64,7 +66,7 @@ dsh plugin --profile web add github:SeaOf0/dsh-redteam-model
 打开 dsh web 设置页 → **Redteam Manager**，即可：
 
 - 一键部署九个安全模式（空目录使用整体链接；已有实体 `.agent-presets` 时写入管理器持有的实体副本）；
-- 安装 / 更新 / 卸载十五个运行时插件；
+- 安装 / 更新 / 卸载十七个运行时插件；
 - 查看操作进度与失败原因；最近 50 条记录按 profile 保留，重启时未完成任务会标记为中断失败。
 
 模式复制状态刷新页面即可更新；宿主平面插件安装 / 卸载以及管理器自身更新后需**重启 dsh web** 生效。
@@ -150,7 +152,7 @@ dsh-redteam-model/
 │       ├── skills/           # playbook 等模式技能
 │       └── refs/             # 知识库（README.md 全量索引，零本机路径）
 ├── shared/skills/            # 九预设共享技能（生态协作/独立复核/治理/边界）
-├── plugins/                  # 十五个运行时插件（各自含 lib/ 测试/README）
+├── plugins/                  # 十七个运行时插件（各自含 lib/ 测试/README）
 └── deploy/                   # 一键部署 CLI（deploy.mjs / verify-deployment.mjs / check-sources.mjs / DEPLOY.md）
 ```
 

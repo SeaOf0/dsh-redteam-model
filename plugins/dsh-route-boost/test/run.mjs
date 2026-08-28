@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 // rendering, plus contract checks against dsh-stage-gate's real GATES and the
 // presets' top-level refs README indexes.
 import { MODES, inferPhase, inferRefs, inferEvidence, buildEnvelope, buildEnvelopeDetailed, purposeLine, wrapEnvelope, isEnvelopeText, envelopeRev, appendAccounting, isHumanUser, matchKeyword, escapePromptBraces, hasNegation, buildAuditRow, Config } from "../lib/index.js";
+import { buildSurfaceGuard, isWrapPhase } from "../lib/index.js";
 import { scanSkillDeps, checkTool } from "../lib/skilltools.mjs";
 import { detectScope } from "../lib/scope.mjs";
 import { TAXONOMIES } from "../../dsh-attack-atlas/lib/taxonomy.js";
@@ -288,6 +289,17 @@ console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pas
 	const without = buildEnvelope({ presetId: "pentest", mode, phase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES });
 	ok("envelope omits recovery line without operation", !without.includes("operation 恢复"));
 	ok("recovery line truncates long goal", buildEnvelope({ presetId: "pentest", mode, phase, refsHits: [], gates: FALLBACK_GATES, operation: { ...op, goal: "x".repeat(200) } }).includes("x".repeat(80)));
+
+	// 覆盖度段（scope/tested 台账）：有未测项时渲染；全测不渲染段
+	const withCov = buildEnvelope({ presetId: "pentest", mode, phase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, operation: { ...op, coverage: { scope: 4, tested: 2, untestedIds: ["db", "api"] } } });
+	ok("recovery line includes coverage segment", withCov.includes("覆盖 2/4") && withCov.includes("未测 db,api") && withCov.includes("operation_progress tested"), withCov.slice(0, 160));
+	const fullCov = buildEnvelope({ presetId: "pentest", mode, phase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, operation: { ...op, coverage: { scope: 4, tested: 4, untestedIds: [] } } });
+	ok("full coverage renders bare segment", fullCov.includes("覆盖 4/4") && !fullCov.includes("未测"), fullCov.slice(0, 160));
+	ok("no coverage segment without ledger", !withOp.includes("覆盖 "));
+	ok("open intents render segment", buildEnvelope({ presetId: "pentest", mode, phase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, operation: { ...op, openIntents: ["i1", "i3"] } }).includes("意图 2 未收口（i1,i3"));
+	ok("no intents segment when closed", !withOp.includes("意图 "));
+	ok("constraints render dedicated line", buildEnvelope({ presetId: "pentest", mode, phase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, operation: { ...op, constraints: ["禁：不碰支付接口", "允：仅测 x.example.com"] } }).includes("约束红线:") && buildEnvelope({ presetId: "pentest", mode, phase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, operation: { ...op, constraints: ["禁：不碰支付接口"] } }).includes("禁：不碰支付接口"));
+	ok("no constraints line without ledger", !withOp.includes("约束红线"));
 }
 
 // 17. 信封标记化（压缩存活性）+ 注入量记账 + 装配期工具面
@@ -367,6 +379,32 @@ console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pas
 	}
 	ok("redteam 定向走显式措辞（无矩阵类目）", detectScope("redteam", "只测这个站的注入，其他不路由").directed === true);
 	ok("redteam 全流程委托不误判", detectScope("redteam", "三个任务并行处理，最后全局总结").directed === false);
+}
+
+
+// ── 相位工具面（v1.2.0）：收尾相位收起派单类工具 + 信封说明行 ───────────────
+{
+	ok("wrap 相位判定", isWrapPhase("report") && isWrapPhase("summary") && isWrapPhase("review") && !isWrapPhase("recon") && !isWrapPhase(undefined));
+	const phases = new Map([["a1", "report"], ["a2", "verify"], ["a3", "summary"]]);
+	const g = buildSurfaceGuard({ phaseLookup: (id) => phases.get(id), resolveMode: (agent) => agent.ctx.scope });
+	const exec = (name, id, mode = "pentest") => ({ name, arguments: {}, agent: { id, ctx: { scope: mode }, session: { header: { cwd: "/w" } } } });
+	ok("收尾相位 subagent 拦", typeof g(exec("subagent", "a1")) === "string" && g(exec("subagent", "a1")).includes("收尾"));
+	ok("收尾相位 workflow 拦", typeof g(exec("workflow", "a3")) === "string");
+	ok("执行相位不拦", g(exec("subagent", "a2")) === undefined);
+	ok("非派单工具不拦", g(exec("bash", "a1")) === undefined);
+	ok("未知 agent 不拦", g(exec("subagent", "ghost")) === undefined);
+	ok("非路由模式不拦", g(exec("subagent", "a1", "plain-chat")) === undefined);
+	const off = buildSurfaceGuard({ config: { phaseSurface: false }, phaseLookup: (id) => phases.get(id), resolveMode: (a) => a.ctx.scope });
+	ok("phaseSurface=false 关", off(exec("subagent", "a1")) === undefined);
+	const custom = buildSurfaceGuard({ config: { wrapDeny: ["workflow"] }, phaseLookup: (id) => phases.get(id), resolveMode: (a) => a.ctx.scope });
+	ok("wrapDeny 自定义集生效", custom(exec("subagent", "a1")) === undefined && typeof custom(exec("workflow", "a1")) === "string");
+	// 信封说明行
+	const m = MODES.pentest;
+	const wrapPhase = m.phases.find((p) => p.id === "report");
+	const env = buildEnvelope({ presetId: "pentest", mode: m, phase: wrapPhase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, surface: "wrap" });
+	ok("信封渲染收尾工具面行", env.includes("工具面: 收尾相位") && env.includes("已收起"));
+	const execPhase = m.phases.find((p) => p.id === "verify");
+	ok("执行相位无工具面行", !buildEnvelope({ presetId: "pentest", mode: m, phase: execPhase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, surface: "" }).includes("工具面: 收尾相位"));
 }
 
 process.exit(fail ? 1 : 0);

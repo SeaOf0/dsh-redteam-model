@@ -10,6 +10,8 @@ description: 云安全攻防模式作战手册：云平台（AWS/Azure/GCP/阿�
 > 开工顺序：工作区发现 → WORKSPACE.md → tool-plane 检测登记 → 优先看 route-boost 信封
 > （已含门禁与 canonical 名），信封缺失/不确定再调 gates_list（mode=cloud-security）。
 
+> **覆盖度台账（operation-state 扩展，与门禁同源）**：`operation_goal` 登记目标契约后先 `operation_constraints` 登记用户约束（deny/allow 每行一条，带匹配词的 deny 命中 bash/fetch 即确定性拦；约束每轮进信封防压缩丢失）再 `operation_scope` 登记范围分母——每行一项（资产/路由/模块/账号/题目等目标实际要求覆盖的单元；「id: 标签」可固定 id；**最小范围原则：只登记目标明确点到或派生必需的面，绝不擅自放大**）；每测完一项即 `operation_progress tested=<id> evidence=<evidence 编号/矩阵行/输出文件>` 记分子（幂等，重复标记刷新证据）。scope 登记后本模式报告门自动开启算术对账：报告须含「覆盖：M/N」声明行且与台账实测一致——部分覆盖照实声明可过，虚报/漏报拦门。开新方向（派单/追线/阶段切换）先 `operation_intent` 登记带锚（anchor=boot 开局豁免 / criterion 准则 / scope 范围 / finding 本会话成果 / chain 链路节点 + id）——方向只能锚在已确立的证据上；收口 `operation_progress intent_done/intent_blocked/intent_dropped`（blocked/dropped 附原因）；未收口意图拦报告落盘。
+
 ## 定位与设计依据
 
 云安全攻防模式（cloud-security）覆盖：云平台（AWS/Azure/GCP/阿里云/腾讯云/华为云）与
@@ -205,6 +207,8 @@ environment-restore.md（含手动排除步骤），不自动清理（与 C6 同
 
 ## 报告模板
 
+- 覆盖声明（operation_scope 已登记时必带）：报告含「覆盖：M/N」一行，与 operation-state 台账实测一致（报告门算术对账，虚报/漏报拦门）；未测项列入未覆盖清单并注明原因（不在范围/超预算/未授权等）。
+
 云安全评估报告结构（六字段对齐 + 云版章节）：
 
 1. 报告元信息（六字段：目标/范围/授权/时间/方法/结论摘要）
@@ -266,6 +270,8 @@ claude 升级判据（建议项制）：判定级结论（路径 verified/排除
 即中止 ④sec-enforce 拦截未过 report 门写 reports/ ⑤route-boost 相位路由 ⑥独立复核员 gate-pass。
 
 ## 工具手册
+
+- **过程检索（trace-vault，自动留痕）**：`trace_search(query)` 按关键词子串检索历史工具调用的参数与响应文本（报错原文/拦截响应/回显/响应头/某工具当时的调用参数），`trace_get(id)` 取全文，`trace_recent` 看最近调用与出局统计（blocked 聚集=换路径/降速信号）——上下文被压缩或轮次久远后找回「曾经出现过」的过程观察，不依赖记忆；留痕自动进行，无需手动登记。
 
 **通道决策三原则（cloud 特化）**：①**只读 API 优先**（枚举/验证一律 List/Get；写类走变更性
 询问+C3 登记）；②**凭证安全**——云凭据只进 creds-cloud.txt（权限内登记），绝不写入报告正文/

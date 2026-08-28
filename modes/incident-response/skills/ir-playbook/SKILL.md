@@ -151,6 +151,8 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 | I5 | 报告 | 报告文件（`reports/incident-report-<id>.md`，stage_gate 的 file 参数传绝对路径；含字面标记 `时间线`、`失陷原因`、`ATT&CK`、`处置建议`、`证据索引`） | 六字段齐 + 时间线表 + 恶意文件/持久化清单 + 处置建议引用 |
 
 > **结构校验走运行时门禁工具**：开工门禁清单优先看 route-boost 信封（含门禁 id 与标题，canonical 文件名经 gates_list 取）；信封缺失或不确定时再调 `gates_list`（mode=incident-response）读门禁清单与
+
+> **覆盖度台账（operation-state 扩展，与门禁同源）**：`operation_goal` 登记目标契约后先 `operation_constraints` 登记用户约束（deny/allow 每行一条，带匹配词的 deny 命中 bash/fetch 即确定性拦；约束每轮进信封防压缩丢失）再 `operation_scope` 登记范围分母——每行一项（资产/路由/模块/账号/题目等目标实际要求覆盖的单元；「id: 标签」可固定 id；**最小范围原则：只登记目标明确点到或派生必需的面，绝不擅自放大**）；每测完一项即 `operation_progress tested=<id> evidence=<evidence 编号/矩阵行/输出文件>` 记分子（幂等，重复标记刷新证据）。scope 登记后本模式报告门自动开启算术对账：报告须含「覆盖：M/N」声明行且与台账实测一致——部分覆盖照实声明可过，虚报/漏报拦门。开新方向（派单/追线/阶段切换）先 `operation_intent` 登记带锚（anchor=boot 开局豁免 / criterion 准则 / scope 范围 / finding 本会话成果 / chain 链路节点 + id）——方向只能锚在已确立的证据上；收口 `operation_progress intent_done/intent_blocked/intent_dropped`（blocked/dropped 附原因）；未收口意图拦报告落盘。
 > canonical 文件名；产物齐后调 `stage_gate(mode, stage, workspace[, file])` 做结构校验（判定自动落
 > `<workspace>/gate-log.md`）。**校验物与标记以上表为准，不要去找插件源码文件。** 结构 PASS ≠
 > 全过——manual 项（语义）由复核员判定。
@@ -220,6 +222,8 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 - 取最严边界：与 pentest/attack-defense 协同的环节按最严边界执行。
 
 ## 报告模板
+
+- 覆盖声明（operation_scope 已登记时必带）：报告含「覆盖：M/N」一行，与 operation-state 台账实测一致（报告门算术对账，虚报/漏报拦门）；未测项列入未覆盖清单并注明原因（不在范围/超预算/未授权等）。
 
 `reports/incident-report-<id>.md`，结构固定：
 
@@ -322,6 +326,8 @@ description: 应急溯源模式作战手册：Windows/Linux 应急响应六阶�
 create_goal 续接）→ 运行时插件（stage_gate 工具 + sec-enforce 报告门拦截 reports/ 前须 I5 PASS）。
 
 ## 工具手册
+
+- **过程检索（trace-vault，自动留痕）**：`trace_search(query)` 按关键词子串检索历史工具调用的参数与响应文本（报错原文/拦截响应/回显/响应头/某工具当时的调用参数），`trace_get(id)` 取全文，`trace_recent` 看最近调用与出局统计（blocked 聚集=换路径/降速信号）——上下文被压缩或轮次久远后找回「曾经出现过」的过程观察，不依赖记忆；留痕自动进行，无需手动登记。
 
 > **通道决策三原则（IR 特化）**：①**只读优先**——工具选择第一判据是只读性（脚本兜底同样只读，
 > 任何通道不得改动证据）；②证据保全优先于分析速度（先哈希/镜像/导出，后分析）；③输出可读性

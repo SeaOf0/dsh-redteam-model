@@ -8,9 +8,16 @@ DSH 宿主平面插件：为七个安全预设的 `tool-subagent` 产品行（`p
 
 ## 机制
 
-- 每个 provider 无头 spawn 本机 CLI：claude 走 `-p`（prompt 经 stdin、答案在 stdout）；
-  codex 走 `exec --skip-git-repo-check --sandbox <mode> -C <cwd> -o <tmpfile>`（最终消息从
-  `-o` 文件取，stdin 传指令）。
+- 每个 provider 无头 spawn 本机 CLI：claude 走 `-p --output-format stream-json --verbose`
+  （prompt 经 stdin、全过程 NDJSON 留痕、终稿自流的 result 事件提取——解析失败回退原始
+  stdout）；codex 走 `exec --skip-git-repo-check --sandbox <mode> -C <cwd> -o <tmpfile>`
+  （最终消息从 `-o` 文件取，stdin 传指令；codex 的原生过程流在 `~/.codex/sessions/`，
+  本插件不重复留痕）。
+- **过程流留痕（v1.1.0，仅 claude）**：stdout 全量 tee 到
+  `~/.dsh/product-subagents/traces/<时间戳>-<id>.ndjson`（不受输出上限约束），
+  完成输出的末尾附一行 `[claude 过程流已留痕：<路径>]`——编排模型由此得知过程流位置，
+  可按需读取子代理的完整执行过程（工具调用/中间观察），复核独立性取证有了原始依据。
+  `streamTrace: false` 关闭（回到纯文本 `-p`，无留痕）。
 - 模型后端完全归 CLI 自己的配置（`~/.claude/settings.json` 的 env 段、`~/.codex/config.toml`
   供应商）——本插件不碰任何密钥；DeepSeek API 等 Anthropic/OpenAI 兼容后端由 CLI 配置接入。
 - run 契约映射：exit 0 → `completed`（stdout/-o 为最终文本）；abort/dispose → `aborted`；
@@ -25,7 +32,7 @@ DSH 宿主平面插件：为七个安全预设的 `tool-subagent` 产品行（`p
 ## 配置（cordis.patch.yml 行）
 
 ```yaml
-claudeCode: { bin: claude, timeoutMs: 600000, extraArgs: [], env: {} }
+claudeCode: { bin: claude, timeoutMs: 600000, extraArgs: [], env: {}, streamTrace: true }
 codex:      { bin: codex, sandbox: workspace-write, timeoutMs: 600000, extraArgs: [], env: {} }
 ```
 
@@ -33,7 +40,7 @@ codex:      { bin: codex, sandbox: workspace-write, timeoutMs: 600000, extraArgs
 
 ## 验证
 
-- `node test/run.mjs` — 23 项离线单测（FakeChild，不联网）
+- `node test/run.mjs` — 41 项离线单测（FakeChild，不联网）
 - `node test/smoke.mjs` — 真 CLI 冒烟（各发一条 "reply ok"
   claude-code 15s / codex 48s 双 completed）
 - `node ../../../.zcode/chain-probe.mjs` — 五预设作用域工具面应出现两个产品工具

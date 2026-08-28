@@ -132,12 +132,16 @@ tools: x86_64-w64-mingw32-gcc
 
 ## 报告模板
 
+- 覆盖声明（operation_scope 已登记时必带）：报告含「覆盖：M/N」一行，与 operation-state 台账实测一致（报告门算术对账，虚报/漏报拦门）；未测项列入未覆盖清单并注明原因（不在范围/超预算/未授权等）。
+
 - 六字段模板：名称 / 描述 / 等级 / 地址（技术名/测试环境）/ 测试过程（构建命令、哈希、判定日志）/ 修复建议（检测侧建议）。
 - 附加「下一步思路与研究向」小节（persona 要求）。
 
 - 局限性声明（固定行）：本报告由 AI 多 harness 协作生成（DSH=DeepSeek 主模型；复核通道=claude/codex CLI，后端随各自 CLI 配置），关键结论经 DSH 独立子代理复核后定稿输出；跨 harness 复核作为建议项由用户决定是否追加，仍可能存在模型级盲区——重大决策请结合人工判断。
 
 ## 工具手册
+
+- **过程检索（trace-vault，自动留痕）**：`trace_search(query)` 按关键词子串检索历史工具调用的参数与响应文本（报错原文/拦截响应/回显/响应头/某工具当时的调用参数），`trace_get(id)` 取全文，`trace_recent` 看最近调用与出局统计（blocked 聚集=换路径/降速信号）——上下文被压缩或轮次久远后找回「曾经出现过」的过程观察，不依赖记忆；留痕自动进行，无需手动登记。
 
 ### 工具使用策略（总纲）
 
@@ -288,6 +292,8 @@ tools: x86_64-w64-mingw32-gcc
 | **Gate V4 结论外推检查** | 实验结论表述（调用 `stage_gate` 时以**实验结论文件**作 `file` 参数） | 结论范围 ≤ 已测环境清单范围；超出即退回改写（如「未测环境不得列入结论」） |
 
 > **结构校验走运行时门禁工具**：开工门禁清单优先看 route-boost 信封（已含门禁与 canonical 文件名）；信封缺失或不确定时再调 `gates_list`（mode=av-evasion）读门禁清单与 canonical 文件名；产物齐后调 `stage_gate(mode, stage, workspace[, file])` 做结构校验（判定自动落 `<workspace>/gate-log.md`）。**校验物与标记以下表为准，不要去找插件源码文件。** 结构 PASS ≠ 全过——manual 项（语义）由总控/复核员判定。
+
+> **覆盖度台账（operation-state 扩展，与门禁同源）**：`operation_goal` 登记目标契约后先 `operation_constraints` 登记用户约束（deny/allow 每行一条，带匹配词的 deny 命中 bash/fetch 即确定性拦；约束每轮进信封防压缩丢失）再 `operation_scope` 登记范围分母——每行一项（资产/路由/模块/账号/题目等目标实际要求覆盖的单元；「id: 标签」可固定 id；**最小范围原则：只登记目标明确点到或派生必需的面，绝不擅自放大**）；每测完一项即 `operation_progress tested=<id> evidence=<evidence 编号/矩阵行/输出文件>` 记分子（幂等，重复标记刷新证据）。scope 登记后本模式报告门自动开启算术对账：报告须含「覆盖：M/N」声明行且与台账实测一致——部分覆盖照实声明可过，虚报/漏报拦门。开新方向（派单/追线/阶段切换）先 `operation_intent` 登记带锚（anchor=boot 开局豁免 / criterion 准则 / scope 范围 / finding 本会话成果 / chain 链路节点 + id）——方向只能锚在已确立的证据上；收口 `operation_progress intent_done/intent_blocked/intent_dropped`（blocked/dropped 附原因）；未收口意图拦报告落盘。
 >
 > | 门 | 结构校验物（canonical 名 + 必含标记） |
 > |---|---|---|

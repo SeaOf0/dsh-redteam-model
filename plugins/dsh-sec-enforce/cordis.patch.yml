@@ -8,6 +8,11 @@
 # rate flag) and append one line to <workspace>/enforce-log.md for the audit
 # trail. All four guards can be toggled; allowDirs exempts paths from the
 # write boundary (e.g. a shared tools dir on machines that install into one).
+#
+# v1.1.0 ask tier: reversible-but-invasive classes (account/privilege changes,
+# firewall rule edits, flood stress) ride the tools/pre-execute waterfall into
+# the host approval service — allowed-once proceeds, deny/timeout/no-channel
+# refuses. The listener defers to any stronger downstream decision.
 - insert:
     - id: dsh-sec-enforce
       name: '@dsh-external/dsh-sec-enforce'
@@ -16,4 +21,5 @@
         writeBoundary: true
         dangerousOps: true
         rateDiscipline: true
+        askGate: true
         allowDirs: []

@@ -202,6 +202,11 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 
 ### 3 打点到横向的衔接
 
+- **立足点确定性判据（突破成立的门槛）**：「突破成立」必须锚定不依赖模型判断的确定性
+  证据——实际拿到的访问本身（webshell 连接成功的回显 / 新增凭据实际登录成功 / 命令执行
+  的标记回显；判定姿势按 pentest-playbook「确定性信号」表），不以「看起来可打」的推断
+  为准。假立足点会让整条横向链建立在不存在的基础上——判据不足时只算 candidate（挂
+  paths-ledger candidate 态继续验证），确立后立足点证据原文进操作痕迹台账。
 - 突破成立（任一立足点）→ **单机落点信息收集 SOP** 全量过一遍 → 内网作战流程从
   第 0 节起打；
 - 拿到的凭据立即回 `artifacts/creds.txt` 并全服务复用（衔接内网章 §1 服务线）；
@@ -443,6 +448,8 @@ ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
 | 报告 | 六字段+ATT&CK+评分+gap 汇总+持久化清单+**路径台账+阶段终态表**+**操作痕迹台账 op-traces.md** | 收到未带 gate-pass 的 finding → 退回；台账有悬空项 → 退回；op-traces 缺失或不覆盖已登记痕迹 → 退回 |
 
 > **结构校验走运行时门禁工具**：开工门禁清单优先看 route-boost 信封（已含门禁与 canonical 文件名）；信封缺失或不确定时再调 `gates_list`（mode=attack-defense）读门禁清单与 canonical 文件名；产物齐后调 `stage_gate(mode, stage, workspace[, file])` 做结构校验（判定自动落 `<workspace>/gate-log.md`）。**校验物与标记以下表为准，不要去找插件源码文件。** 结构 PASS ≠ 全过——manual 项（语义）由复核员判定。
+
+> **覆盖度台账（operation-state 扩展，与门禁同源）**：`operation_goal` 登记目标契约后先 `operation_constraints` 登记用户约束（deny/allow 每行一条，带匹配词的 deny 命中 bash/fetch 即确定性拦；约束每轮进信封防压缩丢失）再 `operation_scope` 登记范围分母——每行一项（资产/路由/模块/账号/题目等目标实际要求覆盖的单元；「id: 标签」可固定 id；**最小范围原则：只登记目标明确点到或派生必需的面，绝不擅自放大**）；每测完一项即 `operation_progress tested=<id> evidence=<evidence 编号/矩阵行/输出文件>` 记分子（幂等，重复标记刷新证据）。scope 登记后本模式报告门自动开启算术对账：报告须含「覆盖：M/N」声明行且与台账实测一致——部分覆盖照实声明可过，虚报/漏报拦门。开新方向（派单/追线/阶段切换）先 `operation_intent` 登记带锚（anchor=boot 开局豁免 / criterion 准则 / scope 范围 / finding 本会话成果 / chain 链路节点 + id）——方向只能锚在已确立的证据上；收口 `operation_progress intent_done/intent_blocked/intent_dropped`（blocked/dropped 附原因）；未收口意图拦报告落盘。
 >
 > | 阶段门 | 结构校验物（canonical 名 + 必含标记） |
 > |---|---|---|
@@ -568,6 +575,8 @@ ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
 
 ## 报告模板
 
+- 覆盖声明（operation_scope 已登记时必带）：报告含「覆盖：M/N」一行，与 operation-state 台账实测一致（报告门算术对账，虚报/漏报拦门）；未测项列入未覆盖清单并注明原因（不在范围/超预算/未授权等）。
+
 - 报告落盘 reports/：总体评估报告 + 逐 finding 六字段文件；消费 code-audit 静态发现时，待人工验证项汇入 pending-manual.md。
 - 附加：ATT&CK 映射、证据索引（哈希+时间戳）、证据化评分与修复优先级、detection gap 汇总、
   **链级分布**（L1-L5 各几条路径——本次评估串联能力的直观读数，与等级阶梯并列呈现）。
@@ -576,6 +585,8 @@ ARP/ICMP 特征，姿态卡 ≥ 低监测时只跑被动模式）。
 - 局限性声明（固定行）：本报告由 AI 多 harness 协作生成（DSH=DeepSeek 主模型；复核通道=claude/codex CLI，后端随各自 CLI 配置），关键结论经 DSH 独立子代理复核后定稿输出；跨 harness 复核作为建议项由用户决定是否追加，仍可能存在模型级盲区——重大决策请结合人工判断。
 
 ## 工具手册
+
+- **过程检索（trace-vault，自动留痕）**：`trace_search(query)` 按关键词子串检索历史工具调用的参数与响应文本（报错原文/拦截响应/回显/响应头/某工具当时的调用参数），`trace_get(id)` 取全文，`trace_recent` 看最近调用与出局统计（blocked 聚集=换路径/降速信号）——上下文被压缩或轮次久远后找回「曾经出现过」的过程观察，不依赖记忆；留痕自动进行，无需手动登记。
 
 ### 工具使用策略（总纲）
 

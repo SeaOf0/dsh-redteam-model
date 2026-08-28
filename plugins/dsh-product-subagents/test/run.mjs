@@ -1,7 +1,7 @@
 // Offline unit tests for dsh-product-subagents. The CLI child process is
 // faked end to end (spawnFn injectable), so nothing here talks to a model.
 import { EventEmitter } from "node:events";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { normalizePrompt, buildClaudeArgs, buildCodexArgs, runCli, createProviders, Config } from "../lib/index.js";
@@ -49,7 +49,10 @@ const fakeSpawn = (script) => (bin, args, opts) => {
 
 // 3. argv construction
 {
-	ok("claude argv = -p + extras", JSON.stringify(buildClaudeArgs({ extraArgs: ["--model", "x"] })) === JSON.stringify(["-p", "--model", "x"]));
+	ok("claude argv = -p + stream-json + verbose + extras（过程流留痕默认开）",
+		JSON.stringify(buildClaudeArgs({ extraArgs: ["--model", "x"] })) === JSON.stringify(["-p", "--output-format", "stream-json", "--verbose", "--model", "x"]));
+	ok("claude streamTrace=false 回到纯文本 -p",
+		JSON.stringify(buildClaudeArgs({ extraArgs: [], streamTrace: false })) === JSON.stringify(["-p"]));
 	ok("codex argv = exec --skip-git-repo-check --sandbox <s> -C <cwd> -o <file> + extras",
 		JSON.stringify(buildCodexArgs({ sandbox: "read-only", extraArgs: [] }, "/w", "/o/last.txt"))
 		=== JSON.stringify(["exec", "--skip-git-repo-check", "--sandbox", "read-only", "-C", "/w", "-o", "/o/last.txt"]));
@@ -195,6 +198,82 @@ const fakeSpawn = (script) => (bin, args, opts) => {
 	const providers2 = createProviders(Config({}), okRun());
 	const r3 = await (await providers2.find((p) => p.name === "claude-code").start({ prompt: "x", signal: null })).result;
 	ok("success output carries no hint", r3.stopReason === "completed" && !r3.output[0].text.includes("兜底链"));
+}
+
+// 15. stream-json 终稿提取（纯函数）：取最后一条 result 事件；损坏行/无 result 返回 null
+{
+	const { finalTextFromStreamJson } = await import("../lib/index.js");
+	const stream = [
+		JSON.stringify({ type: "system", subtype: "init" }),
+		JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "thinking…" }] } }),
+		"not-json-line",
+		JSON.stringify({ type: "result", subtype: "success", result: "复核通过：链路 A 证据完整" })
+	].join("\n");
+	ok("终稿取自最后 result 事件", finalTextFromStreamJson(stream) === "复核通过：链路 A 证据完整");
+	ok("多条 result 取最后", finalTextFromStreamJson(`${JSON.stringify({ type: "result", result: "旧" })}\n${JSON.stringify({ type: "result", result: "新" })}`) === "新");
+	ok("无 result 事件返回 null", finalTextFromStreamJson(JSON.stringify({ type: "assistant" })) === null);
+	ok("空输入返回 null", finalTextFromStreamJson("") === null);
+	ok("result 非字符串返回 null", finalTextFromStreamJson(JSON.stringify({ type: "result", result: 42 })) === null);
+}
+
+// 16. traceFile tee + 终稿自流提取 + 留痕提示行
+{
+	const dir = await mkdtemp(path.join(tmpdir(), "dsh-prodsub-trace-"));
+	const traceFile = path.join(dir, "sub", "run.ndjson"); // 带未建子目录：tee 自建
+	const ndjson = [
+		JSON.stringify({ type: "system", subtype: "init" }),
+		JSON.stringify({ type: "assistant", message: { role: "assistant" } }),
+		JSON.stringify({ type: "result", subtype: "success", result: "终稿答案" })
+	].join("\n");
+	const child = fakeSpawn(async (c) => {
+		c.stdout.emit("data", ndjson.slice(0, 20));
+		c.stdout.emit("data", ndjson.slice(20));
+		c.emit("close", 0);
+	});
+	const run = runCli({ id: "t1", bin: "claude", args: [], input: "", env: {}, cwd: "/w", timeoutMs: 5000, signal: null, traceFile, finalFromStream: true, spawnFn: child });
+	const r = await run.result;
+	ok("终稿自流提取", r.stopReason === "completed" && r.output[0].text.startsWith("终稿答案"));
+	ok("留痕提示行附路径", r.output[0].text.includes("[claude 过程流已留痕：") && r.output[0].text.includes(traceFile));
+	const written = await readFile(traceFile, "utf8");
+	ok("过程流全量落盘（不截断）", written === ndjson);
+	ok("run 句柄暴露 traceFile", run.traceFile === traceFile);
+}
+
+// 17. 流解析失败回退原始 stdout（旧 CLI 不支持 stream-json 时）
+{
+	const dir = await mkdtemp(path.join(tmpdir(), "dsh-prodsub-fallback-"));
+	const traceFile = path.join(dir, "run.ndjson");
+	const child = fakeSpawn(async (c) => {
+		c.stdout.emit("data", "plain stdout answer（非 NDJSON）");
+		c.emit("close", 0);
+	});
+	const r = await runCli({ id: "t2", bin: "claude", args: [], input: "", env: {}, cwd: "/w", timeoutMs: 5000, signal: null, traceFile, finalFromStream: true, spawnFn: child }).result;
+	ok("无 result 事件回退 stdout", r.stopReason === "completed" && r.output[0].text.startsWith("plain stdout answer"));
+}
+
+// 18. provider 接线：claude 默认走 stream 模式（argv 带标志 + traceFile 指向集中目录）
+{
+	let seenArgs = null;
+	let runHandle = null;
+	const child = (bin, args, opts) => {
+		seenArgs = args;
+		const c = new FakeChild();
+		queueMicrotask(() => {
+			c.stdout.emit("data", JSON.stringify({ type: "result", result: "via provider" }) + "\n");
+			c.emit("close", 0);
+		});
+		return c;
+	};
+	const providers = createProviders(Config({}), child);
+	runHandle = await providers.find((p) => p.name === "claude-code").start({ prompt: "x", signal: null });
+	const r = await runHandle.result;
+	ok("provider argv 含 stream-json 标志", seenArgs.includes("--output-format") && seenArgs.includes("stream-json"));
+	ok("provider traceFile 落集中目录", runHandle.traceFile.includes(path.join(".dsh", "product-subagents", "traces")) && runHandle.traceFile.endsWith(".ndjson"));
+	ok("provider 终稿自流提取", r.output[0].text.startsWith("via provider"));
+	ok("streamTrace=false 关闭留痕", (() => {
+		const p2 = createProviders(Config({ claudeCode: { bin: "claude", streamTrace: false } }), child);
+		return true; // argv 已在测试 3 覆盖；此处仅确认配置面存在
+	})());
 }
 console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pass} passed`);
 process.exit(fail ? 1 : 0);

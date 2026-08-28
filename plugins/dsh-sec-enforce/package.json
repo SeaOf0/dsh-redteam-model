@@ -1,7 +1,7 @@
 {
 	"name": "@dsh-external/dsh-sec-enforce",
-	"version": "1.0.0",
-	"description": "DSH host-plane deterministic enforcement for the nine security presets : ctx.tools.guard() pre-execute interception — report files require a stage_gate PASS in gate-log.md, writes stay inside the task workspace (least privilege), conservative high-risk bash patterns must go through the ask-first flow, and bare full-port scans without rate controls are rejected with the fix. Guards fire only for the nine security presets; every denial appends to the workspace enforce-log.md.",
+	"version": "1.4.1",
+	"description": "DSH host-plane deterministic enforcement for the nine security presets : ctx.tools.guard() pre-execute interception — report files require a stage_gate PASS in gate-log.md, writes stay inside the task workspace (least privilege), conservative high-risk bash patterns must go through the ask-first flow, and bare full-port scans without rate controls are rejected with the fix. Guards fire only for the nine security presets; every denial appends to the workspace enforce-log.md. v1.1.0 adds the ask tier: reversible-but-invasive classes (account/privilege changes, firewall rule edits, flood stress) route through the tools/pre-execute waterfall into the host approval service (allowed-once or deny) instead of a hard block. v1.2.0: open intents block report writes until closed (intentGate, default on); the redteam controller's task briefs (task-briefs/*.md) must carry a 依据/锚点 line naming what justified opening the brief. v1.3.0 constraintGate: keyword-bearing deny constraints from the task ledger intercept matching bash commands and fetch URLs, citing the constraint text; prompt-only constraints stay envelope-injected.",
 	"keywords": [
 		"deepseek",
 		"deepseek-harness",

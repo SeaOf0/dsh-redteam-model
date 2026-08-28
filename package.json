@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/dsh-redteam-model",
   "version": "1.1.1",
-  "description": "DSH redteam security research modes and runtime plugins, managed from one settings page: deploy the nine presets, install, update and uninstall the fifteen runtime plugins for the current profile.",
+  "description": "DSH redteam security research modes and runtime plugins, managed from one settings page: deploy the nine presets, install, update and uninstall the seventeen runtime plugins for the current profile.",
   "type": "module",
   "main": "./lib/index.js",
   "exports": {

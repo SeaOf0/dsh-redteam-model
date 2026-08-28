@@ -15,6 +15,8 @@
 // rejects requests asking for them before they reach the provider.
 
 import { spawn } from "node:child_process";
+import { createWriteStream } from "node:fs";
+import fs from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -29,7 +31,10 @@ const ProviderConfig = z.object({
 	bin: z.string(),
 	timeoutMs: z.natural().default(600000),
 	extraArgs: z.array(z.string()).default([]),
-	env: z.object({}).default({})
+	env: z.object({}).default({}),
+	/** claude 过程流留痕：-p 改走 stream-json（NDJSON 全过程）落 ~/.dsh/product-subagents/traces/，
+	 *  终稿从流的 result 事件提取（解析失败回退原始 stdout）。关闭则回到纯文本 -p（无留痕）。 */
+	streamTrace: z.boolean().default(true)
 });
 
 const CodexProviderConfig = z.object({
@@ -44,6 +49,11 @@ const Config = z.object({
 	claudeCode: ProviderConfig.default({ bin: "claude" }),
 	codex: CodexProviderConfig.default({ bin: "codex" })
 });
+
+/** claude 过程流的集中落盘目录（中央目录而非 cwd——任务工作区可能只读/会被清理）。 */
+export function tracesDir() {
+	return path.join(process.env.HOME || tmpdir(), ".dsh", "product-subagents", "traces");
+}
 
 const OUTPUT_CAP = 2 * 1024 * 1024; // per-stream accumulation cap
 const SIGKILL_GRACE_MS = 5000;
@@ -63,9 +73,26 @@ export function normalizePrompt(prompt) {
 const text = (t) => [{ type: "text", text: String(t) }];
 const tail = (s, n = 2000) => (s.length > n ? `…${s.slice(-n)}` : s);
 
-/** claude headless: prompt on stdin, final answer on stdout. */
+/** claude headless: prompt on stdin, final answer on stdout. streamTrace 开启时改走
+ *  stream-json（NDJSON 全过程），终稿由 finalTextFromStreamJson 从流提取。 */
 export function buildClaudeArgs(config) {
+	if (config?.streamTrace !== false) return ["-p", "--output-format", "stream-json", "--verbose", ...config.extraArgs];
 	return ["-p", ...config.extraArgs];
+}
+
+/** 从 claude stream-json（NDJSON）提取终稿：取最后一条 type==="result" 事件的 result 字段。
+ *  无 result 事件或行损坏返回 null（调用方回退原始 stdout）。 */
+export function finalTextFromStreamJson(text) {
+	const lines = String(text ?? "").split("\n");
+	for (let i = lines.length - 1; i >= 0; i--) {
+		const line = lines[i].trim();
+		if (!line) continue;
+		try {
+			const ev = JSON.parse(line);
+			if (ev?.type === "result" && typeof ev.result === "string") return ev.result;
+		} catch { /* 损坏行跳过 */ }
+	}
+	return null;
 }
 
 /** codex headless: instructions on stdin, final message collected via -o.
@@ -86,7 +113,7 @@ export function buildCodexArgs(config, cwd, outFile) {
  * DSH LLM is deliberately NOT implemented: it would destroy cross-harness
  * double-sign independence invisibly .
  */
-export function runCli({ id, bin, args, input, env, cwd, timeoutMs, signal, collectFile = "", fallbackHint = "", spawnFn = spawn }) {
+export function runCli({ id, bin, args, input, env, cwd, timeoutMs, signal, collectFile = "", traceFile = "", finalFromStream = false, fallbackHint = "", spawnFn = spawn }) {
 	const child = spawnFn(bin, args, { env, cwd, stdio: ["pipe", "pipe", "pipe"] });
 	let stdout = "";
 	let stderr = "";
@@ -94,6 +121,15 @@ export function runCli({ id, bin, args, input, env, cwd, timeoutMs, signal, coll
 	let killedBy = "";
 	let closed = false;
 	let killer = null;
+	// 过程流 tee：stdout 全量（不受 OUTPUT_CAP 限制）追加落盘；写失败静默（留痕是尽力而为）。
+	let traceStream = null;
+	if (traceFile) {
+		try {
+			fs.mkdirSync(path.dirname(traceFile), { recursive: true });
+			traceStream = createWriteStream(traceFile, { flags: "a" });
+			traceStream.on("error", () => {});
+		} catch { traceStream = null; }
+	}
 	const kill = (reason) => {
 		if (closed || killed) return;
 		killed = true;
@@ -104,7 +140,7 @@ export function runCli({ id, bin, args, input, env, cwd, timeoutMs, signal, coll
 	const onAbort = () => kill("abort");
 	signal?.addEventListener("abort", onAbort, { once: true });
 	const timer = timeoutMs > 0 ? setTimeout(() => kill("timeout"), timeoutMs) : null;
-	child.stdout?.on("data", (d) => { if (stdout.length < OUTPUT_CAP) stdout += d; });
+	child.stdout?.on("data", (d) => { if (stdout.length < OUTPUT_CAP) stdout += d; traceStream?.write(d); });
 	child.stderr?.on("data", (d) => { if (stderr.length < OUTPUT_CAP) stderr += d; });
 	const result = (async () => {
 		try {
@@ -128,17 +164,35 @@ export function runCli({ id, bin, args, input, env, cwd, timeoutMs, signal, coll
 			let finalText = stdout.trim();
 			if (collectFile) {
 				try { finalText = (await readFile(collectFile, "utf8")).trim() || finalText; } catch {}
+			} else if (finalFromStream && traceFile) {
+				// stream-json 模式：终稿以流的 result 事件为准（stdout 此模式下是 NDJSON 非终稿）；
+				// 无 result 事件（旧 CLI 不支持该格式/流损坏）回退原始 stdout。
+				// 先等 tee 写流冲刷完毕再读（写流异步，close 事件不保证已落盘）。
+				await new Promise((resolve) => {
+					const ts = traceStream;
+					traceStream = null;
+					if (!ts) return resolve();
+					ts.end(() => resolve());
+				});
+				try {
+					finalText = finalTextFromStreamJson(await readFile(traceFile, "utf8")) ?? finalText;
+				} catch {}
 			}
-			if (code === 0) return { stopReason: "completed", output: finalText ? text(finalText) : text("(CLI 无输出)") };
+			// 留痕提示行：编排模型由此得知过程流位置（stream 模式才有；codex 本批无留痕）。
+			const meta = traceFile && finalFromStream ? `\n[claude 过程流已留痕：${traceFile}]` : "";
+			if (code === 0) return { stopReason: "completed", output: finalText ? text(finalText + meta) : text("(CLI 无输出)" + meta) };
 			return { stopReason: "error", output: text(`CLI 退出码 ${code}${stderr ? `\nstderr 尾部：\n${tail(stderr)}` : stdout ? `\nstdout 尾部：\n${tail(stdout)}` : ""}${fallbackHint}`) };
 		} catch (e) {
 			return { stopReason: "error", output: text(`子代理运行异常：${e?.message ?? e}`) };
+		} finally {
+			traceStream?.end();
 		}
 	})();
 	return {
 		id,
 		localAgent: undefined,
 		result,
+		traceFile,
 		dispose() {
 			kill("dispose");
 			return Promise.resolve();
@@ -198,6 +252,8 @@ class CliSubagentProvider {
 			input, env, cwd,
 			timeoutMs: this.config.timeoutMs,
 			signal: request.signal,
+			traceFile: this.config.streamTrace === false ? "" : path.join(tracesDir(), `${new Date().toISOString().replace(/[:.]/g, "-")}-${id.slice(0, 8)}.ndjson`),
+			finalFromStream: this.config.streamTrace !== false,
 			fallbackHint,
 			spawnFn: this.spawnFn
 		});

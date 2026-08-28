@@ -53,6 +53,13 @@ function Btn(props) {
 
 function installStyles() {
 	if (document.getElementById("dsh-hnt-style")) return function () {};
+	// 红队四插件共享设计令牌（幂等注入，同 id 先到先得；与 results/pulse/webshell 同一份内容）
+	if (!document.getElementById("dsh-rt-tokens")) {
+		var tok = document.createElement("style");
+		tok.id = "dsh-rt-tokens";
+		tok.textContent = ":root{--rt-sev-critical:#c2182f;--rt-sev-high:#ff4d4d;--rt-sev-medium:#d9b00c;--rt-sev-low:#3b7dd8;--rt-sev-critical-bright:#ff8fa0;--rt-sev-high-bright:#ff6b8a;--rt-sev-medium-bright:#ffd43b;--rt-sev-low-bright:#4dabf7;--rt-ok:#2f9e44;--rt-dead:#c92a2a;--rt-ok-bright:#36f1b0;--rt-dead-bright:#ff8787;--rt-accent:var(--dsw-alias-accent,#4c6ef5);--rt-surface-card:var(--dsw-alias-bg-base,#fff);--rt-surface-tint:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff));--rt-border:var(--dsw-alias-border-l1,#e9e9ec);--rt-mono:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,monospace;--rt-navy-bg:rgba(8,24,46,.96);--rt-navy-bg-soft:rgba(12,32,62,.6);--rt-navy-line:rgba(58,157,255,.45);--rt-navy-line-soft:rgba(58,157,255,.28);--rt-navy-text:#e8f3ff;--rt-navy-text-2:#cfe6ff;--rt-navy-body:#b9d2ee;--rt-navy-dim:#7d97b8;--rt-navy-dim-2:#8fb4d9;--rt-navy-accent:#38d4ff;--rt-navy-accent-2:#3a9dff}";
+		document.head.appendChild(tok);
+	}
 	var css = [
 		".dsh-hnt-root{height:100%;display:flex;flex-direction:column;min-height:0;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);font-size:13px}",
 		".dsh-hnt-head{display:flex;align-items:center;gap:10px;padding:12px 16px;border-bottom:1px solid var(--dsw-alias-border-l2,#e4e4e7);flex-wrap:wrap}",
@@ -63,11 +70,11 @@ function installStyles() {
 		".dsh-hnt-btn{border:1px solid var(--dsw-alias-border-l1,#e9e9ec);background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);border-radius:7px;padding:6px 12px;font-size:12.5px;cursor:pointer}",
 		".dsh-hnt-btn:hover{background:var(--dsw-alias-interactive-bg-hover,#f4f4f5)}",
 		".dsh-hnt-btn.is-primary{background:var(--dsw-alias-accent,#4c6ef5);border-color:var(--dsw-alias-accent,#4c6ef5);color:#fff}",
-		".dsh-hnt-btn.is-danger{color:#c92a2a;border-color:#f1a9a9}",
+		".dsh-hnt-btn.is-danger{color:var(--rt-sev-critical,#c92a2a);border-color:color-mix(in srgb,var(--rt-sev-critical,#c92a2a) 35%,transparent)}",
 		".dsh-hnt-btn.is-small{padding:3px 8px;font-size:12px}",
 		".dsh-hnt-btn:disabled{opacity:.45;cursor:not-allowed}",
 		".dsh-hnt-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}",
-		".dsh-hnt-input{flex:1;min-width:260px;border:1px solid var(--dsw-alias-border-l1,#e9e9ec);border-radius:7px;padding:7px 10px;font-size:13px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);font-family:monospace}",
+		".dsh-hnt-input{flex:1;min-width:260px;border:1px solid var(--rt-border,#e9e9ec);border-radius:7px;padding:7px 10px;font-size:13px;background:var(--rt-surface-card,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);font-family:var(--rt-mono,monospace)}",
 		".dsh-hnt-select{border:1px solid var(--dsw-alias-border-l1,#e9e9ec);border-radius:7px;padding:6px 8px;font-size:12.5px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a)}",
 		".dsh-hnt-notice{border-radius:8px;padding:9px 12px;font-size:12.5px}",
 		".dsh-hnt-notice.is-info{background:color-mix(in srgb,var(--dsw-alias-accent,#4c6ef5) 10%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-accent,#4c6ef5) 35%,transparent)}",
@@ -77,7 +84,19 @@ function installStyles() {
 		".dsh-hnt-table th,.dsh-hnt-table td{border-bottom:1px solid var(--dsw-alias-border-l2,#e4e4e7);padding:7px 8px;text-align:left;vertical-align:top}",
 		".dsh-hnt-table th{position:sticky;top:0;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-secondary,#5b5b60);font-weight:600;font-size:12px;white-space:nowrap}",
 		".dsh-hnt-table td{word-break:break-all}",
-		".dsh-hnt-mono{font-family:monospace;font-size:12px}",
+		".dsh-hnt-mono{font-family:var(--rt-mono,monospace);font-size:12px}",
+		".dsh-hnt-table tbody tr:hover td{background:var(--rt-surface-tint,#f7f7f8)}",
+		".dsh-hnt-pill.is-fofa{color:#3b5bdb;border-color:rgba(59,91,219,.4);background:rgba(59,91,219,.08)}",
+		".dsh-hnt-pill.is-hunter{color:#d9480f;border-color:rgba(217,72,15,.4);background:rgba(217,72,15,.08)}",
+		".dsh-hnt-pill.is-quake{color:#2b8a3e;border-color:rgba(43,138,62,.4);background:rgba(43,138,62,.08)}",
+		".dsh-hnt-plats{display:grid;grid-template-columns:repeat(3,minmax(140px,1fr));gap:10px;width:100%;max-width:620px}",
+		".dsh-hnt-plat{display:flex;flex-direction:column;gap:3px;align-items:center;border:1px solid var(--rt-border,#e9e9ec);border-radius:10px;background:var(--rt-surface-card,#fff);padding:14px 10px;cursor:pointer;font-size:12px;color:var(--dsw-alias-label-primary,#1a1a1a);transition:border-color .15s,box-shadow .15s}",
+		".dsh-hnt-plat:hover{border-color:var(--rt-accent,#4c6ef5);box-shadow:0 4px 14px rgba(9,20,40,.08)}",
+		".dsh-hnt-plat-name{font-weight:600;font-size:13px}",
+		".dsh-hnt-plat-site{font-family:var(--rt-mono,monospace);font-size:10.5px;color:var(--dsw-alias-label-tertiary,#8a8a8f)}",
+		".dsh-hnt-plat-state{font-size:11px;color:var(--rt-sev-medium,#d9b00c)}",
+		".dsh-hnt-plat-state.is-ok{color:var(--rt-ok,#2f9e44)}",
+		".dsh-hnt-qchip{display:inline-block;max-width:31%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;vertical-align:top}",
 		".dsh-hnt-pill{display:inline-block;border:1px solid var(--dsw-alias-border-l1,#e9e9ec);border-radius:10px;padding:1px 8px;font-size:11px;color:var(--dsw-alias-label-secondary,#5b5b60);margin-right:4px}",
 		".dsh-hnt-skel{border:1px dashed var(--dsw-alias-border-l1,#e9e9ec);border-radius:10px;padding:36px 20px;text-align:center;color:var(--dsw-alias-label-tertiary,#8a8a8f);display:flex;flex-direction:column;gap:8px;align-items:center}",
 		".dsh-hnt-pager{display:flex;gap:8px;align-items:center;justify-content:flex-end;flex-wrap:wrap}",
@@ -197,10 +216,16 @@ function SearchTab(props) {
 				React.createElement("input", { className: "dsh-hnt-input", placeholder: "统一 DSL 查询，如 title:\"login\" body:\"xxl-job\" port:8080", value: query, disabled: true, onChange: function () {} }),
 				React.createElement(Btn, { disabled: true }, "搜索")),
 			React.createElement("div", { className: "dsh-hnt-skel" },
-				React.createElement("div", { style: { fontSize: 34 } }, "🛰️"),
-				React.createElement("div", null, "数据骨架已就绪——配置 FOFA / Hunter / Quake 任一平台 API 后开始狩猎"),
-				React.createElement("div", { className: "dsh-hnt-sub" }, "未配置任何 API 时无法搜索资产；多平台配置后统一查询自动转换为各平台语法"),
-				React.createElement(Btn, { primary: true, onClick: function () { props.onOpenSettings(); } }, "右上角设置 → 配置 API")));
+				React.createElement("div", null, "数据骨架已就绪——配置任一平台 API 后开始狩猎"),
+				React.createElement("div", { className: "dsh-hnt-plats" }, PLATFORM_META.map(function (m) {
+					var cfg = (props.config || {})[m.id] || { configured: false, tail: "" };
+					return React.createElement("button", { key: m.id, type: "button", className: "dsh-hnt-plat", title: "点击配置 " + m.label + " API", onClick: function () { props.onOpenSettings(); } },
+						React.createElement("span", { className: "dsh-hnt-plat-name" }, m.label),
+						React.createElement("span", { className: "dsh-hnt-plat-site" }, m.site),
+						React.createElement("span", { className: "dsh-hnt-plat-state" + (cfg.configured ? " is-ok" : "") }, cfg.configured ? "已配置 · " + cfg.tail : "未配置"));
+				})),
+				React.createElement("div", { className: "dsh-hnt-sub" }, "多平台配置后，统一 DSL 查询自动转换为各平台语法"),
+				React.createElement(Btn, { primary: true, onClick: function () { props.onOpenSettings(); } }, "配置 API")));
 	}
 
 	return React.createElement("div", { className: "dsh-hnt-body" },
@@ -214,7 +239,10 @@ function SearchTab(props) {
 			React.createElement(Btn, { primary: true, disabled: loading, onClick: function () { doSearch(); } }, loading ? "搜索中…" : "搜索"),
 			React.createElement(Btn, { disabled: loading || assets.length === 0, onClick: function () { doExport("csv"); } }, "导出 CSV"),
 			React.createElement(Btn, { disabled: loading || assets.length === 0, onClick: function () { doExport("json"); } }, "导出 JSON")),
-		queries ? React.createElement("div", { className: "dsh-hnt-sub" }, "转换后语法：FOFA " + esc(queries.fofa) + " ｜ Hunter " + esc(queries.hunter) + " ｜ Quake " + esc(queries.quake)) : null,
+		queries ? React.createElement("div", { className: "dsh-hnt-row" },
+			["fofa", "hunter", "quake"].map(function (p) {
+				return React.createElement("span", { key: p, className: "dsh-hnt-pill is-" + p + " dsh-hnt-qchip dsh-hnt-mono", title: p.toUpperCase() + " 语法：" + queries[p] }, p.toUpperCase() + " " + queries[p]);
+			})) : null,
 		notice ? React.createElement("div", { className: "dsh-hnt-notice is-" + notice.kind }, notice.text) : null,
 		assets.length === 0 && !loading ? React.createElement("div", { className: "dsh-hnt-skel" }, React.createElement("div", null, "查询后结果展示在这里——未配置平台时此处为数据骨架")) : null,
 		assets.length > 0 ? React.createElement("table", { className: "dsh-hnt-table" },
@@ -230,7 +258,7 @@ function SearchTab(props) {
 					React.createElement("td", null, a.protocol || "—"),
 					React.createElement("td", null, (a.title || "").slice(0, 60) || "—"),
 					React.createElement("td", null, (a.server || "").slice(0, 40) || "—"),
-					React.createElement("td", null, (a.platforms || [a.platform]).map(function (p) { return React.createElement("span", { key: p, className: "dsh-hnt-pill" }, p); })),
+					React.createElement("td", null, (a.platforms || [a.platform]).map(function (p) { return React.createElement("span", { key: p, className: "dsh-hnt-pill is-" + p }, p); })),
 					React.createElement("td", { className: "dsh-hnt-mono" }, fmtTime(a.time) || "—"),
 					React.createElement("td", null,
 						React.createElement(Btn, { small: true, primary: !isAuth, danger: isAuth, onClick: function () { markAuthorized(a, isAuth); } }, isAuth ? "取消授权" : "标记授权")));

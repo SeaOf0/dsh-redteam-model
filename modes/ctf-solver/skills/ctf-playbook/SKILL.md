@@ -10,6 +10,8 @@ description: CTF 解题模式作战手册：题面登记与线索梳理、模块
 > 开工顺序：工作区发现 → WORKSPACE.md → tool-plane 检测登记 → 优先看 route-boost 信封
 > （已含门禁与 canonical 名），信封缺失/不确定再调 gates_list（mode=ctf-solver）。
 
+> **覆盖度台账（operation-state 扩展，与门禁同源）**：`operation_goal` 登记目标契约后先 `operation_constraints` 登记用户约束（deny/allow 每行一条，带匹配词的 deny 命中 bash/fetch 即确定性拦；约束每轮进信封防压缩丢失）再 `operation_scope` 登记范围分母——每行一项（资产/路由/模块/账号/题目等目标实际要求覆盖的单元；「id: 标签」可固定 id；**最小范围原则：只登记目标明确点到或派生必需的面，绝不擅自放大**）；每测完一项即 `operation_progress tested=<id> evidence=<evidence 编号/矩阵行/输出文件>` 记分子（幂等，重复标记刷新证据）。scope 登记后本模式报告门自动开启算术对账：报告须含「覆盖：M/N」声明行且与台账实测一致——部分覆盖照实声明可过，虚报/漏报拦门。开新方向（派单/追线/阶段切换）先 `operation_intent` 登记带锚（anchor=boot 开局豁免 / criterion 准则 / scope 范围 / finding 本会话成果 / chain 链路节点 + id）——方向只能锚在已确立的证据上；收口 `operation_progress intent_done/intent_blocked/intent_dropped`（blocked/dropped 附原因）；未收口意图拦报告落盘。
+
 ## 定位与设计依据
 
 CTF 解题模式（ctf-solver）是轻量解题台：题目与题目环境默认沙盒内解题（题目环境=授权解题
@@ -141,6 +143,8 @@ flag 本体在台账最多出现一次（以验证证据为准，防泄题重复
 
 ## 报告模板（CTF 解题报告）
 
+- 覆盖声明（operation_scope 已登记时必带）：报告含「覆盖：M/N」一行，与 operation-state 台账实测一致（报告门算术对账，虚报/漏报拦门）；未测项列入未覆盖清单并注明原因（不在范围/超预算/未授权等）。
+
 1. 概览：赛名/时间/总题数/已解数/总分/排名（若有）
 2. flag 台账（上表全量）
 3. 每题复盘：解题路径（关键步骤/命令/踩坑）+ 复用价值（技巧/脚本）
@@ -149,6 +153,8 @@ flag 本体在台账最多出现一次（以验证证据为准，防泄题重复
 6. 结尾建议项：跨 harness 复核（用户触发后对关键 flag 独立复核，默认不做）
 
 ## 工具手册（轻量）
+
+- **过程检索（trace-vault，自动留痕）**：`trace_search(query)` 按关键词子串检索历史工具调用的参数与响应文本（报错原文/拦截响应/回显/响应头/某工具当时的调用参数），`trace_get(id)` 取全文，`trace_recent` 看最近调用与出局统计（blocked 聚集=换路径/降速信号）——上下文被压缩或轮次久远后找回「曾经出现过」的过程观察，不依赖记忆；留痕自动进行，无需手动登记。
 
 **通道阶梯（紧凑版，与前几模式同语义）**：检测制开工四列登记 tool-plane（CLI/MCP/
 installed-by-agent/install-failed）→ 已挂直接用 → 可自配 MCP（白名单 chrome-devtools 类）→
