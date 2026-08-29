@@ -48,7 +48,9 @@ const PLUGINS = [
 	{ name: "dsh-mode-group", hostPlane: true },
 	{ name: "dsh-scanner-tools", hostPlane: false },
 	{ name: "dsh-semgrep-audit", hostPlane: false },
-	{ name: "dsh-webshell-mgr", hostPlane: true }
+	{ name: "dsh-webshell-mgr", hostPlane: true },
+	{ name: "dsh-auto-advance", hostPlane: true },
+	{ name: "dsh-trace-vault", hostPlane: true }
 ];
 const MODE = process.argv[2] ?? "";
 
