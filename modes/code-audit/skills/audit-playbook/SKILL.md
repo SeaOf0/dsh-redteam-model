@@ -54,10 +54,11 @@ shared/refs/finding-fields.md）；成果页列表/详情/导出报告/统计分
 
 - 先判断代码/框架/系统类型：语言、框架、中间件、部署形态。
 - 通用框架：先核对已知漏洞是否仍存在（版本比对 + 公开漏洞库），再针对业务代码做增量审计。
-- **框架专项路由**：识别出已知框架/组件后直达专项手册（`refs/components/`——fastjson /
-  shiro / log4j / struts2 / weblogic 五篇专项）：先核该组件全部
-  已知漏洞面（版本比对 + 利用条件核对）再增量审业务代码；refs 未收录的框架（spring 全家桶 /
-  若依等）按 `refs/lang/` 对应语言手册 + 公开漏洞库检索兜底，并登记「未收录框架」到规则降级记录。
+- **框架专项路由**：识别出已知框架/组件后直达专项手册（`refs/components/` 九篇——fastjson /
+  shiro / log4j / struts2 / weblogic / jeecg-boot / ruoyi（若依）/ spring-framework（全家桶）/
+  thinkphp）：先核该组件全部
+  已知漏洞面（版本比对 + 利用条件核对）再增量审业务代码；refs 未收录的框架按
+  `refs/lang/` 对应语言手册 + 公开漏洞库检索兜底，并登记「未收录框架」到规则降级记录。
 - **经验召回**：开工读工作区 `lessons.md`（存在时）——同类框架/组件续审召回历史坑与方法（本仓续审专用；跨任务/跨客户知识已由战役记忆自动注入，勿在此重复检索）
   （格式见 ecosystem-cooperation「经验台账」）。
 - **战役记忆沉淀（代审特化）**：框架 sink 特征经验证后 `campaign_memory_write`（kind=fingerprint，
@@ -508,9 +509,10 @@ trivy config --config-policy ./policy --namespaces user <dir>
 | 需求 | 读 refs/ 下文件 |
 |---|---|
 | 按语言审计（通用） | lang/ 六篇（java/python/php/javascript/go-rust/c-cpp） |
+| **sink 大表（面映射/覆盖矩阵 sink 轴）** | lang/ 七语言专表：java-sink-reference（java-audit/）/ php-sink-reference（php-audit/）/ python·javascript·go-rust·c-cpp·dotnet-sink-reference（lang/ 根） |
 | Java 深度管线 | lang/java-audit/（pipeline/route-mapper/route-tracer/sql/file-read/file-upload/xxe/auth/severity-rating/dktss-scoring 等 20+ 篇，先读 java-audit-pipeline.md） |
 | PHP 深度管线 | lang/php-audit/（pipeline/cmd/auth/config/archive-extract/codeigniter 等，先读 php-audit-pipeline.md） |
-| 组件已知漏洞核对 | components/（fastjson/log4j/shiro/struts2/weblogic） |
+| 组件已知漏洞核对 | components/ 九篇（fastjson/log4j/shiro/struts2/weblogic + jeecg-boot/ruoyi（若依）/spring-framework（全家桶）/thinkphp） |
 | LLM Agent/MCP 应用审计 | ai/ 七篇（prompt-injection/jailbreak/agent-safety/model-security/rag-poisoning/system-prompt-extraction/mcp-audit） |
 | 供应链与密钥 | sca/devsecops-supply-chain.md、devsecops-secrets.md |
 | 加密实现审计 | crypto/crypto-implementation.md |
@@ -542,6 +544,7 @@ trivy config --config-policy ./policy --namespaces user <dir>
 | 报告员 | spawn | gate-pass findings → 六字段 + 待人工验证清单汇总 | 调用链标注反编译来源（如适用） |
 
 ### AttackAtlas 图谱联动
+- **目标重申（防漂移）**：开战先 `operation_scope` 登记审计对象分母（仓库/模块清单）；每阶段开始与每次派单开头核对当前作业模块在登记范围内——对未登记模块/未登记仓库作业=漂移，立即停手回锚（信封 target 行同源注入）；多仓库任务逐仓库核对当前对象。
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
 
 - 「AttackAtlas」标签页按本手册结构展示——五分区（审计前置/RCE 主线/覆盖矩阵轴/场景审计卡/确证与交付）× 15 战术列 × 六阶段带（形态 Triage→静态→动态验证→确证闭环→覆盖对账→复核报告）× 五对象形态（后端应用/移动端/小程序/LLM Agent/供应链配置）。
@@ -550,7 +553,9 @@ trivy config --config-policy ./policy --namespaces user <dir>
 ### 审计覆盖规则（防「只审几个模块」）
 
 - **覆盖矩阵双轴 = 模块 × sink 类型全集**：sink 类型轴来自对应语言的 sink 大表
-  （php-sink-reference / java 手册 sink 清单：命令执行/SQL/反序列化/文件读写/SSRF/
+  （七语言专表齐备：java-sink-reference / php-sink-reference / python-sink-reference /
+  javascript-sink-reference / go-rust-sink-reference / c-cpp-sink-reference /
+  dotnet-sink-reference——命令执行/SQL/反序列化/文件读写/SSRF/
   XXE/SSTI/路径穿越/表达式/LDAP/XPath…）。审计工人按模块扇出，但**每格（模块×sink 类型）
   终态三选一**：`已审（有/无 finding）`、`N-A（附原因：该模块无此 sink 面/测试代码/
   第三方库且 SCA 线覆盖）`、`未完成（附预算原因）`。覆盖矩阵 = audit-coverage-matrix.md，

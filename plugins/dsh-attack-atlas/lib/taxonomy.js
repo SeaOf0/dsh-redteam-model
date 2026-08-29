@@ -71,15 +71,15 @@ export const TAXONOMIES = {
 					{ id: "horiz", label: "水平越权", ref: "zh/arbitrary-x-authz.md" },
 					{ id: "vert", label: "垂直越权", ref: "zh/arbitrary-x-authz.md" },
 					{ id: "idor", label: "IDOR", ref: "zh/arbitrary-x-authz.md" },
-					{ id: "bola", label: "BOLA", ref: "api/api-authorization-and-bola.md" },
+					{ id: "bola", label: "BOLA", pb: "形态作战线 A（三态对照主战场）", ref: "api/api-authorization-and-bola.md" },
 					{ id: "mass-assign", label: "批量赋值", ref: "web/web-api-security.md" },
 					{ id: "csrf", label: "CSRF", ref: "web/web-csrf-cors-clickjacking.md" },
 					{ id: "cors", label: "CORS", ref: "web/web-csrf-cors-clickjacking.md" },
 					{ id: "jsonp", label: "JSONP 劫持", ref: "web/web-api-security.md" },
 					{ id: "postmessage", label: "PostMessage 跨窗口缺陷", ref: "web/web-message-postmessage.md" },
-					{ id: "websocket", label: "WebSocket 攻击（含跨站劫持 CSWSH）", forms: ["api"], ref: "api/websocket-security.md" },
-					{ id: "hidden-params", label: "隐藏参数发现", forms: ["api"], ref: "api/graphql-and-hidden-parameters.md" },
-					{ id: "graphql-auth", label: "GraphQL 字段级授权/introspection", forms: ["api"], ref: "api/graphql-and-hidden-parameters.md" },
+					{ id: "websocket", label: "WebSocket 攻击（含跨站劫持 CSWSH）", forms: ["api"], pb: "形态作战线 A4（通道面）", ref: "api/websocket-security.md" },
+					{ id: "hidden-params", label: "隐藏参数发现", forms: ["api"], pb: "形态作战线 A4（参数面）", ref: "api/graphql-and-hidden-parameters.md" },
+					{ id: "graphql-auth", label: "GraphQL 字段级授权/introspection", forms: ["api"], pb: "形态作战线 A1/A4（文档面与参数面）", ref: "api/graphql-and-hidden-parameters.md" },
 					{ id: "redirect", label: "开放重定向", ref: "web/open-redirect.md" }
 				]
 			},
@@ -91,8 +91,8 @@ export const TAXONOMIES = {
 					{ id: "reset", label: "密码找回/重置缺陷", ref: "web/web-auth-bypass.md" },
 					{ id: "captcha", label: "验证码缺陷", ref: "web/web-logic-vulns.md" },
 					{ id: "fe-crypto", label: "前端加密/签名实现缺陷（→任意用户登录）", ref: "zh/tools/tools-encoding.md" },
-					{ id: "jwt", label: "JWT/Token 缺陷", ref: "api/api-auth-and-jwt-abuse.md" },
-					{ id: "oauth", label: "OAuth/SSO 缺陷", ref: "api/api-auth-and-jwt-abuse.md" },
+					{ id: "jwt", label: "JWT/Token 缺陷", pb: "形态作战线 A2（鉴权模型）", ref: "api/api-auth-and-jwt-abuse.md" },
+					{ id: "oauth", label: "OAuth/SSO 缺陷", pb: "形态作战线 A2（鉴权模型）", ref: "api/api-auth-and-jwt-abuse.md" },
 					{ id: "session-fix", label: "会话固定/不注销", ref: "web/web-auth-bypass.md" },
 					{ id: "user-enum", label: "用户名枚举", ref: "web/web-pentest-comprehensive.md" },
 					{ id: "brute", label: "暴力破解面", ref: "zh/tools/tools-password-attacks.md" }
@@ -183,9 +183,9 @@ export const TAXONOMIES = {
 			{
 				id: "component", label: "组件与 Nday", desc: "指纹→已知漏洞面",
 				items: [
-					{ id: "cve", label: "已知 CVE 面（指纹→POC 适配）", ref: "components/component-default-config-audit.md" },
-					{ id: "framework-nday", label: "框架 Nday", ref: "components/java-framework-vulns.md" },
-					{ id: "middleware-nday", label: "中间件 Nday", ref: "components/middleware-vulns.md" },
+					{ id: "cve", label: "已知 CVE 面（指纹→POC 适配）", pb: "形态作战线 B2（Nday 适配）", ref: "components/component-default-config-audit.md" },
+					{ id: "framework-nday", label: "框架 Nday", pb: "形态作战线 B（CMS 型分流即走）", ref: "components/java-framework-vulns.md" },
+					{ id: "middleware-nday", label: "中间件 Nday", pb: "形态作战线 B1（组件清单）", ref: "components/middleware-vulns.md" },
 					{ id: "svc-unauth", label: "常见服务未授权", ref: "components/unauthorized-access-common-services.md" },
 					{ id: "db-exploit", label: "数据库利用", ref: "components/database-exploitation.md" },
 					{ id: "container", label: "容器面（Docker/K8s）", ref: "components/container-security.md" },
@@ -228,17 +228,33 @@ export const TAXONOMIES = {
 				]
 			},
 			{
-				id: "ai", label: "AI 面", desc: "LLM 应用攻击面", forms: ["ai"],
+				id: "ai", label: "AI 面", desc: "AI 应用目标作战线（四分型）", forms: ["ai"],
 				items: [
-					{ id: "prompt-inj", label: "提示词注入（直接/间接/记忆投毒）", ref: "ai/ai-prompt-injection.md" },
-					{ id: "jailbreak", label: "越狱与 system prompt 泄露", ref: "ai/ai-jailbreak-techniques.md" },
-					{ id: "tool-abuse", label: "工具调用滥用（MCP/插件）", ref: "ai/ai-agent-safety.md" },
-					{ id: "config-poison", label: "配置投毒（AGENTS.md/skill）", ref: "ai/ai-agent-safety.md" },
-					{ id: "llm-api", label: "LLM API 未授权与密钥泄露", ref: "ai/ai-infra-attack-surface.md" },
-					{ id: "rag", label: "RAG 上下文污染", ref: "ai/ai-rag-poisoning.md" },
-					{ id: "model-file", label: "模型文件攻击面（GGUF/pickle）", ref: "ai/ai-model-security.md" },
+					{ id: "ai-profile", label: "四分型画像（对话入口/Agent/AI 基础设施/业务内嵌）", pb: "AI 应用作战线 §0（形态判定）" },
+					{ id: "prompt-inj", label: "提示词注入（直接/间接/记忆投毒）", pb: "AI 应用作战线 §1", ref: "ai/ai-prompt-injection.md" },
+					{ id: "jailbreak", label: "越狱与 system prompt 泄露", pb: "AI 应用作战线 §1", ref: "ai/ai-jailbreak-techniques.md" },
+					{ id: "sys-prompt", label: "系统提示词提取（诱导复述/格式绕过）", pb: "AI 应用作战线 §1", ref: "ai/ai-system-prompt-extraction.md" },
+					{ id: "tool-abuse", label: "工具调用滥用（MCP/插件——注入驱动+权限边界）", pb: "AI 应用作战线 §2", ref: "ai/ai-agent-safety.md" },
+					{ id: "config-poison", label: "配置投毒（AGENTS.md/skill）", pb: "AI 应用作战线 §2", ref: "ai/ai-agent-safety.md" },
+					{ id: "llm-api", label: "LLM API 未授权与密钥泄露（网关/推理服务）", pb: "AI 应用作战线 §3", ref: "ai/ai-infra-attack-surface.md" },
+					{ id: "vector-db", label: "向量库未授权（连接/枚举/拖取）", pb: "AI 应用作战线 §3", ref: "ai/ai-infra-attack-surface.md" },
+					{ id: "rag", label: "RAG 上下文污染（可写知识源=持久化注入）", pb: "AI 应用作战线 §4", ref: "ai/ai-rag-poisoning.md" },
+					{ id: "model-file", label: "模型文件攻击面（GGUF/pickle 反序列化）", pb: "AI 应用作战线 §3", ref: "ai/ai-model-security.md" },
 					{ id: "cot-steal", label: "推理内容窃取（CoT 重放）", ref: "ai/ai-model-security.md" },
-					{ id: "data-poison", label: "数据投毒", ref: "ai/ai-model-security.md" }
+					{ id: "data-poison", label: "数据投毒", ref: "ai/ai-model-security.md" },
+					{ id: "ai-signal", label: "确定性信号适配（OOB 实收/执行回显/原文落盘）——AI 声称不是证据", pb: "AI 应用作战线 §5（证据纪律）" },
+					{ id: "ai-budget", label: "预算纪律（≤30 轮/目标）与工具矩阵（Garak/PyRIT/Promptfoo）", pb: "AI 应用作战线 §5" }
+				]
+			},
+			{
+				id: "src-line", label: "SRC 挖掘作战线", desc: "任务口径层——挖法不变，叠加提交口径",
+				items: [
+					{ id: "src-trigger", label: "入口触发（SRC/众测/补天/漏洞盒子/厂商+SRC——模糊时问一次）", pb: "SRC 挖掘线 §1" },
+					{ id: "src-scope", label: "范围圈定（平台规则页=授权边界事实源，越 scope=封号）", pb: "SRC 挖掘线 §2" },
+					{ id: "src-report", label: "SRC 报告草稿（六字段变体口径：表单字段+简洁复现导向）", pb: "SRC 挖掘线 §4", ref: "zh/src-mining.md" },
+					{ id: "src-rating", label: "评级映射（平台当日标准+三问锚点，拿不准给两档）", pb: "SRC 挖掘线 §4", ref: "zh/src-mining.md" },
+					{ id: "src-collect", label: "收录纪律（重复核对/低危也报/时效不囤积）", pb: "SRC 挖掘线 §4" },
+					{ id: "src-profile", label: "平台档案机制（分型先验+当日规则页，不做规则全文库）", pb: "SRC 挖掘线 §5", ref: "zh/src-mining.md" }
 				]
 			}
 		]
@@ -686,6 +702,29 @@ export const TAXONOMIES = {
 				]
 			},
 			{
+				id: "card-mining", label: "卡8 挖矿应急", desc: "快照先行·多家族并存", zone: "cards",
+				items: [
+					{ id: "detect", label: "入口判定（高占用/矿池端口·Stratum/新增定时项）", pb: "卡 8" },
+					{ id: "snapshot-first", label: "先快照再处置（竞品互杀+备胎再生，不裸杀进程）", pb: "卡 8（时敏动作）" },
+					{ id: "persist-sweep", label: "持久化面全量清点（crontab/systemd/authorized_keys/预加载）", pb: "卡 8" },
+					{ id: "dual-ioc", label: "矿池+C2 双 IOC 面（只记矿池会漏控制通道）", pb: "卡 8" },
+					{ id: "multi-family", label: "多家族并存纪律（清一个不算完）", pb: "卡 8（本卡核心）", ref: "linux/malware/mining-ransomware-backdoor.md" },
+					{ id: "entry-rebuild", label: "入口还原（挖矿=失陷结果）+五维扩线", pb: "卡 8" },
+					{ id: "recheck", label: "复测（资源正常+无反连+观察窗覆盖定时周期）", pb: "卡 8" }
+				]
+			},
+			{
+				id: "card-phish", label: "卡9 钓鱼邮件应急", desc: "邮箱失陷与伪造发信分型", zone: "cards",
+				items: [
+					{ id: "typed", label: "分型：邮箱失陷（改密撤会话）vs 扩散在途（网关召回）", pb: "卡 9（时敏分型）" },
+					{ id: "mail-evidence", label: "邮件本体取证（SPF/DKIM/DMARC 判伪造或失陷）", pb: "卡 9", ref: "windows/scenarios/phishing.md" },
+					{ id: "spread-face", label: "扩散面：同批收件人逐人排查（谁提交了凭据）", pb: "卡 9" },
+					{ id: "mail-persist", label: "邮箱持久化：收件转发规则+OAuth 授权面（必查必清）", pb: "卡 9" },
+					{ id: "entry-link", label: "入口还原（宏/凭证钓鱼/AiTM）+生态协作攻防社工钓鱼线", pb: "卡 9" },
+					{ id: "recheck", label: "复测（异常登录消失/规则不再新建）", pb: "卡 9" }
+				]
+			},
+			{
 				id: "timeline", label: "时间线还原", desc: "时间轴第一产物", zone: "reconstruct",
 				items: [
 					{ id: "csv", label: "timeline.csv 合并排序（单一事实源）", pb: "扩线作战流程" },
@@ -956,37 +995,37 @@ export const TAXONOMIES = {
 			{
 				id: "snapshot-line", label: "快照战果", desc: "云特有数据线", zone: "engine",
 				items: [
-					{ id: "snap-copy", label: "RDS/EBS 快照复制/共享", pb: "场景卡·快照战果" },
-					{ id: "snap-restore", label: "授权账号自建恢复→数据落袋", pb: "场景卡·快照战果" }
+					{ id: "snap-copy", label: "RDS/EBS 快照复制/共享", pb: "场景卡·卡 6（快照战果）" },
+					{ id: "snap-restore", label: "授权账号自建恢复→数据落袋", pb: "场景卡·卡 6（快照战果）" }
 				]
 			},
 			{
 				id: "container", label: "容器立足", desc: "逃逸→节点→云 IAM", zone: "native",
 				items: [
-					{ id: "escape", label: "容器逃逸路径（内核/配置/漏洞）", ref: "native/container/01-container-escape-paths.md" },
+					{ id: "escape", label: "容器逃逸路径（内核/配置/漏洞）", pb: "场景卡·卡 3（容器立足）", ref: "native/container/01-container-escape-paths.md" },
 					{ id: "hijack-imds", label: "特权容器劫持节点元数据（CAP_NET_RAW/hostNetwork）", ref: "native/container/01-container-escape-paths.md" },
 					{ id: "image-supply", label: "镜像供应链", ref: "native/container/02-image-supply-chain.md" },
 					{ id: "net-runtime", label: "容器网络与运行时", ref: "native/container/03-container-network-runtime-detection.md" },
-					{ id: "node-role", label: "节点角色→云 IAM 绑定", pb: "场景卡·容器立足" }
+					{ id: "node-role", label: "节点角色→云 IAM 绑定", pb: "场景卡·卡 3（衔接卡 1 元数据）" }
 				]
 			},
 			{
 				id: "k8s-line", label: "K8s 战场", desc: "RBAC 提权→集群→回云", zone: "native",
 				items: [
 					{ id: "exposure", label: "集群暴露面测绘", ref: "native/k8s/01-cluster-exposure-mapping.md" },
-					{ id: "rbac", label: "RBAC 滥用提权", ref: "native/k8s/02-rbac-abuse-privesc.md" },
+					{ id: "rbac", label: "RBAC 滥用提权", pb: "场景卡·卡 4（K8s 立足）", ref: "native/k8s/02-rbac-abuse-privesc.md" },
 					{ id: "admission", label: "准入/NetworkPolicy 绕过", ref: "native/k8s/03-admission-networkpolicy-bypass.md" },
 					{ id: "secret-exp", label: "Secret/配置暴露", ref: "native/k8s/04-secret-config-exposure.md" },
 					{ id: "managed", label: "托管 K8s 平台风险", ref: "native/k8s/05-managed-k8s-platform-risks.md" },
-					{ id: "iam-bind", label: "集群→云 IAM 绑定回云", pb: "场景卡·K8s 立足" }
+					{ id: "iam-bind", label: "集群→云 IAM 绑定回云", pb: "场景卡·卡 4（集群→云）" }
 				]
 			},
 			{
 				id: "cicd-line", label: "CI/CD 流水线", desc: "凭据收割→批量负载→投毒", zone: "native",
 				items: [
-					{ id: "pipeline", label: "流水线攻击面", ref: "native/cicd/01-pipeline-attack-surface.md" },
+					{ id: "pipeline", label: "流水线攻击面", pb: "场景卡·卡 5（CI/CD）", ref: "native/cicd/01-pipeline-attack-surface.md" },
 					{ id: "repo-perm", label: "代码仓库权限滥用", ref: "native/cicd/02-code-repo-permission-abuse.md" },
-					{ id: "artifact", label: "制品仓库投毒（登记制）", ref: "native/cicd/03-artifact-repo-poisoning.md" },
+					{ id: "artifact", label: "制品仓库投毒（登记制）", pb: "场景卡·卡 5（登记制）", ref: "native/cicd/03-artifact-repo-poisoning.md" },
 					{ id: "iac", label: "IaC 模板错误配置", ref: "native/cicd/04-iac-template-misconfig.md" },
 					{ id: "ai-supply", label: "AI 供应链投毒（2026 新面）", ref: "native/cicd/03-artifact-repo-poisoning.md" }
 				]
@@ -994,10 +1033,10 @@ export const TAXONOMIES = {
 			{
 				id: "serverless", label: "Serverless", desc: "函数权限与环境密钥", zone: "native",
 				items: [
-					{ id: "fn-perm", label: "函数权限/触发器滥用", ref: "native/serverless/01-function-permission-trigger-abuse.md" },
-					{ id: "env-secret", label: "环境变量密钥", ref: "native/serverless/02-env-secrets.md" },
-					{ id: "dep-poison", label: "依赖投毒", ref: "native/serverless/03-supply-chain-dependency-poisoning.md" },
-					{ id: "fn-persist", label: "函数持久化", ref: "native/serverless/04-function-persistence.md" }
+					{ id: "fn-perm", label: "函数权限/触发器滥用", pb: "场景卡·卡 7（Serverless 立足）", ref: "native/serverless/01-function-permission-trigger-abuse.md" },
+					{ id: "env-secret", label: "环境变量密钥（env 常存 AK/SK）", pb: "场景卡·卡 7", ref: "native/serverless/02-env-secrets.md" },
+					{ id: "dep-poison", label: "依赖投毒（持久化+横向）", pb: "场景卡·卡 7（登记制）", ref: "native/serverless/03-supply-chain-dependency-poisoning.md" },
+					{ id: "fn-persist", label: "函数持久化（后门函数/触发器）", pb: "场景卡·卡 7（登记 environment-restore）", ref: "native/serverless/04-function-persistence.md" }
 				]
 			},
 			{
@@ -1178,8 +1217,8 @@ export const TAXONOMIES = {
 			{
 				id: "ransom-card", label: "勒索样本卡", desc: "行为+解密器", zone: "cards",
 				items: [
-					{ id: "behavior", label: "勒索行为分析", ref: "behavior/reverse-engineering-ransomware.md" },
-					{ id: "keygen", label: "解密器还原", pb: "逆向破解决策" }
+					{ id: "behavior", label: "勒索行为分析（加密行为还原）", pb: "场景卡·卡 A（勒索样本）", ref: "behavior/reverse-engineering-ransomware.md" },
+					{ id: "keygen", label: "解密器还原（密钥管理缺陷→复现→交 IR 卡 5）", pb: "场景卡·卡 A（核心价值）" }
 				]
 			},
 			{
@@ -1195,7 +1234,7 @@ export const TAXONOMIES = {
 			{
 				id: "mobile-card", label: "移动样本卡", desc: "app 壳与脱壳还原", zone: "cards",
 				items: [
-					{ id: "apk", label: "APK 逆向", ref: "mobile/apk-reverse/SKILL.md" },
+					{ id: "apk", label: "APK 逆向（权限组件面+家族快筛）", pb: "场景卡·卡 B（移动样本）", ref: "mobile/apk-reverse/SKILL.md" },
 					{ id: "dump", label: "脱壳还原（dump apk pack）", pb: "脱壳与还原" },
 					{ id: "app-shell", label: "app 壳对抗", pb: "脱壳与还原" }
 				]
@@ -1205,29 +1244,29 @@ export const TAXONOMIES = {
 				items: [
 					{ id: "pe-native", label: "Windows PE 原生样本", ref: "static/reverse-engineering-binary.md" },
 					{ id: "elf-native", label: "ELF 原生样本（Linux）", ref: "static/reverse-engineering-binary.md" },
-					{ id: "dotnet", label: ".NET 样本", ref: "platform/dotnet-reverse/SKILL.md" },
-					{ id: "gorust", label: "Go/Rust 变种（免杀家族常见）", ref: "platform/go-rust-reverse/SKILL.md" },
-					{ id: "js", label: "JS 样本/混淆", ref: "platform/js-reverse/SKILL.md" },
-					{ id: "macos", label: "macOS 样本", ref: "platform/macos-reverse/SKILL.md" },
-					{ id: "protocol", label: "协议逆向", ref: "platform/protocol-reverse/SKILL.md" },
+					{ id: "dotnet", label: ".NET 样本（审计面挂 code-audit dotnet sink 表）", pb: "场景卡·卡 C（平台特化）", ref: "platform/dotnet-reverse/SKILL.md" },
+					{ id: "gorust", label: "Go/Rust 变种（免杀家族常见）", pb: "场景卡·卡 C（变种语言）", ref: "platform/go-rust-reverse/SKILL.md" },
+					{ id: "js", label: "JS 样本/混淆", pb: "场景卡·卡 C（变种语言）", ref: "platform/js-reverse/SKILL.md" },
+					{ id: "macos", label: "macOS 样本", pb: "场景卡·卡 C（平台特化）", ref: "platform/macos-reverse/SKILL.md" },
+					{ id: "protocol", label: "协议逆向（流量↔样本双向）", pb: "场景卡·卡 C（变种语言）", ref: "platform/protocol-reverse/SKILL.md" },
 					{ id: "kernel", label: "内核 0day 挖掘", ref: "methodology/kernel-0day-hunting.md" },
-					{ id: "browser", label: "浏览器/V8 样本", ref: "platform/browser-extension-reverse/SKILL.md" }
+					{ id: "browser", label: "浏览器/V8 样本（扩展权限面+供应链）", pb: "场景卡·卡 C（平台特化）", ref: "platform/browser-extension-reverse/SKILL.md" }
 				]
 			},
 			{
 				id: "edr-card", label: "EDR 规避样本卡", desc: "反检测样本逆向", zone: "cards",
 				items: [
-					{ id: "edrre", label: "EDR 规避手法逆向", ref: "edr-bypass-re/SKILL.md" },
-					{ id: "macos-bypass", label: "macOS 安全机制绕过", ref: "macos-security-bypass/SKILL.md" }
+					{ id: "edrre", label: "EDR 规避手法逆向（检测面反推+规则回馈）", pb: "场景卡·卡 D（EDR 规避样本）", ref: "edr-bypass-re/SKILL.md" },
+					{ id: "macos-bypass", label: "macOS 安全机制绕过", pb: "场景卡·卡 D（同卡处理）", ref: "macos-security-bypass/SKILL.md" }
 				]
 			},
 			{
 				id: "exploit-line", label: "漏洞样本与利用", desc: "崩溃→利用", zone: "cards",
 				items: [
-					{ id: "crash", label: "崩溃分析", ref: "exploit-dev/crash-analysis.md" },
-					{ id: "fuzz", label: "fuzzing", ref: "exploit-dev/fuzzing.md" },
-					{ id: "exploit", label: "利用开发", ref: "exploit-dev/exploit-development.md" },
-					{ id: "pwn", label: "pwn 面", ref: "pwn/SKILL.md" }
+					{ id: "crash", label: "崩溃分析（类型/可控性初判+去重）", pb: "漏洞样本线 ①（崩溃分诊）", ref: "exploit-dev/crash-analysis.md" },
+					{ id: "fuzz", label: "fuzzing（选型/语料/崩溃批量进分诊）", pb: "漏洞样本线·fuzzing 入口", ref: "exploit-dev/fuzzing.md" },
+					{ id: "exploit", label: "利用开发（分析结论+利用条件→按需交接）", pb: "漏洞样本线 ④（按需交接）", ref: "exploit-dev/exploit-development.md" },
+					{ id: "pwn", label: "pwn 面（完整战役走 ctf-solver）", pb: "漏洞样本线 ④（按需交接）", ref: "pwn/SKILL.md" }
 				]
 			},
 			{
@@ -1305,7 +1344,12 @@ export const TAXONOMIES = {
 			{
 				id: "triage-audit", label: "前置识别", desc: "框架路由与面映射（A1）", zone: "triage",
 				items: [
-					{ id: "framework", label: "框架专项路由（refs components/ 直达）", pb: "Triage·框架专项路由" },
+					{ id: "framework", label: "框架专项路由（refs components/ 九篇直达）", pb: "Triage·框架专项路由" },
+					{ id: "fw-jeecg", label: "JeecgBoot 专项（积木报表/密钥/Online 面）", ref: "components/jeecg-boot.md" },
+					{ id: "fw-ruoyi", label: "若依专项（定时任务 RCE/Shiro key/Druid/排序注入）", ref: "components/ruoyi.md" },
+					{ id: "fw-spring", label: "Spring 全家桶专项（actuator/SpEL/Security 配置）", ref: "components/spring-framework.md" },
+					{ id: "fw-thinkphp", label: "ThinkPHP 专项（按版本代核 RCE/SQLi/包含链）", ref: "components/thinkphp.md" },
+					{ id: "sink-tables", label: "七语言 sink 大表（覆盖矩阵 sink 轴输入）", pb: "审计覆盖规则·sink 类型轴" },
 					{ id: "surface-map", label: "面映射（入口清单+sink 面+深度分级）", pb: "Gate A1 面映射" }
 				]
 			},
@@ -1686,12 +1730,21 @@ export const TAXONOMIES = {
 				]
 			},
 			{
+				id: "card-hybrid", label: "卡4 混合赛制", desc: "双得分形态资源分配", zone: "formats",
+				items: [
+					{ id: "detect", label: "识别（规则页双得分形态并存）", pb: "卡 4" },
+					{ id: "resource", label: "资源分配（分值占比定倾斜+轮次间隔期解题）", pb: "卡 4" },
+					{ id: "split-ledger", label: "两线台账分列与时间切换判据", pb: "卡 4" }
+				]
+			},
+			{
 				id: "strategy", label: "比赛策略层", desc: "调度与量化", zone: "formats",
 				items: [
 					{ id: "priority", label: "调度优先级（分值/血量/擅长）", pb: "比赛策略层" },
 					{ id: "stuck", label: "卡点 30-45 分钟量化换题", pb: "比赛策略层" },
 					{ id: "hint-ev", label: "hint 期望值决策", pb: "比赛策略层" },
-					{ id: "submit", label: "提交纪律", pb: "比赛策略层" }
+					{ id: "submit", label: "提交纪律", pb: "比赛策略层" },
+					{ id: "endgame", label: "收官纪律（剩余 15-20% 切换：未提交对账/软题快抢/不开新硬题）", pb: "比赛策略层·收官纪律" }
 				]
 			},
 			{
@@ -1709,7 +1762,8 @@ export const TAXONOMIES = {
 					{ id: "board-gate", label: "board 门（challenge-board.md 题面登记）", pb: "两门门禁" },
 					{ id: "flag-gate", label: "flag 门（flag-ledger.md 验证证据）", pb: "两门门禁" },
 					{ id: "parallel", label: "多题并行编排", pb: "解题纪律" },
-					{ id: "writeup", label: "writeup 检索合规与模板库闭环", ref: "ctf-writeup/SKILL.md" }
+					{ id: "writeup", label: "writeup 检索合规与模板库闭环", ref: "ctf-writeup/SKILL.md" },
+					{ id: "auto-submit", label: "平台提交自动化（CTFd 类 API 结果回写台账）", pb: "工具手册·平台提交自动化" }
 				]
 			}
 		]

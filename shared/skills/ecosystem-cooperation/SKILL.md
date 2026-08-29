@@ -25,7 +25,7 @@ binary-analysis / attack-defense / av-evasion / incident-response / cloud-securi
 | 任务输入 | 主镜头 |
 |---|---|
 | 通用/不确定/多领域混合、信息收集概览、多任务并行组织 | **redteam 总入口**（浅做 + 深度即路由，见 router-playbook） |
-| 黑盒目标 / 资产清单，要**全面漏洞挖掘**与验证（全等级穷尽、SRC 式） | pentest |
+| 黑盒目标 / 资产清单，要**全面漏洞挖掘**与验证（全等级穷尽、SRC 式） | pentest（SRC/众测语义走其「SRC 挖掘作战线」） |
 | 源码 / 反编译产物 / 小程序解包代码，要代码级结论 | code-audit |
 | 二进制样本 / 需要脱壳还原 | binary-analysis |
 | 全链路评估 + 防御视角 + 评分 + 复测闭环（**渗透定位=打点**，拿到立足点即转横向主线） | attack-defense |

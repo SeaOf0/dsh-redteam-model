@@ -1,6 +1,6 @@
 ---
 name: re-playbook
-description: 二进制分析模式作战手册：样本登记与活体处置 SOP、壳/混淆识别与脱壳、多视角分析、frida 插桩 SOP、angr 符号执行分工、IOC 与检测规则输出、时间线/残留/敏感数据三件套、报告模板。结论必须有字节/指令级证据引用、家族指纹快筛路由与多样本批次聚类（代表深析+变体外推）、IAT 修复三情形分诊（保留/TRACE 重建/hook wrapper）、逆向破解决策（授权模型四分类路径+keygen 验证闭环）、固件与硬件作战卡（binwalk 提取/敏感面/diff/物理接口）、pwn/exploit 需求路由、ioc.txt 机器可读工件、内存镜像产物衔接。
+description: 二进制分析模式作战手册：样本登记与活体处置 SOP、壳/混淆识别与脱壳、多视角分析、frida 插桩 SOP、angr 符号执行分工、IOC 与检测规则输出、时间线/残留/敏感数据三件套、报告模板。结论必须有字节/指令级证据引用、家族指纹快筛路由与多样本批次聚类（代表深析+变体外推）、IAT 修复三情形分诊（保留/TRACE 重建/hook wrapper）、VM 壳（指令虚拟化）处置分叉（病毒分析=行为级+trace 代替指令还原/破解=关键 handler 逐条还原/还原深度三档如实标注）、逆向破解决策（授权模型四分类路径+keygen 验证闭环）、固件与硬件作战卡（binwalk 提取/敏感面/diff/物理接口）、场景作战卡族四卡（勒索样本——密钥管理缺陷检测→解密器复现交 IR/移动样本——权限组件面+家族快筛/平台特化——.NET·浏览器扩展·变种语言审计面挂 code-audit sink 大表/EDR 规避样本——检测面反推+规则回馈 av-evasion 收口）、漏洞样本分析线（崩溃分诊→根因定位→利用条件评估→按需交接 ctf-solver；fuzzing 入口）、ioc.txt 机器可读工件、内存镜像产物衔接。
 tools: jadx, frida
 ---
 
@@ -115,6 +115,15 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
   unhook / 绕过 wrapper 再修表——只修表不除桩 = 修完仍跑不起来。
   判别信号：dump 后 IAT 区域全零 / 地址指向壳自身模块 / 导入散落多节。修复失败按情形
   **换路线**，不反复重 dump；深读 `tools/x64dbg-reversing/references/unpacking-oep-iat.md`。
+- **VM 壳（指令虚拟化类）处置分叉**：识别特征=入口指向 VM dispatcher/节区超大且高熵/
+  handler 表结构（VMProtect·Themida 型）。**不做盲目指令级还原，按场景分叉**：
+  ① **病毒分析场景**：**行为级+trace 分析代替指令还原**——IOC/行为/C2/持久化全部可从
+  动态 trace 与内存提取得出，指令级还原非必需；结论如实标注「VM 壳，行为级结论」；
+  ② **逆向破解场景**（必须还原算法时）：先评估授权逻辑是否真在 VM 段（常见只有关键
+  函数虚拟化、主逻辑裸奔——裸奔段先审）；确需还原=定位关键 handler 逐条还原/Unicorn
+  模拟执行，成本高、分段推进；
+  ③ **还原深度如实标注**（全还原/关键函数还原/行为级三档），禁止虚报还原深度；B1
+  三验按实际档位评估（行为级档不适用「可运行性」项时标注原因）。
 - **还原完整性验证（persona 硬规则）**：dex 校验、IAT 有效性、可运行性三项通过后才可作为分析依据；不完整的还原标「疑似」，禁止在残缺产物上下结论。
 - 还原产物重新登记哈希与来源，再交 code-audit（分工见 audit-playbook）。
 - 工具现状按检测制：开工 `command -v` 探测 frida/jadx/apktool 等；dex2jar、脱壳机、x64dbg/Scylla 等 Windows 工具链属补充工具集（检测缺失时按安装请求兜底，逐工具讨论时一并处理）。
@@ -149,6 +158,88 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
   用户确认）；深读 `refs/hardware/`（hardware-security / radio-sdr / ot-ics / wifi-wireless）。
 - **产物衔接**：提取的文件系统与组件清单走 B0 重登记；组件漏洞面转 code-audit 供应链卡；
   固件渗透深水区读 `refs/firmware/firmware-pentest/`。
+
+## 场景作战卡族（分诊后场景深化——四卡）
+
+> 与固件卡同型：每卡=入口判定 → 场景特化动作 → 产物衔接；**通用流程（登记→分诊→
+> B 门→覆盖维度）不豁免**，本族只加场景特化层。图谱对应战术列已就位（勒索样本/移动
+> 样本/平台特化/EDR 规避样本），落终态照覆盖规则回写。
+
+### 卡 A 勒索样本（配合 IR 卡 5 应急）
+
+- **入口判定**：勒索信/加密后缀特征/勒索家族指纹命中——refs
+  `behavior/reverse-engineering-ransomware.md`。
+- **特化动作**：① 加密行为还原（算法与模式—— selective/全盘、密钥派生方式、加密
+  中断文件的可恢复性）；② **密钥管理缺陷检测**（对称密钥硬编码/密钥落盘/PRNG 弱种子
+  可复现/密钥驻留内存可 dump——**任一缺陷成立=可写解密器**，这是本卡的核心价值）；
+  ③ C2 与密钥协商提取（勒索样本 C2 通道常承载密钥交换，与 IOC 线合并）。
+- **产物衔接**：解密器复现走交付公约（exp/<sample-id>.py 模拟解密逻辑，只读运行）→
+  **交 IR 模式卡 5 的解密可行性结论**（生态协作：分析侧供弹、应急侧收口）；家族识别
+  沉淀战役记忆（fingerprint）。
+- 图谱：勒索样本卡（behavior/keygen 两格）。
+
+### 卡 B 移动样本（Android 恶意样本特化）
+
+- **入口判定**：apk/dex 样本且需求是**行为分析**而非单纯脱壳（脱壳需求走脱壳管线，
+  两路在分诊处分开）。
+- **特化动作**：① 权限与组件面（manifest 危险权限组合/组件暴露/无校验动态加载）；
+  ② 家族快筛（移动家族指纹——refs `mobile/apk-reverse/`）；③ 混淆识别→能还原再审
+  （衔接脱壳章 Android 壳三类与 frida-dexdump）；④ 动态行为面（隐私窃取/短信拦截/
+  辅助服务滥用——动态走隔离铁律）。
+- **产物衔接**：还原产物三验后交 code-audit 移动端反编译审计；IOC 与检测输出照旧。
+- 图谱：移动样本卡（apk/dump/app-shell 格）。
+
+### 卡 C 平台特化（.NET / 浏览器扩展 / 变种语言）
+
+- **入口判定**：.NET 程序集（IL 特征）/ 浏览器扩展（crx·xpi·源码目录）/ Go·Rust·JS·
+  macOS·协议样本（平台卡各形态）。
+- **.NET**：ilspy/dnSpyEx 反编译≈源码级——审计面直走 code-audit 的
+  dotnet-sink-reference（反序列化/ViewState/XSLT）；混淆（obfuscator 类）先识别再
+  还原（工具检测制）；强命名/反篡改绕过按需评估。
+- **浏览器扩展**：manifest 高危权限组合与内容脚本注入域 → JS 侧走 code-audit
+  javascript-sink-reference → 供应链视角（更新源/远程代码加载面）。
+- **变种语言（Go/Rust/JS/协议）**：非标准运行时与符号恢复（Go buildid·符号表/JS
+  混淆）→ 对应 refs `platform/` 各篇；协议逆向（protocol-reverse）按流量↔样本双向。
+- **产物衔接**：反编译产物重登记交 code-audit；refs `platform/`（dotnet·go-rust·js·
+  macos·protocol·browser-extension-reverse）。
+- 图谱：平台特化卡（pe/elf/dotnet/gorust/js/macos/protocol/browser 格）。
+
+### 卡 D EDR 规避样本（防御侧分析——检测回馈）
+
+- **入口判定**：样本含 EDR/AV 规避手法（unhooking/直接系统调用/AMSI bypass/ETW 致盲/
+  LOLBAS 滥用——refs `edr-bypass-re/`）；macOS 安全机制绕过样本（refs
+  `macos-security-bypass/`）同卡处理。
+- **特化动作**：① 手法识别与分类（用户态 hook 移除/syscall 直调/内核回调规避/反射
+  加载）；② **检测面反推**——「规避了什么」反推「还剩什么信号」（每种手法对应的
+  可检测遥测残留：syscall 直调仍有 ETW syscall 事件类、unhook 后仍有镜像完整性基线）；
+  ③ **检测规则回馈**：YARA/Sigma 初稿 → **生态协作 av-evasion 模式收口**（攻防模式
+  防御验证章已定"av-evasion 产出→攻防收口"方向；本卡=检测规则候选的又一来源，方向
+  相同：二进制分析产出→av-evasion 收口）。
+- **边界**：分析规避手法≠开发规避手法（后者是 av-evasion 的定位）；本卡产物是**检测
+  侧**规则与遥测建议。
+- 图谱：EDR 规避样本卡（edrre/macos-bypass 格）。
+
+## 漏洞样本分析线（fuzzing 崩溃→根因→利用条件→按需交接）
+
+> 定位不变（分析优先）：本线管「给我二进制找漏洞/崩溃分诊」的**入口与编排**；exploit
+> 开发深水区仍走 refs/exploit-dev/ 与 ctf-solver 战役。与卡族的区别：卡=形态特化，
+> 本线=一条有始有终的工作流。
+
+- **入口判定**：目标二进制求漏洞挖掘 / fuzzing 崩溃待分诊 / IR·攻防回传的崩溃与
+  可疑触发样本（照 B0 登记）。
+- **流程四步**：
+  ① **崩溃分诊**：崩溃类型/崩溃点指令/寄存器可控性初判 + 崩溃去重（同根因聚类）——
+  refs `exploit-dev/crash-analysis.md`；
+  ② **根因定位**：静态反汇编+动态调试定位漏洞根因（溢出/UAF/类型混淆/整数问题——
+  原语视角对照 code-audit 的 c-cpp-sink-reference，两模式同一套判定语言）；
+  ③ **利用条件评估**：缓解机制判定（NX/canary/ASLR/RELRO 组合→可利用性分级——
+  c-cpp 大表 MITIGATION 节同口径）；根因与可利用性都是**假设**——照假设台账走，
+  「确认」须复现证据；
+  ④ **按需交接**：分析结论+利用条件齐 → 深度利用开发就地读 `refs/exploit-dev/`
+  配合，或完整 exploit 战役/CTF pwn 走 ctf-solver；结论与 exp 回本模式复核后登记。
+- **fuzzing 入口（无崩溃找崩溃）**：目标类型选 fuzzer（libFuzzer/AFL++/honggfuzz——
+  检测制）→ 语料与字典构建 → 崩溃批量进 ①；refs `exploit-dev/fuzzing·fuzzing-course`。
+- 图谱：漏洞样本与利用（crash/fuzz/exploit/pwn 四格）。
 
 ## 多视角分析（2026 趋势）
 
@@ -382,6 +473,7 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 | 复核员 | 独立 spawn（independent-review） | 原始反汇编段/trace → 确认/挑战 | 字节/指令级证据重读；跨 harness 复核列为建议项（用户触发） |
 
 ### AttackAtlas 图谱联动
+- **目标重申（防漂移）**：开战先 B0 登记样本（sha256/provenance）；每次派单开头核对当前作业样本已登记且为台账当前对象——**多样本批次按聚类组核对**，对未登记样本作业或跨组混审=漂移，立即停手回锚（信封 target 行同源注入）。
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
 
 - 「AttackAtlas」标签页按本手册结构展示——五分区（分诊与登记/分析维度/形态与还原/场景作战卡/交付与收口）× 18 战术列 × 六阶段带（登记分诊→静态→动态→还原破解→假设循环覆盖→IOC 报告）× 五样本形态（Windows/Linux/macOS/移动/固件硬件）。

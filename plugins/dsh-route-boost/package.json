@@ -1,6 +1,6 @@
 {
 	"name": "@dsh-external/dsh-route-boost",
-	"version": "1.2.0",
+	"version": "1.3.0",
 	"description": "DSH host-plane route booster for the nine security presets: infers the current (mode, phase) from the latest user message (sticky phase memory) and re-injects a compact governance envelope — gate checklist (from dsh-stage-gate GATES), review/double-sign reminder, boundary line, evidence-level pre-judgment, refs pointers or a forced-search nudge on miss — as a dynamic systemPrompt context contribution. A new snapshot lands only when the envelope text CHANGES (RuntimeContextProjection dedupes), so steady phases cost nothing. v1.1.0 renders the constraint red-line line in the operation envelope whenever constraints are registered (compaction-proof visibility of user-stated deny/allow). v1.2.0 phase surface: in a wrap-up phase (report/summary/review) dispatch-class tools (subagent family + workflow) are folded away by a guard reading the sticky phase — closing takes priority over opening new directions; the envelope states the fold.",
 	"keywords": [
 		"deepseek",

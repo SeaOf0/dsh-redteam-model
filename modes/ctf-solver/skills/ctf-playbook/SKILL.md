@@ -1,6 +1,6 @@
 ---
 name: ctf-playbook
-description: CTF 解题模式作战手册：题面登记与线索梳理、模块路由表（web/pwn/reverse/crypto/misc/forensics/mobile/cloud/AI/AD/供应链 → refs 知识库与生态加载）、解题循环纪律（flag 真实性=平台回显或本地 check、不猜不撞不伪造、沙盒内解题、爆破最后手段限速）、卡点升级阶梯、多题并行编排、两门 board/flag、flag 台账与复盘报告模板。发现 ≠ 真实存在；flag + 验证 = 真实有效、模块路由到预设内建 refs 知识库（118 篇：web/pwn/reverse/crypto/forensics/misc/ai-ml/osint/malware+solve-challenge 分诊；AD/云/mobile 生态加载）、赛制作战卡（Jeopardy 动态记分/AWD 三线：批量攻击·防御 patch·应急反打/KotH 占点）、比赛策略层（调度优先级/卡点 30-45 分钟量化/hint 期望值/提交纪律）、writeup 检索合规边界与模板库闭环。
+description: CTF 解题模式作战手册：题面登记与线索梳理、模块路由表（web/pwn/reverse/crypto/misc/forensics/mobile/cloud/AI/AD/供应链 → refs 知识库与生态加载）、解题循环纪律（flag 真实性=平台回显或本地 check、不猜不撞不伪造、沙盒内解题、爆破最后手段限速）、卡点升级阶梯、多题并行编排、两门 board/flag、flag 台账与复盘报告模板。发现 ≠ 真实存在；flag + 验证 = 真实有效、模块路由到预设内建 refs 知识库（118 篇：web/pwn/reverse/crypto/forensics/misc/ai-ml/osint/malware+solve-challenge 分诊；AD/云/mobile 生态加载）、赛制作战卡（Jeopardy 动态记分/AWD 三线：批量攻击·防御 patch·应急反打/KotH 占点/混合赛制卡：双得分形态资源分配+两线台账分列）、比赛策略层（调度优先级/卡点 30-45 分钟量化/hint 期望值/提交纪律/**收官纪律**：剩余 15-20% 切换——未提交 flag 对账第一优先+软题快抢+不开新硬题+AWD 终盘 patch 稳定优先）、平台提交自动化（CTFd 类 API 规则允许时结果回写台账）、writeup 检索合规边界与模板库闭环。
 ---
 
 # CTF 解题作战手册
@@ -70,9 +70,10 @@ reverse/crypto/forensics/misc/ai-ml/osint/malware + solve-challenge 分诊入口
 全量索引与篇数见 `refs/README.md`；模块内先 SKILL.md 路由再读深度篇。
 
 ## AttackAtlas 图谱联动
+- **目标重申（防漂移）**：开工先 challenge-board 登记题目；每次开题前核对题目已登记（题名/模块/分值）——对未登记题目环境作业=漂移，立即停手回锚（信封 target 行同源注入）。
 - **任务口径（用户指定优先）**：用户显式指定测试范围（如「测 SQL 注入和 XSS」）时，指定项为最高优先级——只执行指定项并逐项回写点亮（图谱终态），未指定项不补测不欠账，转全流程须用户明示；用户未指定具体项（仅给目标/全量委托）时，按本模式全流程矩阵推进。
 
-- 「AttackAtlas」标签页按本手册结构展示——三分区（题型模块/赛制作战卡/纪律与台账）× 9 战术列 × 四阶段带（题面登记→模块路由解题→flag 验证台账→复盘报告）× 三赛制形态（Jeopardy/AWD/KotH）。
+- 「AttackAtlas」标签页按本手册结构展示——三分区（题型模块/赛制作战卡/纪律与台账）× 10 战术列 × 四阶段带（题面登记→模块路由解题→flag 验证台账→复盘报告）× 四赛制形态（Jeopardy/AWD/KotH/混合）。
 - 题目格与赛制线落终态时同步调 `redteam_coverage_mark`（已解 flag 验证=tested-found、已试卡点附原因=tested-clear、不适用无此类题=na、未开让位=budget-stop）；阶段推进调 `redteam_coverage_stage`（s1…s4）；题目/赛局调 `redteam_atlas_target` 登记，多题逐题 target 参数回写。key/阶段均可直接写中文标签（自动归一，写错报错会列合法候选）；整表收口可用 `redteam_coverage_sync` 一次批量回写（rows 数组或台账文件 path）；`redteam_finding_register` 登记成功后关联格自动点亮 tested-found（人工终态优先，自动不覆盖）。阶段门 stage_gate 判定 PASS 后，对应阶段及其此前阶段自动回写 done（级联点亮）；无门阶段可手动 redteam_coverage_stage 推进补记。登记 finding 时 type 填题目模块（web/pwn/reverse/crypto/misc/forensics/ai-ml/osint/malware/mobile/ad-domain/cloud/supply——与图谱自动点亮对齐）；难度写入标题或 summary；等级字段不展示可省略。
 
 ## 解题纪律
@@ -110,6 +111,15 @@ reverse/crypto/forensics/misc/ai-ml/osint/malware + solve-challenge 分诊入口
 - 占点与保持：拿下靶机后优先加固（改凭据/补漏洞/留监控）再扩张；
 - 拉锯期的 patch 对抗同 AWD 防御线；得分窗口意识（占点时长=分）。
 
+### 卡 4 混合赛制（Jeopardy+AWD/KotH 同场）
+- **识别**：规则页出现两种得分形态（解题分+攻防分并存）即按本卡；分值占比决定资源
+  倾斜（哪边占大头先保哪边）。
+- **资源分配**：开局先 Jeopardy 快扫锁软题（动态掉分等不起）→ AWD 三线随后并行展开；
+  工人切分按「解题板软题存量 × AWD 轮次频率」动态调整——AWD 轮次间隔期集中解题，
+  轮次临近前回防。
+- **两线台账分列**：flag-ledger（解题线）与 AWD 得分记录（攻击/防守分）分开登记，
+  复盘按线归因；时间切换判据=「解题分支掉分预期 vs AWD 下轮时间窗」取急者。
+
 ## 比赛策略层
 
 - **调度优先级**（多题并存时的排序公式）：`分值 × 解出人数衰减预期 × 模块命中度`——
@@ -120,6 +130,12 @@ reverse/crypto/forensics/misc/ai-ml/osint/malware + solve-challenge 分诊入口
   「hint 分值损失 + 拿下概率提升」，落后追赶时倾向用，领先保守时倾向扛。
 - **环境与提交纪律**：题目环境快照/重置机制先摸清；flag 提交有重试限制的平台（错 N 次
   锁题）——未验证的 flag 绝不提交（与主观念一致）；多平台时台账记平台与提交方式。
+- **收官纪律（终盘阶段切换）**：剩余时间 < 总时长 15-20%（或 < 单题均耗时×2）即切
+  收官模式——①**未提交 flag 全检查**（台账 vs 平台提交记录逐条对账——解出未提交=白解，
+  第一优先）；②**软题快抢**：半成品题（完成度最高的卡点题）优先收、低分快题清扫；
+  ③**不开新硬题**（新题期望值按剩余时间折算几乎恒负）；AWD/KotH 类终盘 **patch 稳定性
+  优先于新攻击**（守住已有分 > 多拿不确定分）。收官动作清单进报告复盘（时间分配归因
+  用）。
 
 ## writeup 与模板库纪律
 
@@ -172,6 +188,10 @@ searchsploit——宿主须可达，不可自配）；**附件=未知文件**：
   本模式）+ ghidra headless/IDA（需服务型，GUI 请用户配合）
 - crypto：python3 + openssl + sage（缺失走安装阀门）→ cyberchef（网页）
 - forensics：binwalk/foremost/volatility3/tshark（本地）→ kali MCP 备胎
+- **平台提交自动化（CTFd 类，规则允许时）**：平台有提交 API（CTFd `/api/v1/submissions`
+  类+token）且规则不禁止脚本提交时——验证通过的 flag 走 API 自动提交，**提交结果
+  （Accepted/Rejected/重复）自动回写 flag-ledger 验证证据列**；无 API 或规则限制时人工
+  提交照旧（未验证绝不提交的纪律不变）；提交限频平台加间隔控制（与速率纪律同源）。
 
 ## 附录
 

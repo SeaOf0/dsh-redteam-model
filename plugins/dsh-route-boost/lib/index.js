@@ -182,7 +182,15 @@ export function escapePromptBraces(text) {
  *  每一行的语义完整性。
  *  buildEnvelopeDetailed 额外带回 dropped 记账（供注入量审计）；buildEnvelope 保持纯文本返回。 */
 /** 目标锚定行只挂三作战模式（目标漂移是作战大忌；其余模式无目标概念）。 */
-const TARGET_ANCHOR_MODES = new Set(["pentest", "attack-defense", "cloud-security"]);
+const TARGET_ANCHOR_MODES = new Set(["pentest", "attack-defense", "cloud-security", "code-audit", "binary-analysis", "ctf-solver"]);
+/** 目标锚行文案（数据注入：作战三模式锚资产对象；分析三模式锚各自的登记对象）。 */
+const TARGET_ANCHOR_TEXT = {
+	"code-audit": "target: 开战先 operation_scope 登记审计对象分母；每阶段/每次派单开头核对当前作业模块在登记范围内——对未登记模块/未登记仓库作业=漂移，立即停手回锚",
+	"binary-analysis": "target: 开战先 B0 登记样本（sha256/provenance）；每次派单开头核对当前作业样本已登记且为台账当前对象（多样本批次按聚类组）——对未登记样本作业或跨组混审=漂移，立即停手回锚",
+	"ctf-solver": "target: 开工先 challenge-board 登记题目；每次开题前核对题目已登记（题名/模块/分值）——对未登记题目环境作业=漂移，立即停手回锚"
+};
+const targetAnchorText = (presetId) => TARGET_ANCHOR_TEXT[presetId]
+	?? "target: 开战先 redteam_atlas_target 登记目标；每阶段/每次派单开头重读图谱目标带与 assets.md 核对当前作业对象——对未登记对象作业或超出授权=漂移，立即停手回锚";
 
 /** 目的原文单行化+裁剪（粘滞随轮携带，防长会话目的漂移）。 */
 export function purposeLine(text, max = 120) {
@@ -214,7 +222,7 @@ export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidenc
 		lines.splice(1, 0, line);
 	}
 	if (TARGET_ANCHOR_MODES.has(presetId)) {
-		lines.splice(scope ? 2 : 1, 0, "target: 开战先 redteam_atlas_target 登记目标；每阶段/每次派单开头重读图谱目标带与 assets.md 核对当前作业对象——对未登记对象作业或超出授权=漂移，立即停手回锚");
+		lines.splice(scope ? 2 : 1, 0, targetAnchorText(presetId));
 	}
 	if (purpose) {
 		lines.splice(scope ? 3 : 2, 0, `目的: ${purpose}`);

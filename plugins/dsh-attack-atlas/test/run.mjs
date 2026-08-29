@@ -17,7 +17,7 @@ await ok("体系完整性：渗透 13 主类、格子 key 全局唯一、形态�
 	const problems = validateTaxonomy();
 	assert.deepEqual(problems, []);
 	const tax = TAXONOMIES.pentest;
-	assert.equal(tax.categories.length, 13);
+	assert.equal(tax.categories.length, 14);
 	assert.equal(tax.stages.length, 7);
 	assert.equal(tax.forms.length, 9);
 	const total = tax.categories.reduce((a, c) => a + c.items.length, 0);
@@ -70,10 +70,10 @@ await ok("八专业模式全覆盖：全部已就绪，研究员=总控不建图
 	for (const m of ATLAS_MODES) assert.equal(TAXONOMIES[m].pending, undefined, `模式 ${m} 应已就绪`);
 });
 
-await ok("应急体系：22 主类×5 分区×6 阶段×3 形态，chainKinds 全在服务端词表，ref 全存在（ir refs 根）", () => {
+await ok("应急体系：24 主类×5 分区×6 阶段×3 形态，chainKinds 全在服务端词表，ref 全存在（ir refs 根）", () => {
 	const t = TAXONOMIES["incident-response"];
 	assert.equal(t.pending, undefined);
-	assert.equal(t.categories.length, 22);
+	assert.equal(t.categories.length, 24);
 	assert.equal(t.zones.length, 5);
 	assert.equal(t.stages.length, 6);
 	assert.equal(t.forms.length, 3);
@@ -84,7 +84,7 @@ await ok("应急体系：22 主类×5 分区×6 阶段×3 形态，chainKinds �
 	for (const c of t.categories) assert.ok(zoneIds.has(c.zone), `${c.id} zone 非法`);
 	// 七张场景作战卡齐
 	const cards = t.categories.filter((c) => c.zone === "cards").map((c) => c.id);
-	assert.deepEqual(cards, ["card-live", "card-webshell", "card-memshell", "card-worm", "card-ransom", "card-vuln", "card-forensics"]);
+	assert.deepEqual(cards, ["card-live", "card-webshell", "card-memshell", "card-worm", "card-ransom", "card-vuln", "card-forensics", "card-mining", "card-phish"]);
 	// 蠕虫卡含感染链拓扑项、勒索卡含双重勒索
 	assert.ok(t.categories.find((c) => c.id === "card-worm").items.some((i) => i.id === "spread-topo"));
 	assert.ok(t.categories.find((c) => c.id === "card-ransom").items.some((i) => i.id === "double-ext"));
@@ -382,7 +382,7 @@ await ok("免杀体系：14 主类×5 分区×6 阶段×4 形态，不设链路�
 await ok("CTF 体系：9 主类×3 分区×4 阶段×3 赛制，轻量·不设链路拓扑，ref 全存在（ctf refs 根）", () => {
 	const t = TAXONOMIES["ctf-solver"];
 	assert.equal(t.pending, undefined);
-	assert.equal(t.categories.length, 9);
+	assert.equal(t.categories.length, 10);
 	assert.equal(t.zones.length, 3);
 	assert.equal(t.stages.length, 4);
 	assert.equal(t.forms.length, 3);

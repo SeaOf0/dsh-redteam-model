@@ -13,10 +13,10 @@
 
 | 任务类型 | 目录 |
 |---|---|
-| 按语言的全量审计 | `lang/`（7 篇总手册：六语言 + dotnet 反序列化） |
+| 按语言的全量审计 | `lang/`（7 篇总手册：六语言 + dotnet 反序列化；另有**七语言 sink 大表专表**：java-sink-reference（java-audit/）/ php-sink-reference（php-audit/）/ python·javascript·go-rust·c-cpp·dotnet-sink-reference（lang/ 根）） |
 | Java/前端深度专项（逐漏洞类/框架/流程/规则） | `lang/java-audit/`（27 篇 + semgrep-rules 14 条） |
 | PHP 深度专项（逐漏洞类/框架/流程） | `lang/php-audit/`（39 篇） |
-| 已知漏洞组件识别（fastjson/shiro/log4j/struts2/weblogic） | `components/`（5 篇） |
+| 已知漏洞组件识别（fastjson/shiro/log4j/struts2/weblogic + jeecg-boot/若依/Spring 全家桶/ThinkPHP） | `components/`（9 篇） |
 | 供应链与密钥（SBOM/依赖混淆/SCM/硬编码凭据） | `sca/`（4 篇） |
 | 密码学实现与误用审计 | `crypto/`（2 篇） |
 | 容器与 K8s 配置审计 | `config/`（2 篇） |

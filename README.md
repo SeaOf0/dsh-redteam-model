@@ -1,55 +1,72 @@
 # dsh-redteam-model
 
+> 空了，闲聊。一个老安全人员的关注点：AI环境下，知识点很多知识面也很广，如果一味的给AI投递knowledge，你问它它能答得出来，但是你让它去完成一个任务而没有去给它规定这个任务如何去完成如何高效的去完成如何才能命中你需要的点，尽管它掌握着大量的知识但没有这个"workflow"去引导去把控，那么也许能得到你想要的结果，但是往往非常的浪费token，甚至有时候没有对某些方面的栅栏，它可能陷入死胡同，这就是为什么我们要去不断的设计完善workflow，把自身的经验写成skill或者agent，这样它才能按照workflow去完成任务+从旁的辅助，从而能高效的完成工作。
+>
+> dsh在安全工作这方面的设计实际上是有限的，只能从playbook中去设计，本身插件的载体还是dp-harness本身，为什么开发这个，也许仅仅因为跟风吧，还是希望DeepSeek能便宜些，这样笑醒了...（另一方面harness的优势特别明显，就个人而言，在做"反拒绝"上，harness相比claude原生的hook亦或是codex原生的hook又或者其他三方智能体导致封号风险，harness那真的是太easy了。）
+>
+> 总之一句话，这个项目可能没有大家想的那么好，也没有他们其他人做的那种源码写的引擎看起来炫酷，但立志于一点也只有一点
+>
+> ————不断完善workflow，用workflow的方式来尽可能补足缺陷；高效+真实是核心。
+>
+> PS：非无脑自动化完成任务，还是需要人机协同去校准，基础知识是需要必备的。
+
 基于 [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) web 实现的九个 redteam 安全研究工作模式（预设）及其运行时插件，自包含、可离线部署。目标是服务于 redteam 进行授权安全研究，覆盖渗透测试、红队评估、代码审计、二进制分析、免杀对抗、应急溯源、云安全攻防与 CTF 解题领域。
+
+**该项目是为 [https://github.com/deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 赋能的项目，先装好 deepseek-harness 以后，再装该项目；**
 
 > **请勿用于非法行为。** 本项目仅面向已获得书面授权的安全测试、CTF 竞赛、漏洞赏金与安全研究场景（见文末免责声明）。
 
-**该项目是为 [https://github.com/deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 赋能的项目，先装好 deepseek-harness 以后，再装该项目；最快捷的安装方式：下载仓库源码包，并让 DeepSeek 自行给 deepseek-harness 装好即可；在 dsh web 的新会话中选择相应的模式即可开始任务。**
-
+```
 如果各位对插件的方法存在不适用自身的情况，那么可以进行两种更改：
-
 1、源码层，调整各个模式的方法论。
 2、在"AttackAtlas"插件中，右上角具备两个功能"自定义工作方法论"&"能力库"，如果内置能力中，没有你需要的能力，可以在"能力库"中添加主类、子类，完成以后再到"自定义工作方法论"中构建属于你的工作方法论（类似于workflow），有问题欢迎提或者自己再改。
-
-UI这块儿不太会，AI处理的，见谅。
+```
 
 ## 九个工作模式
 
-| 模式 | 定位 | 核心纪律 |
-|---|---|---|
-| `redteam` 安全研究员 | 安全领域总入口：任务路由分流（浅做/专业路由/多任务协同）、台账、全局回归总结与下一步建议；深度任务指引切换专业模式 | 任务台账 + 路由表 + light 三纪律 |
-| `pentest` 渗透测试 | Web/API/app/小程序黑盒渗透：侦察、枚举、漏洞验证与报告 | 发现+验证=真实有效；对照三件套（基线/差分/marker）；覆盖度矩阵收口 |
-| `code-audit` 代码审计 | 白盒源码审计，可 RCE 主线（上传/未授权/组合/反序列化/溢出等七类） | 双链一致（审计工人链 vs 追踪员链）；扫描命中对账；Fortify 分类定级 |
-| `binary-analysis` 二进制分析 | 病毒分析、逆向破解、脱壳还原 | 样本登记门（B0）前置；还原不完整=结论标疑似；假设台账终态 |
-| `attack-defense` 攻防评估 | 权限与数据主线的全链路对抗：侦察→突破→横向→持久化→报告 | 每阶段 gate-pass 才进下一阶段；持久化登记制；先留证后清理 |
-| `av-evasion` 免杀对抗 | 攻击视角的免杀研究：载荷开发与本地实验循环，技术与检测侧成对呈现（OPSEC 情报） | 本地默认验证+授权目标按任务；免杀技术与检测情报成对交付；V 门四声明 |
-| `incident-response` 应急溯源 | Windows/Linux 应急响应与攻击溯源：证据保全→失陷排查→攻击链时间线还原→定性→处置建议→报告 | 证据与时间线主线（无证据标疑似）；先留证后处置；删除类操作只出清单 |
-| `cloud-security` 云安全攻防 | 云平台（AWS/Azure/GCP/阿里云/腾讯云/华为云）与云原生（K8s/容器/Serverless/CI-CD）渗透：暴露面测绘、AK/SK 凭证利用、IAM 提权、元数据 SSRF、容器逃逸、云检测缺口 | 云攻击路径主线（入口→身份→权限→资源→影响）；只读探测优先；环境改动逐项登记还原 |
-| `ctf-solver` CTF 解题 | CTF 竞赛解题：题面登记、模块路由（web/pwn/reverse/crypto/misc 等）、解题循环、flag 台账与复盘 | flag 平台回显验证；解题台账终态；未解题如实记录卡点 |
+| 模式 | 定位 |
+|---|---|
+| `redteam` 安全研究员 | 通用化模式，在这个模式中并没有定义Gate强制链路，一般来说普通的任务都可以在这里询问，但深度任务请切换专业模式！`（专业模式才是初衷）` |
+| `pentest` 渗透测试 | Web/API/app/小程序等等专业级渗透； |
+| `code-audit` 代码审计 | 白盒源码审计，动静态代码审计 |
+| `binary-analysis` 二进制分析 | 病毒分析、逆向破解、脱壳还原 |
+| `attack-defense` 攻防评估 | 做了多条主线：web打点+内网环境(内网环境又分Windows场景、Linux场景、有无监测、域环境、云内网等) |
+| `av-evasion` 免杀对抗 | 攻击视角的免杀（可用于shell、loader、c2的变形，核心点在于如何对抗模型的"拒绝"） |
+| `incident-response` 应急溯源 | Windows/Linux 应急响应与攻击溯源：多场景定义，建议prompt描述好处于什么场景（挖矿、蠕虫、病毒木马攻防下的排查等）——有兴趣的可以看下另一项目dumpall+AI分析，很好用还是。 |
+| `cloud-security` 云安全攻防 | 云平台与云原生渗透：这里就不再废话了， |
+| `ctf-solver` CTF 解题 | CTF 竞赛解题：题面登记、模块路由（web/pwn/reverse/crypto/misc 等）、解题循环、flag 台账与复盘 |
 
-每个模式自包含四层资产：**persona**（角色/认识论/边界/报告纪律）→ **playbook**（方法论与门禁文本契约）→ **skills**（可加载技能）→ **refs/**（外部知识库，原文索引化，零本机路径）。
+每个模式自包含四层资产：——根据dsh模式的设计论
 
-## 运行时插件（十七个）
+1、**persona**（角色/认识论/边界/报告纪律）
 
-| 插件 | 作用 | 挂载平面 |
-|---|---|---|
-| `dsh-stage-gate` | `stage_gate`/`gates_list` 工具：八模式 32 道阶段门的结构校验（文件/标记/表格/哈希登记），判定写入 `gate-log.md`；`operation_goal`/`operation_progress` 目标契约与进度收口（`operation-state.json` 驱动中断恢复） | 宿主（全模式可见） |
-| `dsh-route-boost` | 逐轮治理信封：阶段推断（带粘滞记忆）+ 门禁清单 + 模式边界 + 证据等级预判 + refs 指针 + 技能依赖工具面就绪行（缺件提前显形走三级兜底）+ operation 恢复行（中断续作），任务口径判定（用户显式指定项优先只做指定项并点亮，未指定走全流程矩阵）、结构化标记块注入（压缩后可识别）、整行粒度预算、变化才投递并落注入量记账 | 宿主 |
-| `dsh-sec-enforce` | 确定性工具拦截（guard 四连）：报告门（gate-log 无 PASS 或目标准则未全 met 不许写 reports/）、写边界（不出任务工作区）、高危命令先问后做、裸奔扫描限速 | 宿主 |
-| `dsh-refusal-guard` | 拒答检测与一次性临近性再注入（强/弱两级检测、工具轮豁免、3 轮冷却） | 宿主 |
-| `dsh-trace-vault` | 过程留痕库：九安全模式会话全量落库工具调用（参数/结果/outcome 三分类 ok/blocked/error，SQLite 本地持久、保留期与容量上限）；`trace_search`/`trace_get`/`trace_recent`/`trace_stats` 检索与会话画像（成功率/自救信号/人工介入计数）；拦截聚集信封（blocked 连续出现提示换路径降速） | 宿主 |
-| `dsh-auto-advance` | 自动推进器：subagent 执行体返回且意图台账有未收口方向时注入推进提醒（先收口本次意图再依锚派单或收工，不硬造方向）；开工三登记一次性提醒（含本模式拆分理论/分母语义注入）；轮数封顶/真人接管重置/冷却窗三护栏，无台账会话零干扰 | 宿主 |
-| `dsh-product-subagents` | `subagent_claude_code`/`subagent_codex` provider：无头 spawn 本机 claude/codex CLI，跨 harness 复核按建议项由用户触发 | 宿主 |
-| `dsh-mcp-studio` | MCP 加载工作台：通用类 MCP（burpsuite/yakit/chrome-dev-mcp 等）的接入、状态与诊断 | 宿主 |
-| `dsh-redteam-results` | 会话标签页「redteam 成果」：任务台账作战大屏 + 五板式成果页（发现/资产/台账/时间线/云攻击路径），九模式**跨会话**聚合与时间范围筛选（验证/删除回原始会话执行），SQLite 行级持久 | 宿主（bundles） |
-| `dsh-hunter` | 会话标签页「hunter 狩猎」：FOFA / Hunter / Quake 三平台资产搜索（统一 DSL 自动转平台语法、分页与限额导出、API key 独立存储），代码审计成果页「实测」按钮一键验证（指纹搜索→存活探测→EXP 验证，仅授权资产执行） | 宿主（bundles） |
-| `dsh-campaign-memory` | 会话标签页「战役记忆」：跨会话打法沉淀（战术/指纹/工具/教训/检测指纹，原文存储不脱敏——凭据同样原样入库，或只写指位），同模式同工作区同题写入即刷新不重复，读全文记账、热度×30 天时间衰减排序（久未读取自然让位、读取即复活），按工作区隔离召回（新工作区干净开局，跨区显式检索带来源标注），检测指纹 30 天自动清理、目标指纹 180 天到期退场仍可检索（带过期标记、同题重写复活）；模型侧 write/search/get/list/remove 工具 + 装配期高频记忆注入 | 宿主（bundles） |
-| `dsh-mode-group` | 新建会话屏模式选择器两级化：内置模式与研究员模式留顶层，八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单（视口自适应翻转、触屏加大命中区） | 宿主（bundles） |
-| `dsh-session-pulse` | 会话状态面板（九模式）：头部右上角任务进度 chip（任务清单实时汇总 done/total + 进度条，全部完成转绿）+ 子代理 chip；右侧「子智能体目录」抽屉（正在运行/已结束分组，点名进入子代理会话查看运行内容，打开期间目录实时更新）；对话页左侧「提示词」栏（用户输入按序成列，悬停预览、点击平滑定位到消息并高亮，仅对话标签页可见） | 宿主（bundles） |
-| `dsh-attack-atlas` | 会话标签页「AttackAtlas 攻击面图谱」：八专业模式架构矩阵（战场分区 × 战术列 × 子项）四态点亮与阶段带、目标锚定、双击派单；自定义工作方法论（五类模块编排、闭环五查询问、分层运行信封）；工具 / MCP / 自定义工具模块（安装批准协议）；能力库（自定义主类 / 子类并入图谱与方法论） | 宿主（bundles） |
-| `dsh-scanner-tools` | 本机扫描器封装：nuclei/httpx/ffuf + 声明式注册表十三工具（nmap·masscan·subfinder·gau·whatweb·wafw00f·dirsearch·sqlmap·nikto·hydra·impacket·netexec·crackmapexec）——六节点工具调用阶梯（本机→MCP→已装替代→MCP 备选→询问安装→脚本）、保守默认+显式覆盖留痕、防盲打登记、全文落盘+预览封顶+连续失败熔断 | preset（pentest / attack-defense / cloud-security / ctf-solver） |
-| `dsh-semgrep-audit` | `semgrep_scan` 工具：本机 semgrep 封装 + 预设离线规则集自动定位（java 自建 / php / oss 三层），命中双写 `scan-reconcile.md`/`.csv` 对账（命中≠漏洞，复核补链后经成果登记升格），检测制绝不自动装、`--metrics=off` 离线、产物只落任务工作区 | preset（code-audit） |
-| `dsh-webshell-mgr` | 会话标签页「webshell 管理」：webshell 生成器（PHP/JSP/ASPX 三语言 × 基础/加密/冰蝎/哥斯拉形态）→ 协议自动识别连接（七通道）→ 命令执行/文件管理（上传下载/权限/时间戳伪造/远程下载/文本编辑）/数据库操作（PDO 原生 MySQL/PostgreSQL/SQLite/MSSQL）/载荷插件体系（声明式扩展），操作台账审计；攻防评估模式立足点作战节方法论接线 | 宿主（bundles） |
+2、**playbook**（方法论与门禁文本契约）
+
+3、**skills**（可加载技能）
+
+4、**refs/**（外部知识库，原文索引化）。
+
+## 运行时插件
+
+| 插件 | 作用 |
+|---|---|
+| `dsh-stage-gate` | `stage_gate`/`gates_list` 工具：八模式 32 道阶段门的结构校验，判定写入 `gate-log.md`；`operation_goal`/`operation_progress` 目标契约与进度收口（`operation-state.json` 驱动中断恢复） |
+| `dsh-route-boost` | 逐轮治理信封：阶段推断+ 门禁清单 + 模式边界 + 证据等级预判 + refs 指针 + 技能依赖工具面就绪行+ operation 恢复行，任务口径判定、结构化标记块注入、整行粒度预算、变化才投递并落注入量记账 |
+| `dsh-sec-enforce` | 确定性工具拦截：报告门、写边界、高危命令先问后做、裸奔扫描限速 |
+| `dsh-refusal-guard` | —————反拒绝—————AGENTS.md兜底 |
+| `dsh-trace-vault` | 过程留痕库：九安全模式会话全量落库工具调用；`trace_search`/`trace_get`/`trace_recent`/`trace_stats` 检索与会话画像； |
+| `dsh-auto-advance` | 自动推进器：subagent 执行体返回且意图台账有未收口方向时注入推进提醒；开工三登记一次性提醒；轮数封顶/真人接管重置/冷却窗三护栏，无台账会话零干扰 |
+| `dsh-product-subagents` | `subagent_claude_code`/`subagent_codex` provider：无头 spawn 本机 claude/codex CLI，跨 harness 复核按建议项由用户触发 |
+| `dsh-mcp-studio` | MCP 加载工作台：通用类 MCP（burpsuite/yakit/chrome-dev-mcp 等）的接入、状态与诊断 |
+| `dsh-redteam-results` | redteam 成果：任务台账作战大屏 + 五板式成果页，九模式**跨会话**聚合与时间范围筛选，SQLite 行级持久 |
+| `dsh-hunter` | hunter 狩猎：FOFA / Hunter / Quake 三平台资产搜索，代码审计成果页「实测」按钮一键验证（指纹搜索→存活探测→EXP 验证，仅授权资产执行） |
+| `dsh-campaign-memory` | 战役记忆：跨会话打法沉淀，同模式同工作区同题写入即刷新不重复，读全文记账、热度×30 天时间衰减排序，按工作区隔离召回，检测指纹 30 天自动清理、目标指纹 180 天到期退场仍可检索； |
+| `dsh-mode-group` | 新建会话屏模式选择器两级化：内置模式与研究员模式留顶层，八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单 |
+| `dsh-session-pulse` | 会话状态面板（九模式）：头部右上角任务进度 chip（任务清单实时汇总 done/total + 进度条，全部完成转绿）+ 子代理 chip；右侧「子智能体目录」抽屉（正在运行/已结束分组，点名进入子代理会话查看运行内容，打开期间目录实时更新）；对话页左侧「提示词」栏（用户输入按序成列，悬停预览、点击平滑定位到消息并高亮，仅对话标签页可见） |
+| `dsh-attack-atlas` | AttackAtlas 攻击面图谱：八专业模式架构矩阵四态点亮与阶段带、目标锚定、双击派单；自定义工作方法论；工具 / MCP / 自定义工具模块；能力库（自定义主类 / 子类并入图谱与方法论） |
+| `dsh-scanner-tools` | 本机扫描器封装：nuclei/httpx/ffuf + 声明式注册表十三工具（nmap·masscan·subfinder·gau·whatweb·wafw00f·dirsearch·sqlmap·nikto·hydra·impacket·netexec·crackmapexec）——六节点工具调用阶梯（本机→MCP→已装替代→MCP 备选→询问安装→脚本）、保守默认+显式覆盖留痕、防盲打登记、全文落盘+预览封顶+连续失败熔断 |
+| `dsh-semgrep-audit` | `semgrep_scan` 工具：本机 semgrep 封装 + 预设离线规则集自动定位（java 自建 / php / oss 三层），命中双写 `scan-reconcile.md`/`.csv` 对账（命中≠漏洞，复核补链后经成果登记升格），检测制绝不自动装、`--metrics=off` 离线、产物只落任务工作区 |
+| `dsh-webshell-mgr` | webshell 管理：webshell 生成器→ 协议自动识别连接→ 命令执行/文件管理/数据库操作/载荷插件体系，操作台账审计；攻防评估模式立足点作战节方法论接线 |
 
 ## 安装
 
@@ -138,8 +155,6 @@ flowchart TB
     SE -->|拒绝留痕| EL[(enforce-log.md)]
     SC -->|产物| EV[(evidence-index.md / scan-reconcile.md)]
 ```
-
-阶段流转（以 pentest 为例）：P1 资产基线 → P2 逐 finding 对照三件套+复核 → P3 覆盖度矩阵 → 报告落盘（sec-enforce 校验 gate-log 存在 P3 PASS）。
 
 ## 项目结构
 
