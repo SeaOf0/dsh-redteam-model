@@ -35,7 +35,7 @@ await ok("知识关联：渗透全量子项 ref 指向的 refs 文件逐个存�
 await ok("攻防体系：19 主类×3 战场×5 阶段×4 形态，zone 全合法，ref 全存在（ad refs 根）", () => {
 	const t = TAXONOMIES["attack-defense"];
 	assert.equal(t.pending, undefined);
-	assert.equal(t.categories.length, 20);
+	assert.equal(t.categories.length, 21);
 	assert.equal(t.zones.length, 3);
 	assert.equal(t.stages.length, 5);
 	assert.equal(t.forms.length, 4);
@@ -46,7 +46,7 @@ await ok("攻防体系：19 主类×3 战场×5 阶段×4 形态，zone 全合�
 	const ev = t.categories.find((c) => c.id === "entry-vec");
 	assert.deepEqual(ev.items.map((i) => i.id), ["weak-pass", "unauth", "login-bypass", "upload", "file-read", "cmdi", "deser", "nday", "sqli", "ssrf", "edge-nday"]);
 	// 收尾区含登记三件套
-	assert.ok(t.categories.find((c) => c.id === "phishing").items.length === 5, "社工钓鱼五项");
+	assert.ok(t.categories.find((c) => c.id === "phishing").items.length === 9, "社工钓鱼九项（独立作战线全生命周期）");
 	assert.ok(t.categories.find((c) => c.id === "entry-vec").items.some((i) => i.id === "edge-nday"), "提级序补边界设备项");
 	const wrapIds = t.categories.filter((c) => c.zone === "wrapup").map((c) => c.id);
 	assert.deepEqual(wrapIds, ["persistence", "trace-mgmt", "defense-verify"]);
@@ -58,7 +58,7 @@ await ok("攻防体系：19 主类×3 战场×5 阶段×4 形态，zone 全合�
 	assert.deepEqual(missing, [], `ad refs 缺文件: ${missing.join("、")}`);
 	assert.ok(refPaths(t).some((p) => p.startsWith("pentest:")), "入口提级序应存在跨模式 pentest: ref");
 	assert.ok(t.chain === true, "ad 应开启链路拓扑特性位");
-	assert.ok(t.categories.flatMap((c) => c.items).every((i) => i.ref || i.pb), "ad 92 子项 ref/pb 全关联");
+	assert.ok(t.categories.flatMap((c) => c.items).every((i) => i.ref || i.pb), "ad 128 子项 ref/pb 全关联");
 	// 终态语义本地化齐备
 	for (const k of ["tested-found", "tested-clear", "na", "budget-stop"]) assert.ok(t.stateLabels[k], `stateLabels 缺 ${k}`);
 });
@@ -855,7 +855,7 @@ import { resolveKey, canonicalKey, resolveStageId, resolveStateLabel, parseCover
 const CA = TAXONOMIES["code-audit"];
 
 await ok("R3·昨日七连拒实测标签全部自愈（code-audit）", () => {
-	// 2026-08-23 数字通会话实录：模型用中文标签调 mark 全被拒——现在全部归一
+	// 中文标签曾被全部拒绝——归一化后应全部命中
 	const cases = {
 		"任意上传RCE": "rce-main/upload-rce", "未授权RCE": "rce-main/unauth-rce", "组合RCE": "rce-main/combo-rce",
 		"深度反序列化": "rce-main/deep-deser", "溢出RCE": "rce-main/overflow-rce", "zip自解压RCE": "rce-main/zipslip-rce",
@@ -1216,7 +1216,7 @@ await ok("链路互链：节点带 findingRef 往返 + chainRefIndex 反查（�
 	assert.ok(idx["s-l:attack-defense-3"] && idx["s-l:attack-defense-3"][0].nodeId === "dc-01" && idx["s-l:attack-defense-3"][0].major === 1, "反查索引键=会话:findingRef");
 	st.close();
 });
-await ok("ad formCategories 完备：20 主类全部至少归属一个形态列（形态筛选不再漏类）", () => {
+await ok("ad formCategories 完备：21 主类全部至少归属一个形态列（形态筛选不再漏类）", () => {
 	const ad = TAXONOMIES["attack-defense"];
 	const inForms = new Set(Object.values(ad.formCategories).flat());
 	for (const c of ad.categories) assert.ok(inForms.has(c.id), `主类 ${c.id} 不在任何形态列`);

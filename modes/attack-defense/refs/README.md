@@ -36,6 +36,7 @@
 | red-team-command-doctrine.md | 红队指挥条令（阶段选择/路由/pack 选择/OPSEC 推进——治理技能随预设分发） | 全程（轻量治理） |
 | adversary-profile-tracking.md | 对手画像追踪（APT 战术偏好建模，354 行） | 仿真对手设计 |
 | phishing-campaign.md / social-engineering.md | 钓鱼活动与社工方法论 | 社工面评估 |
+| im-phishing.md | IM 钓鱼作战手册（企业微信/微信/QQ 人面投递：账号伪装/加好友话术/文件与二维码投递/远控升级/度量收尾） | 社工钓鱼线 IM 通道 |
 | initial-access.md / privilege-escalation.md | 初始访问与提权 | 对应阶段 |
 | evasion-techniques.md / c2-infrastructure.md | 规避与 C2 基础设施（总览视角；载荷开发按生态交 av-evasion） | 突破/持久化阶段 |
 | reverse-shell-techniques.md | 反向 shell 技巧（290 行） | 拿到执行点后 |
@@ -140,8 +141,8 @@
   runtime 注册另行处理）。
 - **zh-intranet/ 12 篇**：内容整理收录，按原文收录；
   「免杀与规避」一篇按生态边界未收（归 av-evasion 领域）。
-- **zh-intranet/intranet-host-collect.md**：自写（2026-08-19 补单机落点收集缺口），
-  覆盖此前的「已控主机全量收集 SOP + 必做清单 + 触发表 + 凭证发散闭环」零覆盖项。
+- **zh-intranet/intranet-host-collect.md**：自建手册，覆盖「已控主机全量收集 SOP +
+  必做清单 + 触发表 + 凭证发散闭环」。
 - **trends/**：playbook 自建，条目联网核实并附来源链接。
 - 本目录随预设打包分发；第三方来源文件的许可注记见各 README。
 - 与 playbook 的关系：速查卡（playbook）→ 深度手册（refs/）→ 证据落盘（任务工作区，见

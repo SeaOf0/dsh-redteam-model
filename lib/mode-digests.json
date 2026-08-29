@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "modes": {
-    "attack-defense": "sha256:9fb4e7d996f1f2e24fa989e0c205e1b77589f99508ab7fd01e06b536a737fbbd",
+    "attack-defense": "sha256:3513636fcd261166cd3b398fa3976fcf4097c7fd55e8c3dbbabb5425f70abf4a",
     "av-evasion": "sha256:42c25e31f83da988f6873403df480046231eb2426e31d9a7ae006d1ca4c3f72e",
     "binary-analysis": "sha256:b659900df5867553014c50c3d38a9b2682fde86964063b2a1440c3d5e8bcc82d",
     "cloud-security": "sha256:c7da4e6deb847c1ba003b8057ae72709c59fe089dc6c7444e673e35d18686467",

@@ -260,7 +260,7 @@ export const TAXONOMIES = {
 		],
 		formCategories: {
 			external: ["recon", "entry-vec", "cred-line", "foothold", "phishing"],
-			intranet: ["host-collect", "inet-recon", "svc-line", "passive-cred", "win-chain", "linux-line", "lateral", "privesc", "hv-target", "pivot", "persistence", "trace-mgmt", "defense-verify"],
+			intranet: ["host-collect", "inet-recon", "svc-line", "passive-cred", "win-chain", "linux-line", "cloud-intranet", "lateral", "privesc", "hv-target", "pivot", "persistence", "trace-mgmt", "defense-verify"],
 			domain: ["host-collect", "passive-cred", "win-chain", "lateral", "domain-attack", "hv-target"],
 			ai: ["ai-redteam"]
 		},
@@ -338,13 +338,17 @@ export const TAXONOMIES = {
 				]
 			},
 			{
-				id: "phishing", label: "社工与钓鱼", desc: "授权范围内的人面入口", zone: "external",
+				id: "phishing", label: "社工与钓鱼", desc: "独立人面入口作战线（授权范围内）", zone: "external",
 				items: [
-					{ id: "spear", label: "鱼叉邮件投递", ref: "offensive/phishing-campaign.md" },
-					{ id: "cred-phish", label: "凭证钓鱼（仿冒登录页）", ref: "offensive/phishing-campaign.md" },
-					{ id: "ai-phish", label: "AI 生成钓鱼（定制化话术/深度伪造）", ref: "trends/ad-trends-2025-2026.md" },
-					{ id: "water-hole", label: "水坑攻击", ref: "offensive/initial-access.md" },
-					{ id: "osint-soc", label: "社工面（OSINT 信息收集）", ref: "offensive/social-engineering.md" }
+					{ id: "osint-soc", label: "情报期：OSINT 分层（IT/财务·HR/高管）", pb: "社工钓鱼线 §1（目标分层定通道）", ref: "offensive/social-engineering.md" },
+					{ id: "mail-batch", label: "邮件批量投递（文案分级：广播/部门/AI 个性化）", pb: "社工钓鱼线 §2（发信基础设施三选一）", ref: "offensive/phishing-campaign.md" },
+					{ id: "im-phish", label: "IM 钓鱼（企业微信/微信/QQ 投递）", pb: "社工钓鱼线 §2（IM 通道）", ref: "offensive/im-phishing.md" },
+					{ id: "spear", label: "鱼叉邮件投递", pb: "社工钓鱼线 §2", ref: "offensive/phishing-campaign.md" },
+					{ id: "cred-phish", label: "凭证钓鱼（仿冒登录页）", pb: "社工钓鱼线 §2", ref: "offensive/phishing-campaign.md" },
+					{ id: "ai-phish", label: "AI 生成钓鱼（定制化话术/深度伪造）", pb: "社工钓鱼线 §2（2026 演习重点）", ref: "trends/ad-trends-2025-2026.md" },
+					{ id: "water-hole", label: "水坑攻击", pb: "社工钓鱼线 §2", ref: "offensive/initial-access.md" },
+					{ id: "payload-evasion", label: "载荷期：免杀协作（av-evasion 生态生成）", pb: "社工钓鱼线 §3（载荷哈希+投递批次登记）" },
+					{ id: "c2-infra", label: "C2 期：基础设施与上线（域前置/CDN/云函数）", pb: "社工钓鱼线 §4", ref: "offensive/c2-infrastructure.md" }
 				]
 			},
 			{
@@ -370,6 +374,7 @@ export const TAXONOMIES = {
 				id: "inet-recon", label: "内网侦察与姿态", desc: "不做全端口扫描", zone: "intranet",
 				items: [
 					{ id: "port-policy", label: "常见端口带策略（web/数据库带）", ref: "zh-intranet/intranet-recon.md" },
+					{ id: "env-judge", label: "环境判定四型分流（工作组/Linux/云/域）", pb: "内网 §0.7（判定特征与并行分流）" },
 					{ id: "fscan-gates", label: "fscan 三道闸（姿态/蜜罐/锁定）", ref: "zh-intranet/intranet-recon.md" },
 					{ id: "posture", label: "监测姿态卡（效率/OPSEC 分叉）", ref: "zh-intranet/intranet-recon.md" },
 					{ id: "honeypot-int", label: "蜜罐/蜜饵甄别（动手前筛）", ref: "zh-intranet/intranet-recon.md" },
@@ -391,26 +396,40 @@ export const TAXONOMIES = {
 					{ id: "responder", label: "responder 收割 Net-NTLMv2（同广播域）", ref: "offensive/ntlm-relay-coercion.md" },
 					{ id: "relay", label: "ntlmrelayx 中继（签名探测先行）", ref: "offensive/ntlm-relay-coercion.md" },
 					{ id: "coercer", label: "coercer 强制认证（制造中继流量）", ref: "offensive/ntlm-relay-coercion.md" },
+					{ id: "relay-rbcd", label: "无凭据进阶：中继+RBCD 组合（机器账户直取）", pb: "内网 §1.2（零凭据起步）" },
 					{ id: "hash-reuse", label: "哈希就地复用（PtH）", ref: "zh-intranet/intranet-credential-theft.md" },
 					{ id: "noise", label: "噪声评估（有监测降级/弃用）", ref: "offensive/ntlm-relay-coercion.md" }
 				]
 			},
 			{
-				id: "win-chain", label: "Windows 凭据链", desc: "按序取·逐级回黑板", zone: "intranet",
+				id: "win-chain", label: "Windows 工作组内网", desc: "无域——本地凭据复用起手", zone: "intranet",
 				items: [
-					{ id: "chain", label: "凭据链按序（SAM→LSASS→…）", ref: "zh-intranet/intranet-password-collection.md" },
-					{ id: "harvest4", label: "落点收割四件套（每台必过）", ref: "zh-intranet/intranet-password-collection.md" },
-					{ id: "smb-old", label: "SMB 老系统历史漏洞（用户确认制）", ref: "offensive/windows-lateral-movement.md" },
+					{ id: "chain", label: "凭据链按序（SAM→LSASS→DPAPI）", pb: "内网 §2", ref: "zh-intranet/intranet-password-collection.md" },
+					{ id: "local-spray", label: "本地账户跨机喷洒（nxc --local-auth）", pb: "内网 §2（工作组重密码通病）" },
+					{ id: "harvest4", label: "落点收割四件套（每台必过）", pb: "内网 §2", ref: "zh-intranet/intranet-password-collection.md" },
+					{ id: "smb-old", label: "SMB 老系统历史漏洞（用户确认制）", pb: "内网 §2", ref: "offensive/windows-lateral-movement.md" },
 					{ id: "dpapi", label: "DPAPI/凭据管理器", ref: "offensive/credential-harvesting.md" }
 				]
 			},
 			{
-				id: "linux-line", label: "SSH/Linux 落点", desc: "落点即入口", zone: "intranet",
+				id: "linux-line", label: "Linux 内网", desc: "SSH 面起手——密钥与密码本", zone: "intranet",
 				items: [
-					{ id: "ssh-cred", label: "SSH 弱口令/密钥复用", ref: "offensive/linux-lateral-movement.md" },
+					{ id: "ssh-cred", label: "SSH 弱口令/密钥复用", pb: "内网 §3（起手）", ref: "offensive/linux-lateral-movement.md" },
+					{ id: "key-graph", label: "密钥横向（.ssh×known_hosts 求交+agent 滥用）", pb: "内网 §3（密钥横向）" },
 					{ id: "hist-cfg", label: "历史命令与配置凭据", ref: "offensive/linux-lateral-movement.md" },
 					{ id: "sudo-suid", label: "sudo/suid 提权面", ref: "zh-intranet/intranet-privesc.md" },
-					{ id: "cron", label: "计划任务/自启动", ref: "zh-intranet/intranet-privesc.md" }
+					{ id: "cron", label: "计划任务/自启动", ref: "zh-intranet/intranet-privesc.md" },
+					{ id: "docker-sock", label: "容器面：docker socket 即 root", pb: "内网 §3（容器面）" },
+					{ id: "nfs-root", label: "NFS no_root_squash（挂载即 root）", pb: "内网 §3" }
+				]
+			},
+			{
+				id: "cloud-intranet", label: "云环境内网", desc: "凭据三处起手——云 API 扩大生态协作", zone: "intranet",
+				items: [
+					{ id: "cred-three", label: "云凭据三处（CLI 配置/环境变量/实例角色）", pb: "内网 §4（起手）" },
+					{ id: "ak-verify", label: "AK/SK 验证（凭据指纹即取→云 API）", pb: "内网 §4（生态协作 cloud-security）" },
+					{ id: "sg-bypass", label: "安全组旁路与内网 LB 管理台", pb: "内网 §4（云内特有面）" },
+					{ id: "meta-ssrf", label: "元数据 SSRF（云上价值翻倍）", pb: "内网 §4（衔接外网 SSRF 提级序）" }
 				]
 			},
 			{
@@ -431,35 +450,47 @@ export const TAXONOMIES = {
 				]
 			},
 			{
-				id: "domain-attack", label: "域攻纵深", desc: "升级梯·逐级取凭据", zone: "intranet", forms: ["domain"],
+				id: "domain-attack", label: "域内内网", desc: "域凭据先起手——域控漏洞后置备选", zone: "intranet", forms: ["domain"],
 				items: [
-					{ id: "dom-recon", label: "域信息收集（BloodHound 路径分析）", ref: "offensive/bloodhound-ad.md" },
-					{ id: "kerberoast", label: "Kerberoast/AS-REP 离线破解", ref: "offensive/ad-kerberos-attacks.md" },
-					{ id: "dcsync", label: "DCSync（单请求优于批量登录）", ref: "offensive/ad-kerberos-attacks.md" },
-					{ id: "delegate", label: "委派攻击（非约束/约束/RBCD）", ref: "offensive/active-directory-security.md" },
-					{ id: "adcs", label: "ADCS 攻击面（ESC1-ESC8）", ref: "zh-intranet/intranet-adcs.md" },
+					{ id: "first-order", label: "起手序：域用户凭据先起手（安静/低崩溃风险）", pb: "内网 §5（定序与三条理由）" },
+					{ id: "dom-recon", label: "域信息收集（BloodHound 路径+AD 回收站/LAPS）", pb: "内网 §5", ref: "offensive/bloodhound-ad.md" },
+					{ id: "gpp-sysvol", label: "SYSVOL GPP 口令（老域白捡面）", pb: "内网 §5", ref: "zh-intranet/intranet-domain-attacks.md" },
+					{ id: "kerberoast", label: "Kerberoast/AS-REP 离线破解", pb: "内网 §5", ref: "offensive/ad-kerberos-attacks.md" },
+					{ id: "adcs", label: "ADCS 攻击面（ESC1-ESC8）", pb: "内网 §5", ref: "zh-intranet/intranet-adcs.md" },
+					{ id: "delegate", label: "委派攻击（非约束/约束/RBCD）", pb: "内网 §5", ref: "offensive/active-directory-security.md" },
+					{ id: "shadow-cred", label: "Shadow Credentials（msDS-KeyCredentialLink 写入）", pb: "内网 §5（委派进阶）", ref: "offensive/ad-kerberos-attacks.md" },
+					{ id: "dcsync", label: "DCSync（单请求优于批量登录）", pb: "内网 §5", ref: "offensive/ad-kerberos-attacks.md" },
+					{ id: "cross-domain", label: "跨域信任横向（集团多域）", pb: "内网 §5（信任方向定打法）", ref: "offensive/active-directory-security.md" },
+					{ id: "dc-vuln", label: "域控漏洞线（Zerologon 类——受阻+用户确认后）", pb: "内网 §5（后置备选）" },
 					{ id: "acl-abuse", label: "ACL 滥用提权路径", ref: "offensive/ad-acl-abuse.md" }
 				]
 			},
 			{
 				id: "hv-target", label: "高价值目标", desc: "发现即提级", zone: "intranet",
 				items: [
-					{ id: "dc", label: "域控（发现即进域攻分级）", ref: "zh-intranet/intranet-domain-attacks.md" },
+					{ id: "dc", label: "域控（发现即进域内内网）", pb: "内网 §5（凭据路线先起手）", ref: "zh-intranet/intranet-domain-attacks.md" },
 					{ id: "bastion", label: "堡垒机/跳板（凭证汇聚点）", ref: "offensive/bastion-jumpserver.md" },
-					{ id: "devops", label: "DevOps 套件（Jenkins/GitLab/Harbor）", ref: "zh-intranet/intranet-postexp.md" },
-					{ id: "mail-oa", label: "邮件/OA/VPN（密码重置枢纽）", ref: "zh-intranet/intranet-exchange.md" },
-					{ id: "sec-console", label: "安防设备/SIEM 控制台（用户确认制）", pb: "内网 §11（用户确认制）" },
+					{ id: "devops", label: "DevOps 套件（Jenkins/GitLab/Harbor）", pb: "内网 §9", ref: "zh-intranet/intranet-postexp.md" },
+					{ id: "wsus-sccm", label: "WSUS/SCCM 分发面（国外热/国内低频——确认制）", pb: "内网 §9" },
+					{ id: "mail-oa", label: "邮件/OA/VPN（密码重置枢纽）", pb: "内网 §9", ref: "zh-intranet/intranet-exchange.md" },
+					{ id: "sec-console", label: "安防设备/SIEM 控制台（用户确认制）", pb: "内网 §10（用户确认制）" },
+					{ id: "netdev", label: "网管设备（路由器/交换机——只读取证优先）", pb: "内网 §10（用户确认制）" },
+					{ id: "printer-ldap", label: "打印机 LDAP 泄露域凭据（顺手取证）", pb: "内网 §10" },
 					{ id: "idp", label: "统一认证/身份系统（IdP/SSO）", pb: "内网 §9（DevOps 与身份系统高价值线）" },
 					{ id: "rmm-byovd", label: "RMM/BYOVD 管理工具滥用", ref: "trends/2026-attack-paradigm-detection.md" }
 				]
 			},
 			{
-				id: "pivot", label: "隧道与枢纽", desc: "隔离突破·跨网段", zone: "intranet",
+				id: "pivot", label: "跨段递进与枢纽", desc: "C 段最快→B 段递进·隔离突破", zone: "intranet",
 				items: [
-					{ id: "chisel", label: "chisel 隧道", ref: "offensive/tunneling-pivoting.md" },
+					{ id: "c-seg-fast", label: "C 段最快打法序（情报定向>fscan>未授权>Nday>RCE）", pb: "内网 §6（速度优先级）" },
+					{ id: "first-blood", label: "一血优先序（数据库>域控>邮箱>文件服务器）", pb: "内网 §6（成果预期）" },
+					{ id: "tool-killed", label: "工具被杀分叉（探杀软→脚本→av-evasion 免杀版）", pb: "内网 §6（落工具前想好退路）" },
+					{ id: "b-seg", label: "C 段穷尽判据→B 段递进（三无=穷尽不跳段）", pb: "内网 §6" },
+					{ id: "chisel", label: "多级 SOCKS 链（chisel 级联）", ref: "offensive/tunneling-pivoting.md" },
 					{ id: "socat", label: "socat/proxychains 级联", ref: "zh-intranet/intranet-tunneling.md" },
-					{ id: "cross-seg", label: "跨网段入口标记与递进", ref: "offensive/tunneling-pivoting.md" },
-					{ id: "hide-tunnel", label: "CDN/域前置隐藏·多协议隧道（ICMP/UDP）", ref: "offensive/tunneling-pivoting.md" }
+					{ id: "cross-seg", label: "跨私网段隔离突破（双宿主/跨段服务/三私网块）", pb: "内网 §6（发现面/突破面/通道面）", ref: "offensive/tunneling-pivoting.md" },
+					{ id: "hide-tunnel", label: "隧道流量伪装（HTTPS 长连/CDN/域前置）", pb: "内网 §6（与 C2 期共用伪装纪律）", ref: "offensive/tunneling-pivoting.md" }
 				]
 			},
 			{
@@ -473,11 +504,11 @@ export const TAXONOMIES = {
 			{
 				id: "trace-mgmt", label: "痕迹管理", desc: "清痕与登记一体", zone: "wrapup",
 				items: [
-					{ id: "four-faces", label: "痕迹四类清理面（横向场景）", pb: "内网 §14" },
-					{ id: "order", label: "清痕顺序纪律（顺序不可倒）", pb: "内网 §14" },
-					{ id: "targeted", label: "目标侧定向清痕（克制红线）", pb: "内网 §14" },
-					{ id: "op-traces", label: "op-traces 本地台账（报告门校验物）", pb: "内网 §14（报告门校验物）" },
-					{ id: "residue", label: "残留清单处置（用户确认后执行）", pb: "内网 §14（用户确认后执行）" }
+					{ id: "four-faces", label: "痕迹四类清理面（横向场景）", pb: "内网 §12" },
+					{ id: "order", label: "清痕顺序纪律（顺序不可倒）", pb: "内网 §12" },
+					{ id: "targeted", label: "目标侧定向清痕（克制红线）", pb: "内网 §12" },
+					{ id: "op-traces", label: "op-traces 本地台账（报告门校验物）", pb: "内网 §12（报告门校验物）" },
+					{ id: "residue", label: "残留清单处置（用户确认后执行）", pb: "内网 §12（用户确认后执行）" }
 				]
 			},
 			{
@@ -486,8 +517,8 @@ export const TAXONOMIES = {
 					{ id: "gap3", label: "detection gap 三终态（检测到/gap/无法评估）", ref: "defense/detection-matrix.md" },
 					{ id: "evidence", label: "防御证据请求（演练启动一次性）", pb: "防御证据请求清单节" },
 					{ id: "attackmap", label: "ATT&CK 覆盖度表（走过+没走+原因）", ref: "defense/attack-mapping-analysis.md" },
-					{ id: "feedback", label: "成果反哺登记（权限/数据实时入账）", pb: "内网 §13（实时登记）" },
-					{ id: "exhaust", label: "穷尽终止判定（无新路径/凭据/网段）", pb: "内网 §13（穷尽终止）" },
+					{ id: "feedback", label: "成果反哺登记（权限/数据实时入账）", pb: "内网 §11（实时登记）" },
+					{ id: "exhaust", label: "穷尽终止判定（无新路径/凭据/网段）", pb: "内网 §11（穷尽终止）" },
 					{ id: "report-gate", label: "报告门（op-traces 结构校验）", pb: "报告模板节（op-traces 门）" }
 				]
 			}
