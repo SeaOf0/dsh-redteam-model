@@ -1,7 +1,7 @@
 // dsh-attack-atlas 离线单测：类目体系完整性（key 唯一/形态合法）+ SQLite 覆盖态
 // （终态白名单/N-A 必附原因/会话×模式隔离/清除）+ 通道纯逻辑（端点分发/派单文案/信任栅栏）。
 import assert from "node:assert/strict";
-import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, addChainNode, addChainEdge, listChain, clearChain, chainRefIndex, CHAIN_NODE_KINDS, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, recordMiss, missSummary } from "../lib/store.js";
+import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, chainRefIndex, CHAIN_NODE_KINDS, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, recordMiss, missSummary } from "../lib/store.js";
 import { TAXONOMIES, ATLAS_MODES, locate, itemsInForm, validateTaxonomy, refPaths } from "../lib/taxonomy.js";
 import fs2 from "node:fs";
 import path2 from "node:path";
@@ -273,6 +273,248 @@ await ok("targets.* 端点 + atlas.trigger 注入目标上下文", async () => {
 	await dispatch(fakeCtx, st, "atlas.trigger", { sessionId: SID, mode: "pentest", level: "item", categoryId: "access", itemId: "unauth", formId: "web" });
 	assert.equal(sent.length, 1);
 	assert.ok(sent[0].content[0].text.includes("「example.com」域名"), "派单文案须含登记目标");
+	st.close();
+});
+
+//#endregion
+
+//#region 按目标分账（v1.2.0：target 为覆盖态第一维度 + 激活指针）
+
+import { switchTarget, getActiveTarget } from "../lib/store.js";
+import { DatabaseSync } from "node:sqlite";
+import os from "node:os";
+
+await ok("分账核心：双目标同格双终态并存互不覆盖", () => {
+	const st = openStore(":memory:");
+	addTarget(st, SID, "pentest", { label: "a.com", kind: "domain" });
+	addTarget(st, SID, "pentest", { label: "b.com", kind: "domain" });
+	markCell(st, SID, "pentest", "injection/sqli", { state: "tested-found", target: "a.com" });
+	markCell(st, SID, "pentest", "injection/sqli", { state: "tested-clear", reason: "b.com 参数化查询", target: "b.com" });
+	const cov = getCoverage(st, SID, "pentest");
+	assert.equal(cov.cells.length, 2, "同格两行并存（旧共享平面会被顶掉，分账后互不蚕食）");
+	assert.ok(cov.cells.some((c) => c.target === "a.com" && c.state === "tested-found"));
+	assert.ok(cov.cells.some((c) => c.target === "b.com" && c.state === "tested-clear"));
+	st.close();
+});
+
+await ok("激活指针：首登自动激活；缺省归当前锚定；switch 后归新锚", () => {
+	const st = openStore(":memory:");
+	addTarget(st, SID, "pentest", { label: "a.com", kind: "domain" });
+	addTarget(st, SID, "pentest", { label: "b.com", kind: "domain" });
+	assert.equal(getActiveTarget(st, SID, "pentest")?.label, "a.com", "首登自动激活，第二目标不抢");
+	assert.equal(markCell(st, SID, "pentest", "auth/jwt", { state: "tested-clear", reason: "r" }).target, "a.com", "缺省归当前锚定");
+	switchTarget(st, SID, "pentest", "b.com");
+	assert.equal(getActiveTarget(st, SID, "pentest")?.label, "b.com");
+	assert.equal(markCell(st, SID, "pentest", "file/upload", { state: "tested-found" }).target, "b.com", "切锚后缺省随新锚");
+	assert.equal(markStage(st, SID, "pentest", "s0", "done").target, "b.com", "阶段缺省同归当前锚定");
+	assert.throws(() => switchTarget(st, SID, "pentest", "ghost.com"), /目标不存在/);
+	st.close();
+});
+
+await ok("归属校验：显式 target 未登记即拒并带已登记清单", () => {
+	const st = openStore(":memory:");
+	addTarget(st, SID, "pentest", { label: "a.com", kind: "domain" });
+	assert.throws(() => markCell(st, SID, "pentest", "auth/jwt", { state: "na", reason: "x", target: "自由文本地址" }), /目标未登记：自由文本地址（已登记：a.com/);
+	assert.throws(() => markStage(st, SID, "pentest", "s0", "done", "ghost"), /目标未登记/);
+	st.close();
+});
+
+await ok("首登扫公共：无目标期回写随首个目标归位；第二目标不扫", () => {
+	const st = openStore(":memory:");
+	markCell(st, SID, "pentest", "injection/sqli", { state: "tested-found" });
+	markStage(st, SID, "pentest", "s0", "done");
+	addChainNode(st, SID, "attack-defense", { id: "n1", label: "web" });
+	addTarget(st, SID, "pentest", { label: "first.com", kind: "domain" });
+	addTarget(st, SID, "attack-defense", { label: "ad-first.com", kind: "domain" });
+	const cov = getCoverage(st, SID, "pentest");
+	assert.equal(cov.cells[0].target, "first.com", "公共格随首登扫入");
+	assert.equal(cov.stages[0].target, "first.com", "公共阶段随首登扫入");
+	assert.equal(listChain(st, SID, "attack-defense").nodes[0].target, "ad-first.com", "公共链路随本模式首登扫入（模式隔离）");
+	addTarget(st, SID, "pentest", { label: "second.com", kind: "domain" });
+	assert.equal(getCoverage(st, SID, "pentest").cells.length, 1, "第二目标不扫不产生歧义归属");
+	assert.equal(markCell(st, SID, "pentest", "injection/sqli", { state: "tested-clear", reason: "r", target: "second.com" }).target, "second.com");
+	assert.equal(getCoverage(st, SID, "pentest").cells.length, 2);
+	st.close();
+});
+
+await ok("阶段/门联动分账：autoStageFromGate 点亮当时激活目标的阶段带", () => {
+	const st = openStore(":memory:");
+	const taxCA = TAXONOMIES["code-audit"];
+	addTarget(st, SID, "code-audit", { label: "仓库A" });
+	addTarget(st, SID, "code-audit", { label: "仓库B" });
+	switchTarget(st, SID, "code-audit", "仓库B");
+	autoStageFromGate(st, taxCA, SID, "code-audit", "A2");
+	let cov = getCoverage(st, SID, "code-audit");
+	assert.equal(cov.stages.length, 2);
+	assert.ok(cov.stages.every((s) => s.target === "仓库B"), "级联落在当时激活目标（仓库B）的阶段带");
+	switchTarget(st, SID, "code-audit", "仓库A");
+	autoStageFromGate(st, taxCA, SID, "code-audit", "A1");
+	cov = getCoverage(st, SID, "code-audit");
+	assert.ok(cov.stages.some((s) => s.target === "仓库A" && s.stage === "s1"), "切锚后门级联落仓库A");
+	assert.ok(cov.stages.filter((s) => s.target === "仓库B").length === 2, "仓库B 阶段带不受仓库A 过门影响");
+	st.close();
+});
+
+await ok("链路分账：listChain 缺省并集（消费方兼容）、显式 scope 过滤、跨 scope 边拒写", () => {
+	const st = openStore(":memory:");
+	addTarget(st, SID, "attack-defense", { label: "单位1" });
+	addTarget(st, SID, "attack-defense", { label: "单位2" });
+	switchTarget(st, SID, "attack-defense", "单位2");
+	addChainNode(st, SID, "attack-defense", { id: "web1", label: "边界Web", kind: "entry" }); // 归激活=单位2
+	addChainNode(st, SID, "attack-defense", { id: "host2", label: "内网机", kind: "host" }); // 归激活=单位2
+	addChainNode(st, SID, "attack-defense", { id: "dc1", label: "域控", kind: "dc", major: true, target: "单位1" });
+	addChainEdge(st, SID, "attack-defense", { src: "web1", dst: "host2", label: "获取权限", edgeType: "exploits" }); // 同为缺省=单位2 面
+	const uni = listChain(st, SID, "attack-defense");
+	assert.equal(uni.nodes.length, 3, "缺省=全目标并集（stage-gate chainExists 兼容）");
+	assert.ok(uni.nodes.every((n) => typeof n.target === "string"), "并集带 target 字段");
+	assert.equal(listChain(st, SID, "attack-defense", "单位1").nodes.length, 1, "显式 scope 过滤");
+	assert.throws(() => addChainEdge(st, SID, "attack-defense", { src: "web1", dst: "dc1", label: "跨单位", target: "单位1" }), /未登记节点/, "跨 scope 悬挂边拒写（web1 不在单位1 面）");
+	clearChain(st, SID, "attack-defense", "单位1");
+	assert.equal(listChain(st, SID, "attack-defense").nodes.length, 2, "scope 级清链不动他目标");
+	st.close();
+});
+
+await ok("级联删除：removeTarget 清该目标三表行并自动锚定剩余最小 seq", () => {
+	const st = openStore(":memory:");
+	addTarget(st, SID, "attack-defense", { label: "单位1" });
+	addTarget(st, SID, "attack-defense", { label: "单位2" });
+	markCell(st, SID, "attack-defense", "entry-vec/sqli", { state: "tested-found", target: "单位1" });
+	markCell(st, SID, "attack-defense", "entry-vec/sqli", { state: "tested-clear", reason: "r", target: "单位2" });
+	markStage(st, SID, "attack-defense", "recon", "done", "单位1");
+	addChainNode(st, SID, "attack-defense", { id: "n1", label: "x", target: "单位1" });
+	removeTarget(st, SID, "attack-defense", 1);
+	const cov = getCoverage(st, SID, "attack-defense");
+	assert.equal(cov.cells.length, 1);
+	assert.equal(cov.cells[0].target, "单位2", "他目标行不动");
+	assert.equal(cov.stages.length, 0, "单位1 阶段行级联清");
+	assert.equal(listChain(st, SID, "attack-defense").nodes.length, 0, "单位1 链路行级联清");
+	assert.equal(getActiveTarget(st, SID, "attack-defense")?.label, "单位2", "删激活目标后自动锚定剩余");
+	st.close();
+});
+
+await ok("autoLight 归属：finding target 精确匹配归该目标；不匹配归当前激活", async () => {
+	const st = openStore(":memory:");
+	addTarget(st, "al-t", "code-audit", { label: "oa.xxx", kind: "web" });
+	addTarget(st, "al-t", "code-audit", { label: "api.xxx", kind: "api" });
+	switchTarget(st, "al-t", "code-audit", "api.xxx");
+	const deps = { mode: "code-audit", findFindingId: async () => "code-audit-9", followup: () => {} };
+	const r1 = await autoLightFromFinding(null, st, "al-t", { title: "F1", type: "任意文件上传", target: "oa.xxx" }, deps);
+	assert.equal(r1.marked.length, 1);
+	assert.equal(getCoverage(st, "al-t", "code-audit").cells[0].target, "oa.xxx", "精确匹配登记 label → 归该目标");
+	const r2 = await autoLightFromFinding(null, st, "al-t", { title: "F2", type: "未授权 RCE", target: "https://free-text-path" }, deps);
+	assert.equal(r2.marked.length, 1);
+	const c2 = getCoverage(st, "al-t", "code-audit").cells.find((c) => c.key === "rce-main/unauth-rce");
+	assert.equal(c2.target, "api.xxx", "自由文本地址不硬塞 → 归当前激活");
+	assert.match(c2.reason, /原报目标 https:\/\/free-text-path 未登记/);
+	st.close();
+});
+
+await ok("targets.switch 端点 + coverage.get 带 active + 派单锚定行当前锚突出", async () => {
+	const st = openStore(":memory:");
+	await dispatch(null, st, "targets.add", { sessionId: SID, mode: "pentest", label: "a.com", kind: "domain" });
+	await dispatch(null, st, "targets.add", { sessionId: SID, mode: "pentest", label: "b.com", kind: "ip" });
+	const sw = await dispatch(null, st, "targets.switch", { sessionId: SID, mode: "pentest", label: "b.com" });
+	assert.equal(sw.ok, true);
+	assert.equal(sw.target.label, "b.com");
+	const got = await dispatch(null, st, "coverage.get", { sessionId: SID, mode: "pentest" });
+	assert.equal(got.targets.filter((t) => t.active).length, 1, "至多一个激活");
+	assert.equal(got.targets.find((t) => t.active)?.label, "b.com");
+	const sent = [];
+	const fakeCtx = { get: () => ({ get: () => ({ followup: (m) => sent.push(m) }) }) };
+	await dispatch(fakeCtx, st, "atlas.trigger", { sessionId: SID, mode: "pentest", level: "category", categoryId: "injection" });
+	const text = sent[0].content[0].text;
+	assert.match(text, /当前锚定 「b\.com」IP\/主机/, "锚定行当前锚突出");
+	assert.match(text, /其余已登记：「a\.com」域名/, "其余已登记降级列出");
+	assert.match(text, /redteam_atlas_target switch/, "带切锚指引");
+	await dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqli", state: "tested-found", target: "b.com" });
+	// 切锚后不带 target 的回写归新锚
+	await dispatch(null, st, "targets.switch", { sessionId: SID, mode: "pentest", seq: 1 });
+	const r = await dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqli", state: "tested-clear", reason: "参数化" });
+	assert.equal(r.cell.target, "a.com");
+	await assert.rejects(() => dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqli", state: "na", reason: "x", target: "ghost" }), /目标未登记：ghost（已登记：a\.com、b\.com/);
+	st.close();
+});
+
+await ok("迁移：旧 schema 库 openStore 后单目标归属到位、多目标留公共、旧表保留、幂等", () => {
+	const p = path2.join(os.tmpdir(), `atlas-mig-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.db`);
+	fs2.rmSync(p, { force: true });
+	const old = new DatabaseSync(p);
+	old.exec(`
+	CREATE TABLE coverage (session_id TEXT NOT NULL, mode TEXT NOT NULL, key TEXT NOT NULL, state TEXT NOT NULL, reason TEXT NOT NULL DEFAULT '', finding_refs TEXT NOT NULL DEFAULT '', target TEXT NOT NULL DEFAULT '', updated_at TEXT NOT NULL, PRIMARY KEY (session_id, mode, key));
+	CREATE TABLE stages (session_id TEXT NOT NULL, mode TEXT NOT NULL, stage TEXT NOT NULL, state TEXT NOT NULL, updated_at TEXT NOT NULL, PRIMARY KEY (session_id, mode, stage));
+	CREATE TABLE chain_nodes (session_id TEXT NOT NULL, mode TEXT NOT NULL, id TEXT NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'host', seg TEXT NOT NULL DEFAULT '', note TEXT NOT NULL DEFAULT '', major INTEGER NOT NULL DEFAULT 0, finding_ref TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, PRIMARY KEY (session_id, mode, id));
+	CREATE TABLE chain_edges (session_id TEXT NOT NULL, mode TEXT NOT NULL, src TEXT NOT NULL, dst TEXT NOT NULL, label TEXT NOT NULL DEFAULT '', edge_type TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, PRIMARY KEY (session_id, mode, src, dst, label));
+	CREATE TABLE targets (session_id TEXT NOT NULL, mode TEXT NOT NULL, seq INTEGER NOT NULL, label TEXT NOT NULL, kind TEXT NOT NULL DEFAULT 'other', note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL, PRIMARY KEY (session_id, mode, seq));
+	`);
+	old.prepare("INSERT INTO coverage VALUES (?,?,?,?,?,?,?,?)").run("s1", "pentest", "injection/sqli", "tested-found", "", "pentest-1", "", "2026-01-01 00:00:00");
+	old.prepare("INSERT INTO stages VALUES (?,?,?,?,?)").run("s1", "pentest", "s0", "done", "2026-01-01 00:00:00");
+	old.prepare("INSERT INTO targets VALUES (?,?,?,?,?,?,?)").run("s1", "pentest", 1, "only.com", "domain", "", "2026-01-01 00:00:00");
+	old.prepare("INSERT INTO coverage VALUES (?,?,?,?,?,?,?,?)").run("s2", "pentest", "auth/jwt", "tested-clear", "r", "", "b.com", "2026-01-01 00:00:00");
+	old.prepare("INSERT INTO coverage VALUES (?,?,?,?,?,?,?,?)").run("s2", "pentest", "file/upload", "na", "无上传面", "", "", "2026-01-01 00:00:00");
+	old.prepare("INSERT INTO targets VALUES (?,?,?,?,?,?,?)").run("s2", "pentest", 1, "a.com", "domain", "", "2026-01-01 00:00:00");
+	old.prepare("INSERT INTO targets VALUES (?,?,?,?,?,?,?)").run("s2", "pentest", 2, "b.com", "domain", "", "2026-01-01 00:00:00");
+	old.close();
+	const st = openStore(p);
+	const c1 = getCoverage(st, "s1", "pentest");
+	assert.equal(c1.cells[0].target, "only.com", "单目标会话：未归属行归它");
+	assert.equal(c1.stages[0].target, "only.com");
+	assert.equal(getActiveTarget(st, "s1", "pentest")?.label, "only.com", "迁移回填激活");
+	const c2 = getCoverage(st, "s2", "pentest");
+	assert.deepEqual(c2.cells.map((c) => [c.key, c.target]).sort(), [["auth/jwt", "b.com"], ["file/upload", ""]], "多目标会话：显式归属保留、未归属留公共 scope");
+	assert.equal(getActiveTarget(st, "s2", "pentest")?.label, "a.com");
+	const legacy = st.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%_legacy'").all().map((r) => r.name).sort();
+	assert.deepEqual(legacy, ["chain_edges_legacy", "chain_nodes_legacy", "coverage_legacy", "stages_legacy"], "旧表 rename 保留不删");
+	st.close();
+	const st2 = openStore(p); // 幂等：重开不重复拷贝
+	assert.equal(getCoverage(st2, "s1", "pentest").cells.length, 1);
+	assert.equal(getCoverage(st2, "s2", "pentest").cells.length, 2);
+	st2.close();
+	fs2.rmSync(p, { force: true });
+	fs2.rmSync(p + "-wal", { force: true });
+	fs2.rmSync(p + "-shm", { force: true });
+});
+
+await ok("methods.run 运行即切锚：对哪个目标跑方法论当前锚就指向它", async () => {
+	const st = openStore(":memory:");
+	const graph = { nodes: [{ id: "n1", ref: "injection", label: "注入", note: "", x: 0, y: 0 }], edges: [] };
+	const s = await dispatch(null, st, "methods.save", { mode: "pentest", name: "速攻", target: "a.com", graph });
+	const sent = [];
+	const fakeCtx = { get: () => ({ get: () => ({ followup: (m) => sent.push(m) }) }) };
+	await dispatch(fakeCtx, st, "methods.run", { id: s.id, sessionId: "mr-1", mode: "pentest" });
+	assert.equal(getActiveTarget(st, "mr-1", "pentest")?.label, "a.com", "方法论的 target 运行即切锚（并自动登记）");
+	await dispatch(fakeCtx, st, "methods.run", { id: s.id, sessionId: "mr-1", mode: "pentest", target: "b.com" });
+	assert.equal(getActiveTarget(st, "mr-1", "pentest")?.label, "b.com", "运行入参目标优先切锚");
+	assert.equal((await dispatch(null, st, "targets.list", { sessionId: "mr-1", mode: "pentest" })).targets.length, 2, "两个目标都登记在案");
+	st.close();
+});
+
+await ok("激活自愈：组内全无激活时重开库锚定最小 seq（旧版并发写残留兜底）", () => {
+	const p = path2.join(os.tmpdir(), `atlas-heal-${Date.now()}-${Math.random().toString(36).slice(2, 8)}.db`);
+	const st = openStore(p);
+	addTarget(st, "h1", "pentest", { label: "a.com" });
+	addTarget(st, "h1", "pentest", { label: "b.com" });
+	switchTarget(st, "h1", "pentest", "b.com");
+	// 模拟旧版本进程并发写残留：全组 active 清零
+	st.db.exec("UPDATE targets SET active = 0");
+	st.close();
+	const st2 = openStore(p); // 重开自愈
+	assert.equal(getActiveTarget(st2, "h1", "pentest")?.label, "a.com", "无激活组重开锚定最小 seq");
+	switchTarget(st2, "h1", "pentest", "b.com");
+	st2.close();
+	const st3 = openStore(p);
+	assert.equal(getActiveTarget(st3, "h1", "pentest")?.label, "b.com", "已有激活组不被自愈扰动");
+	st3.close();
+	fs2.rmSync(p, { force: true }); fs2.rmSync(p + "-wal", { force: true }); fs2.rmSync(p + "-shm", { force: true });
+});
+
+await ok("org 形态：组织/单位 kind 可登记并进锚定词", async () => {
+	const st = openStore(":memory:");
+	const t = addTarget(st, SID, "attack-defense", { label: "某某集团公司", kind: "org" });
+	assert.equal(t.kind, "org");
+	const sent = [];
+	const fakeCtx = { get: () => ({ get: () => ({ followup: (m) => sent.push(m) }) }) };
+	await dispatch(fakeCtx, st, "atlas.trigger", { sessionId: SID, mode: "attack-defense", level: "category", categoryId: "recon" });
+	assert.match(sent[0].content[0].text, /「某某集团公司」组织\/单位/, "组织目标进锚定行");
 	st.close();
 });
 
@@ -824,22 +1066,21 @@ await ok("methods.import 走结构校验：坏模板跳过并说明原因", asyn
 	st.close();
 });
 
-await ok("孤儿清理：删自定义主类/子类清终态行、删目标清归属", async () => {
+await ok("孤儿清理：删自定义主类/子类清终态行、删目标级联清其作战数据", async () => {
 	const st = openStore(":memory:");
 	const cat = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "category", label: "业务面" });
 	const item = await dispatch(null, st, "caps.save", { mode: "pentest", kind: "item", cat: cat.cat, label: "积分双花" });
 	await dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: cat.cat + "/" + item.item, state: "tested-found" });
 	await dispatch(null, st, "targets.add", { sessionId: SID, mode: "pentest", label: "目标A", kind: "web" });
 	await dispatch(null, st, "coverage.mark", { sessionId: SID, mode: "pentest", key: "injection/sqli", state: "tested-clear", target: "目标A" });
-	// 删子类 → 其格子终态行清理
+	// 删子类 → 其格子终态行清理（全目标 scope）
 	await dispatch(null, st, "caps.remove", { id: item.id });
 	assert.equal((await dispatch(null, st, "coverage.get", { sessionId: SID, mode: "pentest" })).cells.filter((c) => c.key.startsWith(cat.cat)).length, 0, "子类格子已清");
-	// 删目标 → 归属清空但终态保留
+	// 删目标 → 该目标的覆盖/阶段/链路行级联清理（错登清理语义；归档用 switch 切走勿删）
 	const tl = await dispatch(null, st, "targets.list", { sessionId: SID, mode: "pentest" });
 	await dispatch(null, st, "targets.remove", { sessionId: SID, mode: "pentest", seq: tl.targets[0].seq });
 	const after = (await dispatch(null, st, "coverage.get", { sessionId: SID, mode: "pentest" })).cells;
-	assert.equal(after.some((c) => c.key === "injection/sqli"), true, "终态保留");
-	assert.equal(after.every((c) => !c.target), true, "目标归属已清");
+	assert.equal(after.length, 0, "目标作战数据级联清理（首登扫入的公共行随目标删）");
 	st.close();
 });
 
@@ -958,7 +1199,9 @@ await ok("autoLight：type/CWE 线索点亮 + finding ref 回填 + 不覆盖已�
 	assert.equal(cell.state, "tested-found");
 	assert.equal(cell.findingRefs, "code-audit-3");
 	assert.match(cell.reason, /自动：finding code-audit-3/);
-	assert.equal(cell.target, "oa.xxx");
+	// finding 的 target 是自由文本地址：未登记不硬塞归属——落公共 scope，原值进 reason 保溯源
+	assert.equal(cell.target, "");
+	assert.match(cell.reason, /原报目标 oa\.xxx 未登记/);
 	// 人工终态不可被自动覆盖：先手写 tested-clear，自动亮须跳过
 	await dispatch(null, st, "coverage.mark", { sessionId: "auto-2", mode: "code-audit", key: "SQL 注入", state: "tested-clear", reason: "人工已排除" });
 	const r2 = await autoLightFromFinding(null, st, "auto-2", { title: "F2 注入", type: "SQL 注入" }, deps);

@@ -1,8 +1,10 @@
 // dsh-attack-atlas store — SQLite 覆盖态数据层（node:sqlite DatabaseSync）。
 //
 // 单库 ~/.dsh/attack-atlas/atlas.db：
-//   coverage 表以 (session_id, mode, key) 为主键——key 为格子（cat/item）或主类（cat）；
-//   stages 表记作战流程阶段推进（active/done）。
+//   coverage 表以 (session_id, mode, target, key) 为主键——按目标分账：同格每目标各一行；
+//   key 为格子（cat/item）或主类（cat）；target='' 为会话公共 scope（无登记目标时期落此）。
+//   stages / chain_nodes / chain_edges 同带 target 维度；targets 表带 active 激活指针
+//   （每会话×模式至多一个，回写缺省归当前锚定目标）。
 // 语义对齐 playbook 矩阵覆盖规则：N-A 与预算耗尽必附原因；未测 = 无记录（不落 todo 行）。
 
 import { DatabaseSync } from "node:sqlite";
@@ -16,25 +18,27 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS coverage (
 	session_id  TEXT NOT NULL,
 	mode        TEXT NOT NULL,
+	target      TEXT NOT NULL DEFAULT '',
 	key         TEXT NOT NULL,
 	state       TEXT NOT NULL,
 	reason      TEXT NOT NULL DEFAULT '',
 	finding_refs TEXT NOT NULL DEFAULT '',
-	target      TEXT NOT NULL DEFAULT '',
 	updated_at  TEXT NOT NULL,
-	PRIMARY KEY (session_id, mode, key)
+	PRIMARY KEY (session_id, mode, target, key)
 );
 CREATE TABLE IF NOT EXISTS stages (
 	session_id TEXT NOT NULL,
 	mode       TEXT NOT NULL,
+	target     TEXT NOT NULL DEFAULT '',
 	stage      TEXT NOT NULL,
 	state      TEXT NOT NULL,
 	updated_at TEXT NOT NULL,
-	PRIMARY KEY (session_id, mode, stage)
+	PRIMARY KEY (session_id, mode, target, stage)
 );
 CREATE TABLE IF NOT EXISTS chain_nodes (
 	session_id TEXT NOT NULL,
 	mode       TEXT NOT NULL,
+	target     TEXT NOT NULL DEFAULT '',
 	id         TEXT NOT NULL,
 	label      TEXT NOT NULL,
 	kind       TEXT NOT NULL DEFAULT "host",
@@ -43,17 +47,18 @@ CREATE TABLE IF NOT EXISTS chain_nodes (
 	major      INTEGER NOT NULL DEFAULT 0,
 	finding_ref TEXT NOT NULL DEFAULT "",
 	created_at TEXT NOT NULL,
-	PRIMARY KEY (session_id, mode, id)
+	PRIMARY KEY (session_id, mode, target, id)
 );
 CREATE TABLE IF NOT EXISTS chain_edges (
 	session_id TEXT NOT NULL,
 	mode       TEXT NOT NULL,
+	target     TEXT NOT NULL DEFAULT '',
 	src        TEXT NOT NULL,
 	dst        TEXT NOT NULL,
 	label      TEXT NOT NULL DEFAULT "",
 	edge_type  TEXT NOT NULL DEFAULT "",
 	created_at TEXT NOT NULL,
-	PRIMARY KEY (session_id, mode, src, dst, label)
+	PRIMARY KEY (session_id, mode, target, src, dst, label)
 );
 CREATE TABLE IF NOT EXISTS targets (
 	session_id TEXT NOT NULL,
@@ -62,6 +67,7 @@ CREATE TABLE IF NOT EXISTS targets (
 	label      TEXT NOT NULL,
 	kind       TEXT NOT NULL DEFAULT 'other',
 	note       TEXT NOT NULL DEFAULT '',
+	active     INTEGER NOT NULL DEFAULT 0,
 	created_at TEXT NOT NULL,
 	PRIMARY KEY (session_id, mode, seq)
 );
@@ -106,21 +112,81 @@ CREATE TABLE IF NOT EXISTS misses (
 CREATE INDEX IF NOT EXISTS misses_mode ON misses(mode, query);
 `;
 
-export const TARGET_KINDS = ["domain", "web", "ip", "api", "miniprogram", "android", "ios", "desktop", "component", "cloud", "ai", "repo", "sample", "payload", "webshell", "loader", "memshell", "c2", "host", "case", "challenge", "account", "tenant", "cluster", "other"];
-const TARGET_KIND_LABELS = { domain: "域名", web: "Web 站点", ip: "IP/主机", api: "API 服务", miniprogram: "小程序", android: "Android", ios: "iOS", desktop: "桌面客户端", component: "组件/中间件", cloud: "云资产", ai: "AI 服务", repo: "源码仓库", sample: "样本", payload: "载荷", webshell: "WebShell", loader: "加载器", memshell: "内存马", c2: "C2 通道", host: "主机", case: "案件", challenge: "题目", account: "云账号", tenant: "租户", cluster: "集群", other: "其他" };
+export const TARGET_KINDS = ["domain", "web", "ip", "org", "api", "miniprogram", "android", "ios", "desktop", "component", "cloud", "ai", "repo", "sample", "payload", "webshell", "loader", "memshell", "c2", "host", "case", "challenge", "account", "tenant", "cluster", "other"];
+const TARGET_KIND_LABELS = { domain: "域名", web: "Web 站点", ip: "IP/主机", org: "组织/单位", api: "API 服务", miniprogram: "小程序", android: "Android", ios: "iOS", desktop: "桌面客户端", component: "组件/中间件", cloud: "云资产", ai: "AI 服务", repo: "源码仓库", sample: "样本", payload: "载荷", webshell: "WebShell", loader: "加载器", memshell: "内存马", c2: "C2 通道", host: "主机", case: "案件", challenge: "题目", account: "云账号", tenant: "租户", cluster: "集群", other: "其他" };
 
 export function targetKindLabel(kind) {
 	return TARGET_KIND_LABELS[kind] || "其他";
+}
+
+function tableExists(db, name) {
+	return !!db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").get(name);
+}
+function pkHas(db, table, col) {
+	return db.prepare(`PRAGMA table_info(${table})`).all().some((c) => c.name === col && c.pk > 0);
+}
+
+/** 旧库迁移（覆盖态无 target 维度 → 按目标分账）：旧表 rename 为 *_legacy 保留不删（零数据
+ *  丢失风险），新表按「单目标会话归属、多目标留公共 scope」启发式回填拷贝。幂等：新库/已迁移跳过。
+ *  返回 true 表示需要执行 legacy 拷贝（调用方须在 SCHEMA 建表后调 copyLegacy）。 */
+function prepareLegacy(db) {
+	if (!tableExists(db, "coverage")) return false; // 新库：无旧表
+	// 更早版本缺列兼容（补齐 legacy 形状后再整体迁移）
+	try { db.exec("ALTER TABLE coverage ADD COLUMN target TEXT NOT NULL DEFAULT ''"); } catch { /* 列已存在 */ }
+	try { db.exec("ALTER TABLE chain_nodes ADD COLUMN finding_ref TEXT NOT NULL DEFAULT ''"); } catch { /* 列已存在 */ }
+	try { db.exec("ALTER TABLE chain_edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT ''"); } catch { /* 列已存在 */ }
+	if (pkHas(db, "coverage", "target")) return false; // 已迁移
+	db.exec("ALTER TABLE coverage RENAME TO coverage_legacy");
+	if (tableExists(db, "stages")) db.exec("ALTER TABLE stages RENAME TO stages_legacy");
+	if (tableExists(db, "chain_nodes")) db.exec("ALTER TABLE chain_nodes RENAME TO chain_nodes_legacy");
+	if (tableExists(db, "chain_edges")) db.exec("ALTER TABLE chain_edges RENAME TO chain_edges_legacy");
+	return true;
+}
+
+function copyLegacy(db) {
+	// 恰一个登记目标的 (会话,模式)：未归属行归它；多目标会话留公共 scope（''）——「全部」聚合视图可见
+	db.exec("CREATE TEMP TABLE single_tgt AS SELECT session_id, mode, label FROM targets WHERE (session_id, mode) IN (SELECT session_id, mode FROM targets GROUP BY session_id, mode HAVING COUNT(*) = 1)");
+	db.exec(`INSERT INTO coverage (session_id, mode, target, key, state, reason, finding_refs, updated_at)
+		SELECT session_id, mode,
+			CASE WHEN target != '' THEN target
+				ELSE COALESCE((SELECT s.label FROM single_tgt s WHERE s.session_id = coverage_legacy.session_id AND s.mode = coverage_legacy.mode), '') END,
+			key, state, reason, finding_refs, updated_at
+		FROM coverage_legacy`);
+	if (tableExists(db, "stages_legacy")) {
+		db.exec(`INSERT INTO stages (session_id, mode, target, stage, state, updated_at)
+			SELECT session_id, mode,
+				COALESCE((SELECT s.label FROM single_tgt s WHERE s.session_id = stages_legacy.session_id AND s.mode = stages_legacy.mode), ''),
+				stage, state, updated_at
+			FROM stages_legacy`);
+	}
+	if (tableExists(db, "chain_nodes_legacy")) {
+		db.exec(`INSERT INTO chain_nodes (session_id, mode, target, id, label, kind, seg, note, major, finding_ref, created_at)
+			SELECT session_id, mode,
+				COALESCE((SELECT s.label FROM single_tgt s WHERE s.session_id = chain_nodes_legacy.session_id AND s.mode = chain_nodes_legacy.mode), ''),
+				id, label, kind, seg, note, major, finding_ref, created_at
+			FROM chain_nodes_legacy`);
+	}
+	if (tableExists(db, "chain_edges_legacy")) {
+		db.exec(`INSERT INTO chain_edges (session_id, mode, target, src, dst, label, edge_type, created_at)
+			SELECT session_id, mode,
+				COALESCE((SELECT s.label FROM single_tgt s WHERE s.session_id = chain_edges_legacy.session_id AND s.mode = chain_edges_legacy.mode), ''),
+				src, dst, label, edge_type, created_at
+			FROM chain_edges_legacy`);
+	}
 }
 
 export function openStore(dbPath) {
 	if (dbPath !== ":memory:") fs.mkdirSync(path.dirname(dbPath), { recursive: true }); // node:sqlite 不建父目录
 	const db = new DatabaseSync(dbPath);
 	db.exec("PRAGMA journal_mode = WAL");
+	const legacy = prepareLegacy(db);
 	db.exec(SCHEMA);
-	try { db.exec("ALTER TABLE coverage ADD COLUMN target TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移（列已存在） */ }
-	try { db.exec("ALTER TABLE chain_nodes ADD COLUMN finding_ref TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移（列已存在） */ }
-	try { db.exec("ALTER TABLE chain_edges ADD COLUMN edge_type TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移（列已存在） */ }
+	if (legacy) copyLegacy(db);
+	// 旧 targets 表补 active 列
+	try { db.exec("ALTER TABLE targets ADD COLUMN active INTEGER NOT NULL DEFAULT 0"); } catch { /* 列已存在 */ }
+	// 激活自愈（幂等，每次打开执行）：任何 (会话,模式) 组若无激活目标——迁移竞态或旧版本进程并发写
+	// （旧代码 INSERT 不含 active 列、默认 0）的残留——锚定最小 seq。一次性回填盖不住这类漂移。
+	db.exec("UPDATE targets SET active = 1 WHERE rowid IN (SELECT MIN(rowid) FROM targets WHERE (session_id, mode) IN (SELECT session_id, mode FROM targets GROUP BY session_id, mode HAVING MAX(active) = 0) GROUP BY session_id, mode)");
 	return {
 		db,
 		close() { db.close(); }
@@ -135,8 +201,24 @@ function clean(s, max) {
 	return String(s ?? "").trim().slice(0, max);
 }
 
-/** 格子终态落库（upsert）。na/budget-stop 必附原因——覆盖规则的硬约束在存储层强制。
- *  target：终态所属目标（多目标会话溯源用；单目标未填时自动归属唯一登记目标）。 */
+/** 归属解析：显式 target 须为已登记 label（报错带已登记清单——堵自由文本脏归属）；
+ *  缺省=当前激活目标；无激活（未登记任何目标）落会话公共 scope（''）。 */
+function resolveTargetScope(st, sessionId, mode, target) {
+	const t = clean(target, 120);
+	if (t) {
+		const registered = listTargets(st, sessionId, mode);
+		if (!registered.some((x) => x.label === t)) {
+			throw new Error(`目标未登记：${t}（已登记：${registered.map((x) => x.label).join("、") || "无"}；先 redteam_atlas_target 登记或省略 target 归当前锚定）`);
+		}
+		return t;
+	}
+	const act = getActiveTarget(st, sessionId, mode);
+	return act ? act.label : "";
+}
+
+/** 格子终态落库（upsert，按目标分账：同格每目标各一行，互不覆盖）。
+ *  na/budget-stop 必附原因——覆盖规则的硬约束在存储层强制。
+ *  target 归属语义见 resolveTargetScope。 */
 export function markCell(st, sessionId, mode, key, { state, reason = "", findingRefs = "", target = "" }) {
 	const k = clean(key, 120);
 	if (!k.includes("/")) {
@@ -148,72 +230,96 @@ export function markCell(st, sessionId, mode, key, { state, reason = "", finding
 	const r = clean(reason, 500);
 	if ((state === "na" || state === "budget-stop") && !r) throw new Error(`${state === "na" ? "N-A" : "预算耗尽"}必须附原因（reason）`);
 	const refs = clean(findingRefs, 300);
-	let tgt = clean(target, 120);
-	if (!tgt) {
-		const registered = listTargets(st, sessionId, mode);
-		if (registered.length === 1) tgt = registered[0].label; // 单目标自动归属
-	}
+	const tgt = resolveTargetScope(st, sessionId, mode, target);
 	st.db.prepare(
-		"INSERT INTO coverage (session_id, mode, key, state, reason, finding_refs, target, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n" +
-		"ON CONFLICT (session_id, mode, key) DO UPDATE SET state = excluded.state, reason = excluded.reason, finding_refs = excluded.finding_refs, target = excluded.target, updated_at = excluded.updated_at"
-	).run(String(sessionId), String(mode), k, state, r, refs, tgt, now());
+		"INSERT INTO coverage (session_id, mode, target, key, state, reason, finding_refs, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n" +
+		"ON CONFLICT (session_id, mode, target, key) DO UPDATE SET state = excluded.state, reason = excluded.reason, finding_refs = excluded.finding_refs, updated_at = excluded.updated_at"
+	).run(String(sessionId), String(mode), tgt, k, state, r, refs, now());
 	return { key: k, state, reason: r, findingRefs: refs, target: tgt };
 }
 
-/** 阶段推进（active=进行中 / done=完成）。 */
-export function markStage(st, sessionId, mode, stage, state) {
+/** 阶段推进（active=进行中 / done=完成），按目标分账；target 归属语义同 markCell。 */
+export function markStage(st, sessionId, mode, stage, state, target = "") {
 	const s = clean(stage, 40);
 	if (!/^[a-z0-9-]+$/.test(s)) throw new Error(`非法阶段 id：${s}`);
 	if (!STAGE_STATES.includes(state)) throw new Error(`state 必须是 ${STAGE_STATES.join("/")}`);
+	const tgt = resolveTargetScope(st, sessionId, mode, target);
 	st.db.prepare(
-		"INSERT INTO stages (session_id, mode, stage, state, updated_at) VALUES (?, ?, ?, ?, ?)\n" +
-		"ON CONFLICT (session_id, mode, stage) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at"
-	).run(String(sessionId), String(mode), s, state, now());
-	return { stage: s, state };
+		"INSERT INTO stages (session_id, mode, target, stage, state, updated_at) VALUES (?, ?, ?, ?, ?, ?)\n" +
+		"ON CONFLICT (session_id, mode, target, stage) DO UPDATE SET state = excluded.state, updated_at = excluded.updated_at"
+	).run(String(sessionId), String(mode), tgt, s, state, now());
+	return { stage: s, state, target: tgt };
 }
 
-/** 全量读取（会话 × 模式）：格子 + 阶段 + 目标。 */
+/** 全量读取（会话 × 模式，含全部目标 scope）：格子 + 阶段 + 目标（带 active）。 */
 export function getCoverage(st, sessionId, mode) {
 	const cells = st.db.prepare("SELECT key, state, reason, finding_refs AS findingRefs, target, updated_at AS updatedAt FROM coverage WHERE session_id = ? AND mode = ?")
 		.all(String(sessionId), String(mode));
-	const stages = st.db.prepare("SELECT stage, state, updated_at AS updatedAt FROM stages WHERE session_id = ? AND mode = ?")
+	const stages = st.db.prepare("SELECT stage, state, target, updated_at AS updatedAt FROM stages WHERE session_id = ? AND mode = ?")
 		.all(String(sessionId), String(mode));
 	const targets = listTargets(st, sessionId, mode);
 	return { cells, stages, targets };
 }
 
-/** 目标登记（与资产清单基线同步维护；一个会话可多目标）。 */
+/** 目标登记（与资产清单基线同步维护；一个会话可多目标）。首个登记目标自动成为当前锚定
+ *  （active），并把公共 scope（''）存量行扫入它——此前无目标时期的作业隐含关于它；
+ *  第二个目标起不再扫（歧义留给 switch 与显式 target）。 */
 export function addTarget(st, sessionId, mode, { label, kind = "other", note = "" }) {
 	const l = clean(label, 120);
 	if (!l) throw new Error("label required");
 	const k = TARGET_KINDS.includes(kind) ? kind : "other";
 	const row = st.db.prepare("SELECT COALESCE(MAX(seq), 0) + 1 AS n FROM targets WHERE session_id = ? AND mode = ?").get(String(sessionId), String(mode));
 	const seq = row.n;
-	st.db.prepare("INSERT INTO targets (session_id, mode, seq, label, kind, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
-		.run(String(sessionId), String(mode), seq, l, k, clean(note, 300), now());
-	return { seq, label: l, kind: k, note: clean(note, 300) };
+	const first = seq === 1;
+	st.db.prepare("INSERT INTO targets (session_id, mode, seq, label, kind, note, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")
+		.run(String(sessionId), String(mode), seq, l, k, clean(note, 300), first ? 1 : 0, now());
+	if (first) {
+		for (const tbl of ["coverage", "stages", "chain_nodes", "chain_edges"]) {
+			st.db.prepare(`UPDATE ${tbl} SET target = ? WHERE session_id = ? AND mode = ? AND target = ''`).run(l, String(sessionId), String(mode));
+		}
+	}
+	return { seq, label: l, kind: k, note: clean(note, 300), active: first };
+}
+
+/** 当前锚定目标（每会话×模式至多一个；无登记/无激活返回 null）。 */
+export function getActiveTarget(st, sessionId, mode) {
+	return st.db.prepare("SELECT seq, label, kind, note FROM targets WHERE session_id = ? AND mode = ? AND active = 1 ORDER BY seq LIMIT 1")
+		.get(String(sessionId), String(mode)) ?? null;
+}
+
+/** 切换当前锚定目标（按 seq 或 label）：回写缺省归属、派单信封、UI 视图随锚更新。不迁移数据。 */
+export function switchTarget(st, sessionId, mode, seqOrLabel) {
+	const rows = listTargets(st, sessionId, mode);
+	const hit = typeof seqOrLabel === "number"
+		? rows.find((t) => t.seq === seqOrLabel)
+		: rows.find((t) => t.label === clean(seqOrLabel, 120));
+	if (!hit) throw new Error(`目标不存在：${seqOrLabel}（已登记：${rows.map((t) => t.label).join("、") || "无"}）`);
+	st.db.prepare("UPDATE targets SET active = CASE WHEN seq = ? THEN 1 ELSE 0 END WHERE session_id = ? AND mode = ?")
+		.run(hit.seq, String(sessionId), String(mode));
+	return hit;
 }
 
 export function listTargets(st, sessionId, mode) {
-	return st.db.prepare("SELECT seq, label, kind, note, created_at AS createdAt FROM targets WHERE session_id = ? AND mode = ? ORDER BY seq")
-		.all(String(sessionId), String(mode));
+	return st.db.prepare("SELECT seq, label, kind, note, active, created_at AS createdAt FROM targets WHERE session_id = ? AND mode = ? ORDER BY seq")
+		.all(String(sessionId), String(mode)).map((r) => ({ ...r, active: !!r.active }));
 }
 
 export const CHAIN_NODE_KINDS = ["entry", "host", "segment", "bastion", "dc", "cred", "attacker", "infra", "pivot", "exfil", "identity", "secret", "resource", "orgroot", "other"];
 const CHAIN_KIND_LABELS = { entry: "入口", host: "主机", segment: "网段关口", bastion: "堡垒机", dc: "域控", cred: "凭据", attacker: "攻击者", infra: "C2/基础设施", pivot: "跳板/横向", exfil: "外传/扩散", identity: "身份/角色", secret: "密钥面", resource: "云资源", orgroot: "组织根/KMS", other: "资产" };
 export function chainKindLabel(kind) { return CHAIN_KIND_LABELS[kind] || "资产"; }
 
-export function addChainNode(st, sessionId, mode, { id, label, kind = "host", seg = "", note = "", major = false, findingRef = "" }) {
+export function addChainNode(st, sessionId, mode, { id, label, kind = "host", seg = "", note = "", major = false, findingRef = "", target = "" }) {
 	const nid = clean(id, 60);
 	if (!/^[a-z0-9][a-z0-9._-]*$/i.test(nid)) throw new Error(`节点 id 非法（字母数字与 ._-）：${nid}`);
 	const l = clean(label, 80);
 	if (!l) throw new Error("label required");
 	const k = CHAIN_NODE_KINDS.includes(kind) ? kind : "other";
 	const fr = clean(findingRef, 60); // 关联成果 finding id（与「redteam 成果」页互链；空=无关联）
-	st.db.prepare("INSERT INTO chain_nodes (session_id, mode, id, label, kind, seg, note, major, finding_ref, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" +
-		"ON CONFLICT (session_id, mode, id) DO UPDATE SET label = excluded.label, kind = excluded.kind, seg = excluded.seg, note = excluded.note, major = excluded.major, finding_ref = excluded.finding_ref")
-		.run(String(sessionId), String(mode), nid, l, k, clean(seg, 60), clean(note, 300), major ? 1 : 0, fr, now());
-	return { id: nid, label: l, kind: k, major: !!major, findingRef: fr };
+	const tgt = resolveTargetScope(st, sessionId, mode, target);
+	st.db.prepare("INSERT INTO chain_nodes (session_id, mode, target, id, label, kind, seg, note, major, finding_ref, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n" +
+		"ON CONFLICT (session_id, mode, target, id) DO UPDATE SET label = excluded.label, kind = excluded.kind, seg = excluded.seg, note = excluded.note, major = excluded.major, finding_ref = excluded.finding_ref")
+		.run(String(sessionId), String(mode), tgt, nid, l, k, clean(seg, 60), clean(note, 300), major ? 1 : 0, fr, now());
+	return { id: nid, label: l, kind: k, major: !!major, findingRef: fr, target: tgt };
 }
 
 /** 链路边类型学（黑板关系边五型）：类型化边让拓扑可按边语义聚合检索，label 仍是自由补充细节。
@@ -226,23 +332,29 @@ export const CHAIN_EDGE_TYPES = {
 	"leads_to": "导致"
 };
 
-export function addChainEdge(st, sessionId, mode, { src, dst, label = "", edgeType = "" }) {
+export function addChainEdge(st, sessionId, mode, { src, dst, label = "", edgeType = "", target = "" }) {
 	const a = clean(src, 60), b = clean(dst, 60), l = clean(label, 80);
 	if (!a || !b) throw new Error("src/dst required");
 	const et = Object.hasOwn(CHAIN_EDGE_TYPES, String(edgeType ?? "")) ? String(edgeType) : "";
+	const tgt = resolveTargetScope(st, sessionId, mode, target);
 	for (const n of [a, b]) {
-		const hit = st.db.prepare("SELECT id FROM chain_nodes WHERE session_id = ? AND mode = ? AND id = ?").get(String(sessionId), String(mode), n);
+		// 同目标面内引用校验：边与节点须同 scope（跨 scope 悬挂边在聚合视图会误连）
+		const hit = st.db.prepare("SELECT id FROM chain_nodes WHERE session_id = ? AND mode = ? AND target = ? AND id = ?").get(String(sessionId), String(mode), tgt, n);
 		if (!hit) throw new Error(`边引用未登记节点：${n}（先 add-node）`);
 	}
-	st.db.prepare("INSERT INTO chain_edges (session_id, mode, src, dst, label, edge_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)\n" +
-		"ON CONFLICT (session_id, mode, src, dst, label) DO UPDATE SET label = excluded.label, edge_type = excluded.edge_type")
-		.run(String(sessionId), String(mode), a, b, l, et, now());
-	return { src: a, dst: b, label: l, edgeType: et };
+	st.db.prepare("INSERT INTO chain_edges (session_id, mode, target, src, dst, label, edge_type, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)\n" +
+		"ON CONFLICT (session_id, mode, target, src, dst, label) DO UPDATE SET label = excluded.label, edge_type = excluded.edge_type")
+		.run(String(sessionId), String(mode), tgt, a, b, l, et, now());
+	return { src: a, dst: b, label: l, edgeType: et, target: tgt };
 }
 
-export function listChain(st, sessionId, mode) {
-	const nodes = st.db.prepare("SELECT id, label, kind, seg, note, major, finding_ref AS findingRef, created_at AS createdAt FROM chain_nodes WHERE session_id = ? AND mode = ? ORDER BY created_at, id").all(String(sessionId), String(mode));
-	const edges = st.db.prepare("SELECT src, dst, label, edge_type AS edgeType FROM chain_edges WHERE session_id = ? AND mode = ? ORDER BY created_at").all(String(sessionId), String(mode));
+/** 链路读取：target 省略 = 全目标并集（stage-gate/results 消费方兼容）；显式串按 scope 过滤
+ *  （'' = 会话公共 scope——存量迁移的多目标未归属行）。节点/边带 target 字段供分目标渲染。 */
+export function listChain(st, sessionId, mode, target) {
+	const flt = target === undefined ? "" : " AND target = ?";
+	const args = target === undefined ? [String(sessionId), String(mode)] : [String(sessionId), String(mode), String(target)];
+	const nodes = st.db.prepare(`SELECT id, label, kind, seg, note, major, finding_ref AS findingRef, target, created_at AS createdAt FROM chain_nodes WHERE session_id = ? AND mode = ?${flt} ORDER BY created_at, id`).all(...args);
+	const edges = st.db.prepare(`SELECT src, dst, label, edge_type AS edgeType, target FROM chain_edges WHERE session_id = ? AND mode = ?${flt} ORDER BY created_at`).all(...args);
 	return { nodes, edges };
 }
 
@@ -255,27 +367,41 @@ export function chainRefIndex(st, mode) {
 	return idx;
 }
 
-export function clearChain(st, sessionId, mode) {
-	st.db.prepare("DELETE FROM chain_nodes WHERE session_id = ? AND mode = ?").run(String(sessionId), String(mode));
-	st.db.prepare("DELETE FROM chain_edges WHERE session_id = ? AND mode = ?").run(String(sessionId), String(mode));
+export function clearChain(st, sessionId, mode, target) {
+	const flt = target === undefined ? "" : " AND target = ?";
+	const args = target === undefined ? [String(sessionId), String(mode)] : [String(sessionId), String(mode), String(target)];
+	st.db.prepare(`DELETE FROM chain_nodes WHERE session_id = ? AND mode = ?${flt}`).run(...args);
+	st.db.prepare(`DELETE FROM chain_edges WHERE session_id = ? AND mode = ?${flt}`).run(...args);
 	return { cleared: "chain" };
 }
 
+/** 删除目标并级联清理其全部作战数据（该目标的覆盖终态/阶段/链路行）——错登清理语义；
+ *  做完的目标归档用 switch 切走即可，勿删。删的是激活目标时自动锚定剩余最小 seq。 */
 export function removeTarget(st, sessionId, mode, seq) {
-	const owner = st.db.prepare("SELECT label FROM targets WHERE session_id = ? AND mode = ? AND seq = ?").get(String(sessionId), String(mode), Number(seq));
-	if (owner) st.db.prepare("UPDATE coverage SET target = '' WHERE session_id = ? AND mode = ? AND target = ?").run(String(sessionId), String(mode), owner.label);
-	st.db.prepare("DELETE FROM targets WHERE session_id = ? AND mode = ? AND seq = ?").run(String(sessionId), String(mode), Number(seq));
+	const owner = st.db.prepare("SELECT seq, label, active FROM targets WHERE session_id = ? AND mode = ? AND seq = ?").get(String(sessionId), String(mode), Number(seq));
+	if (owner) {
+		for (const tbl of ["coverage", "stages", "chain_nodes", "chain_edges"]) {
+			st.db.prepare(`DELETE FROM ${tbl} WHERE session_id = ? AND mode = ? AND target = ?`).run(String(sessionId), String(mode), owner.label);
+		}
+		st.db.prepare("DELETE FROM targets WHERE session_id = ? AND mode = ? AND seq = ?").run(String(sessionId), String(mode), owner.seq);
+		if (owner.active) {
+			st.db.prepare("UPDATE targets SET active = 1 WHERE rowid = (SELECT MIN(rowid) FROM targets WHERE session_id = ? AND mode = ?)").run(String(sessionId), String(mode));
+		}
+	}
 	return { removed: Number(seq) };
 }
 
-/** 清除一条格子记录（回退到未测）；key 缺省 = 清空该会话该模式全部覆盖态。 */
-export function clearCoverage(st, sessionId, mode, key) {
+/** 清除一条格子记录（回退到未测）；key 缺省 = 清空该会话该模式全部覆盖态。
+ *  target 省略 = 全部目标 scope（历史语义）；显式串（含 ''=公共 scope）按 scope 清。 */
+export function clearCoverage(st, sessionId, mode, key, target) {
+	const scope = target === undefined ? "" : " AND target = ?";
+	const scopeArgs = target === undefined ? [] : [String(target)];
 	if (key === undefined || key === "") {
-		st.db.prepare("DELETE FROM coverage WHERE session_id = ? AND mode = ?").run(String(sessionId), String(mode));
-		st.db.prepare("DELETE FROM stages WHERE session_id = ? AND mode = ?").run(String(sessionId), String(mode));
+		st.db.prepare(`DELETE FROM coverage WHERE session_id = ? AND mode = ?${scope}`).run(String(sessionId), String(mode), ...scopeArgs);
+		st.db.prepare(`DELETE FROM stages WHERE session_id = ? AND mode = ?${scope}`).run(String(sessionId), String(mode), ...scopeArgs);
 		return { cleared: "all" };
 	}
-	st.db.prepare("DELETE FROM coverage WHERE session_id = ? AND mode = ? AND key = ?").run(String(sessionId), String(mode), clean(key, 120));
+	st.db.prepare(`DELETE FROM coverage WHERE session_id = ? AND mode = ?${scope} AND key = ?`).run(String(sessionId), String(mode), ...scopeArgs, clean(key, 120));
 	return { cleared: clean(key, 120) };
 }
 

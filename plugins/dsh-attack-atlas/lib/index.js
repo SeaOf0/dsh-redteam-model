@@ -15,7 +15,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, CHAIN_EDGE_TYPES, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, removeCap, exportCaps, importCaps, recordMiss, missSummary } from "./store.js";
+import { openStore, markCell, markStage, getCoverage, clearCoverage, addTarget, listTargets, removeTarget, switchTarget, addChainNode, addChainEdge, listChain, clearChain, CHAIN_NODE_KINDS, CHAIN_EDGE_TYPES, chainKindLabel, CELL_STATES, STAGE_STATES, TARGET_KINDS, targetKindLabel, saveMethod, listMethods, getMethod, removeMethod, copyMethod, exportMethods, importMethods, saveCap, listCaps, removeCap, exportCaps, importCaps, recordMiss, missSummary } from "./store.js";
 import { TAXONOMIES, ATLAS_MODES, locate } from "./taxonomy.js";
 import { validateMethod, methodRunMessage, inferTargetKind, METHOD_LIMITS } from "./method.js";
 
@@ -104,15 +104,23 @@ const MODE_ANCHOR = {
 	"cloud-security": { word: "目标", obj: "云目标", reg: "先调 redteam_atlas_target 登记云目标（账号/租户/集群）", baseline: "cloud-assets.md 测绘基线", discipline: "只读探测优先；环境改动逐项登记还原", detail: "资产明细见 cloud-assets.md 暴露面测绘" },
 	"ctf-solver": { word: "对象", obj: "题目", reg: "先调 redteam_atlas_target 登记题目/赛局", baseline: "challenge-board.md 题面登记", discipline: "平台规则即边界", detail: "题面与解题进度见 challenge-board" }
 };
+/** 锚定行：当前锚定突出 + 其余已登记（换对象先 switch 切锚，回写缺省归当前锚定）。
+ *  无激活（外部直调容错）平铺全清单；八模式分语态词（MODE_ANCHOR）套同一结构。 */
 function anchorLines(taxonomy, targets) {
 	const cfg = MODE_ANCHOR[taxonomy?.id ?? ""];
+	const word = cfg ? cfg.word : "目标";
 	if (!targets || targets.length === 0) {
 		if (cfg) return `${cfg.word}锚定：本会话尚未登记${cfg.obj}——${cfg.reg}（与${cfg.baseline}同步），${cfg.discipline}。`;
-		return "目标锚定：本会话尚未登记目标——开测前先确认授权目标并调 redteam_atlas_target 登记（与资产清单基线 assets.md 同步），严格不超出授权范围。";
+		return "目标锚定：本会话尚未登记目标——开测前先确认授权目标（单位/资产域，组织类 kind=org）并调 redteam_atlas_target 登记（与资产清单基线 assets.md 同步），严格不超出授权范围。";
 	}
-	const list = targets.map((t, i) => `「${t.label}」${targetKindLabel(t.kind)}`).join("、");
-	if (cfg) return `${cfg.word}锚定：${list}（${cfg.detail}；多对象时终态回写须带 target 参数注明所属对象，N-A 须注明对哪个对象不具备）。`;
-	return `目标锚定：${list}（资产明细见 assets.md/入口面盘点表；多目标时终态回写须带 target 参数注明所属目标，N-A 须注明对哪个目标不具备）。`;
+	const labelOf = (t) => `「${t.label}」${targetKindLabel(t.kind)}`;
+	const tail = cfg
+		? `（${cfg.detail}；换${cfg.word}作业先 redteam_atlas_target switch 切锚再回写，回写不带 target 默认归当前锚定，异${cfg.obj}须带 target 参数注明；N-A 须注明对哪个${cfg.obj}不具备）`
+		: `（资产明细见 assets.md/入口面盘点表；换目标作业先 redteam_atlas_target switch 切锚再回写，回写不带 target 默认归当前锚定，异目标须带 target 参数注明；N-A 须注明对哪个目标不具备）`;
+	const act = targets.find((t) => t.active);
+	if (!act) return `${word}锚定：${targets.map(labelOf).join("、")}${tail}`;
+	const rest = targets.filter((t) => t !== act).map(labelOf).join("、");
+	return `${word}锚定：当前锚定 ${labelOf(act)}${rest ? `；其余已登记：${rest}` : ""}${tail}`;
 }
 export function triggerMessage(taxonomy, payload) {
 	const formLabel = payload.formId && payload.formId !== "all"
@@ -600,19 +608,25 @@ export async function dispatch(ctx, st, endpoint, payload) {
 			if (bad) throw new Error(bad);
 			// 校验接受中文标签，落库须 canonical id——与工具路径（redteam_coverage_stage）同规，防「校验放行落库被拒」
 			const stageId = resolveStageId(tax, p.stage) || String(p.stage ?? "");
-			return { ok: true, stage: markStage(st, sessionId, mode, stageId, String(p.state ?? "")) };
+			return { ok: true, stage: markStage(st, sessionId, mode, stageId, String(p.state ?? ""), p.target !== undefined ? String(p.target) : "") };
 		}
-		return { ok: true, stage: markStage(st, sessionId, mode, String(p.stage ?? ""), String(p.state ?? "")) };
+		return { ok: true, stage: markStage(st, sessionId, mode, String(p.stage ?? ""), String(p.state ?? ""), p.target !== undefined ? String(p.target) : "") };
 	}
 	if (endpoint === "coverage.clear") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		return { ok: true, ...clearCoverage(st, sessionId, String(p.mode ?? "pentest"), p.key ? String(p.key) : "") };
+		return { ok: true, ...clearCoverage(st, sessionId, String(p.mode ?? "pentest"), p.key ? String(p.key) : "", p.target !== undefined ? String(p.target) : undefined) };
 	}
 	if (endpoint === "targets.add") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
 		return { ok: true, target: addTarget(st, sessionId, String(p.mode ?? "pentest"), { label: String(p.label ?? ""), kind: String(p.kind ?? "other"), note: p.note }) };
+	}
+	if (endpoint === "targets.switch") {
+		const sessionId = String(p.sessionId ?? "");
+		if (!sessionId) throw new Error("sessionId required");
+		const which = p.label !== undefined && String(p.label) !== "" ? String(p.label) : Number(p.seq);
+		return { ok: true, target: switchTarget(st, sessionId, String(p.mode ?? "pentest"), which) };
 	}
 	if (endpoint === "targets.list") {
 		const sessionId = String(p.sessionId ?? "");
@@ -627,22 +641,22 @@ export async function dispatch(ctx, st, endpoint, payload) {
 	if (endpoint === "chain.node") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		return { ok: true, node: addChainNode(st, sessionId, String(p.mode ?? "pentest"), { id: p.id, label: p.label, kind: p.kind, seg: p.seg, note: p.note, major: !!p.major, findingRef: p.findingRef }) };
+		return { ok: true, node: addChainNode(st, sessionId, String(p.mode ?? "pentest"), { id: p.id, label: p.label, kind: p.kind, seg: p.seg, note: p.note, major: !!p.major, findingRef: p.findingRef, target: p.target !== undefined ? String(p.target) : "" }) };
 	}
 	if (endpoint === "chain.edge") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		return { ok: true, edge: addChainEdge(st, sessionId, String(p.mode ?? "pentest"), { src: p.src, dst: p.dst, label: p.label, edgeType: p.edgeType }) };
+		return { ok: true, edge: addChainEdge(st, sessionId, String(p.mode ?? "pentest"), { src: p.src, dst: p.dst, label: p.label, edgeType: p.edgeType, target: p.target !== undefined ? String(p.target) : "" }) };
 	}
 	if (endpoint === "chain.list") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		return listChain(st, sessionId, String(p.mode ?? "pentest"));
+		return listChain(st, sessionId, String(p.mode ?? "pentest"), p.target !== undefined ? String(p.target) : undefined);
 	}
 	if (endpoint === "chain.clear") {
 		const sessionId = String(p.sessionId ?? "");
 		if (!sessionId) throw new Error("sessionId required");
-		return { ok: true, ...clearChain(st, sessionId, String(p.mode ?? "pentest")) };
+		return { ok: true, ...clearChain(st, sessionId, String(p.mode ?? "pentest"), p.target !== undefined ? String(p.target) : undefined) };
 	}
 	if (endpoint === "caps.list") {
 		const mode = String(p.mode ?? "");
@@ -780,8 +794,12 @@ export async function dispatch(ctx, st, endpoint, payload) {
 		if (!agent || typeof agent.followup !== "function") return { ok: false, unreachable: true, error: "会话不可达（会话可能已删除或代理未运行）" };
 		let targets = listTargets(st, sessionId, mode);
 		const runTarget = String(p.target ?? m.target ?? "").trim().slice(0, METHOD_LIMITS.target);
-		if (targets.length === 0 && runTarget) {
-			addTarget(st, sessionId, mode, { label: runTarget, kind: inferTargetKind(runTarget) });
+		if (runTarget) {
+			// 运行即切锚：对哪个目标跑方法论，当前锚定就指向它——后续不带 target 的回写天然归对
+			if (!targets.some((t) => t.label === runTarget)) {
+				addTarget(st, sessionId, mode, { label: runTarget, kind: inferTargetKind(runTarget) });
+			}
+			switchTarget(st, sessionId, mode, runTarget);
 			targets = listTargets(st, sessionId, mode);
 		}
 		const notes = String(p.notes ?? m.notes ?? "").trim().slice(0, METHOD_LIMITS.notes);
@@ -929,7 +947,9 @@ function nudgeUndetermined(ctx, sessionId, mode, taxonomy, doneKeys, markedCats,
 }
 
 /** finding 登记成功 → 类型/CWE/标题走 resolveKey 解析格子 → 仅对无终态格子落 tested-found
- *  （人工终态永不被自动覆盖）；关联主类若有剩余未终态格，注入一次覆盖提醒（P3）。
+ *  （人工终态永不被自动覆盖，终态判定按归属 scope）；关联主类若有剩余未终态格，注入一次覆盖提醒（P3）。
+ *  归属：finding 的 target 是自由文本地址（地址/位置）——与已登记 label 精确匹配才归该目标，
+ *  否则归当前激活目标（无激活落公共 scope）；未匹配的原值进 reason 保溯源。
  *  deps 供测试注入：{ mode, findFindingId, followup }。 */
 export async function autoLightFromFinding(ctx, st, sessionId, findingArgs, deps = {}) {
 	const mode = deps.mode ?? modeOfSession(ctx, sessionId);
@@ -950,7 +970,10 @@ export async function autoLightFromFinding(ctx, st, sessionId, findingArgs, deps
 		ref = deps.findFindingId ? await deps.findFindingId(sessionId, mode, title) : await findFindingIdInResults(sessionId, mode, title);
 	} catch { ref = ""; }
 	const cov = getCoverage(st, sessionId, mode);
-	const done = new Set(cov.cells.map((c) => c.key));
+	const ft = String(findingArgs?.target ?? "").trim().slice(0, 120);
+	const scope = cov.targets.find((t) => t.label === ft)?.label ?? cov.targets.find((t) => t.active)?.label ?? "";
+	const unmatched = ft && ft !== scope ? `（原报目标 ${ft} 未登记，归${scope ? "当前锚定" : "公共 scope"}）` : "";
+	const done = new Set(cov.cells.filter((c) => c.target === scope).map((c) => c.key));
 	const marked = [];
 	const markedCats = new Set();
 	for (const cue of uniqueCues) {
@@ -959,9 +982,9 @@ export async function autoLightFromFinding(ctx, st, sessionId, findingArgs, deps
 		if (done.has(res.key)) continue;
 		markCell(st, sessionId, mode, res.key, {
 			state: "tested-found",
-			reason: `自动：finding${ref ? ` ${ref}` : ""}「${title.slice(0, 40)}」类型关联点亮（人工终态可覆盖）`,
+			reason: `自动：finding${ref ? ` ${ref}` : ""}「${title.slice(0, 40)}」${unmatched}类型关联点亮（人工终态可覆盖）`,
 			findingRefs: ref,
-			target: String(findingArgs?.target ?? "").slice(0, 120)
+			target: scope
 		});
 		done.add(res.key);
 		marked.push(res.key);
@@ -983,7 +1006,7 @@ function apply(ctx) {
 			state: { type: "string", required: true, enum: CELL_STATES, description: "终态" },
 			reason: { type: "string", description: "原因（na/budget-stop 必填；tested-clear 建议写未排除面）" },
 			findingRefs: { type: "string", description: "关联 finding id（逗号分隔）" },
-			target: { type: "string", description: "该终态所属目标（多目标会话必须注明；单目标可不填自动归属）" }
+			target: { type: "string", description: "该终态所属目标（按目标分账：同格每目标各一行；须为已登记 label，写错报已登记清单；缺省=当前锚定目标，未登记任何目标时落会话公共 scope）" }
 		},
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
@@ -1014,10 +1037,11 @@ function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "redteam_coverage_stage",
-		description: "推进攻击面图谱顶部的作战流程带：进入某阶段标 active、完成标 done。stage_gate 判定 PASS 后对应阶段（及其此前阶段）自动回写 done，本工具用于无门阶段的推进与补记。stage 取当前模式体系的阶段 id（渗透模式为 s0-s6：防护画像/被动收集/入口面盘点/登陆口专线/逐面挖掘/验证与影响证明/收口），也接受阶段中文标签（自动归一）；写错时报错会列出该模式全部合法阶段。",
+		description: "推进攻击面图谱顶部的作战流程带：进入某阶段标 active、完成标 done。stage 取当前模式体系的阶段 id（渗透模式为 s0-s6：防护画像/被动收集/入口面盘点/登陆口专线/逐面挖掘/验证与影响证明/收口），也接受阶段中文标签（自动归一）；写错时报错会列出该模式全部合法阶段。阶段带按目标分账：target 缺省推进当前锚定目标的阶段。stage_gate 判定 PASS 后对应阶段（及其此前阶段）自动回写 done（归当时锚定目标），本工具用于无门阶段的推进与补记。",
 		parameters: {
 			stage: { type: "string", required: true, description: "阶段 id 或阶段中文标签" },
-			state: { type: "string", required: true, enum: STAGE_STATES, description: "active=进行中 done=完成" }
+			state: { type: "string", required: true, enum: STAGE_STATES, description: "active=进行中 done=完成" },
+			target: { type: "string", description: "推进哪个目标的阶段带（须为已登记 label；缺省=当前锚定目标）" }
 		},
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
@@ -1036,10 +1060,10 @@ function apply(ctx) {
 						recordMiss(theStore(), { mode: session.mode, kind: "stage", query: stage, error: bad, sessionId: session.id });
 						return Promise.resolve({ ok: false, error: bad });
 					}
-					stage = resolveStageId(tax, stage) || stage;
-				}
-				const marked = markStage(theStore(), session.id, session.mode, stage, args.state);
-				return Promise.resolve({ ok: true, stage: marked.stage, state: marked.state });
+				stage = resolveStageId(tax, stage) || stage;
+			}
+			const marked = markStage(theStore(), session.id, session.mode, stage, args.state, args.target !== undefined ? String(args.target) : "");
+			return Promise.resolve({ ok: true, stage: marked.stage, state: marked.state });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
 			}
@@ -1095,26 +1119,31 @@ function apply(ctx) {
 	}));
 	ctx.tools.register(defineTool({
 		name: "redteam_atlas_target",
-		description: "登记/查看本会话 AttackAtlas 的作战目标（与资产清单基线 assets.md 同步维护；入口面盘点发现的每个资产均登记）。目标登记后：图谱头部目标带展示、双击派单自动带目标锚定、覆盖终态回写可逐目标溯源——这是防目标漂移的锚。kind 取 domain/web/ip/api/miniprogram/android/ios/desktop/component/cloud/ai/other。",
+		description: "登记/切换/查看本会话 AttackAtlas 的作战目标（与资产清单基线 assets.md 同步维护；入口面盘点发现的每个资产均登记）。覆盖态按目标分账：每个目标有独立的矩阵点亮、阶段推进与链路拓扑。add=登记（首个目标自动成为当前锚定，并把此前公共 scope 的回写扫入它）；switch=切换当前锚定（回写不带 target 默认归当前锚定、派单信封锚定行随切更新——换对象作业的第一动作）；remove=删除目标并级联清理其覆盖终态/阶段/链路（错登清理用；做完的目标 switch 切走即可，勿删）。kind 取 domain/web/ip/org 组织单位/api/miniprogram/android/ios/desktop/component/cloud/ai/repo/sample/payload/webshell/loader/memshell/c2/host/case 案件/challenge 题目/account/tenant/cluster/other。",
 		parameters: {
-			action: { type: "string", required: true, enum: ["add", "list", "remove"], description: "add=登记 list=列出 remove=删除" },
-			label: { type: "string", description: "目标标识（域名/ip:port/应用名），action=add 必填" },
+			action: { type: "string", required: true, enum: ["add", "switch", "list", "remove"], description: "add=登记 switch=切换当前锚定 list=列出 remove=删除（级联清数据）" },
+			label: { type: "string", description: "目标标识（域名/ip:port/公司名/样本 sha256 前缀等），action=add 必填；action=switch 可按 label 切锚" },
 			kind: { type: "string", enum: TARGET_KINDS, description: "目标形态" },
 			note: { type: "string", description: "备注（入口/授权范围片段）" },
-			seq: { type: "number", description: "action=remove 时的序号" }
+			seq: { type: "number", description: "action=remove/switch 时的序号（与 label 二选一）" }
 		},
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
-			render: (_a, v) => [{ type: "text", text: v.ok ? (v.targets ? `本会话目标 ${v.targets.length} 个：${v.targets.map((t) => t.label).join("、")}` : (v.removed != null ? `目标已移除：序号 ${v.removed}` : `目标已登记：${v.label}（${v.kindLabel}）`)) : `目标操作失败：${v.error}` }]
+			render: (_a, v) => [{ type: "text", text: v.ok ? (v.targets ? `本会话目标 ${v.targets.length} 个（当前锚定：${(v.targets.find((t) => t.active) || {}).label ?? "无"}）：${v.targets.map((t) => `${t.label}${t.active ? "（锚）" : ""}`).join("、")}` : (v.switched != null ? `锚定已切换：${v.label}（${v.kindLabel}）` : (v.removed != null ? `目标已移除（含其覆盖/阶段/链路数据）：序号 ${v.removed}` : `目标已登记：${v.label}（${v.kindLabel}）${v.active ? "，已设为当前锚定" : ""}`))) : `目标操作失败：${v.error}` }]
 		},
 		execute(args, exec) {
 			const session = sessionOf(ctx, exec);
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅专业模式会话内可用" });
 			try {
 				if (args.action === "list") return Promise.resolve({ ok: true, targets: listTargets(theStore(), session.id, session.mode) });
+				if (args.action === "switch") {
+					const which = args.label !== undefined && String(args.label) !== "" ? String(args.label) : Number(args.seq);
+					const t = switchTarget(theStore(), session.id, session.mode, which);
+					return Promise.resolve({ ok: true, switched: t.seq, label: t.label, kindLabel: targetKindLabel(t.kind) });
+				}
 				if (args.action === "remove") { removeTarget(theStore(), session.id, session.mode, args.seq); return Promise.resolve({ ok: true, removed: args.seq }); }
 				const t = addTarget(theStore(), session.id, session.mode, { label: args.label, kind: args.kind, note: args.note });
-				return Promise.resolve({ ok: true, label: t.label, kind: t.kind, kindLabel: targetKindLabel(t.kind), seq: t.seq });
+				return Promise.resolve({ ok: true, label: t.label, kind: t.kind, kindLabel: targetKindLabel(t.kind), seq: t.seq, active: t.active });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
 			}
@@ -1123,9 +1152,9 @@ function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "redteam_atlas_chain",
-		description: "登记/查看本会话 AttackAtlas 的攻击链拓扑（仅攻防评估/应急溯源/云安全三模式有链路体系，其余模式不可用；链路拓扑图弹窗实时成图）。节点：攻防/应急用 entry 入口/host 主机/segment 网段关口/bastion 堡垒机/dc 域控/cred 凭据；云安全用 identity 身份/角色、secret 密钥面、resource 云资源、orgroot 组织根/KMS（major）、pivot 信任链/横移。重大成果节点 major=true，seg 填网段（如 10.1.1.x）；边 label 写动作（获取权限/凭据复用/隔离突破/域控获取/角色链入…）。多入口/暂无链路按实际登记，不虚构。突破成立、拿下一台主机、跨段、拿到关键凭据时即登记——链路拓扑随战役推进实时生长。",
+		description: "登记/查看本会话 AttackAtlas 的攻击链拓扑（仅攻防评估/应急溯源/云安全三模式有链路体系，其余模式不可用；链路拓扑图弹窗实时成图）。链路按目标分账：登记与查看都带 target 维度，缺省归当前锚定目标。节点：攻防/应急用 entry 入口/host 主机/segment 网段关口/bastion 堡垒机/dc 域控/cred 凭据；云安全用 identity 身份/角色、secret 密钥面、resource 云资源、orgroot 组织根/KMS（major）、pivot 信任链/横移。重大成果节点 major=true，seg 填网段（如 10.1.1.x）；边 label 写动作（获取权限/凭据复用/隔离突破/域控获取/角色链入…）。多入口/暂无链路按实际登记，不虚构。突破成立、拿下一台主机、跨段、拿到关键凭据时即登记——链路拓扑随战役推进实时生长。",
 		parameters: {
-			action: { type: "string", required: true, enum: ["add-node", "add-edge", "list", "clear"], description: "add-node=登记节点 add-edge=登记边 list=查看 clear=清空" },
+			action: { type: "string", required: true, enum: ["add-node", "add-edge", "list", "clear"], description: "add-node=登记节点 add-edge=登记边 list=查看（list 可带 target 过滤，缺省全目标并集） clear=清空" },
 			id: { type: "string", description: "节点 id（字母数字与 ._-，如 h-192-168-1-2；action=add-node 必填）" },
 			label: { type: "string", description: "节点显示名（域名/ip/凭据名）" },
 			kind: { type: "string", enum: CHAIN_NODE_KINDS, description: "节点类型" },
@@ -1133,6 +1162,7 @@ function apply(ctx) {
 			note: { type: "string", description: "备注（拿到什么权限/凭据名）" },
 			major: { type: "boolean", description: "重大成果节点（堡垒机/域控/全域权限等）" },
 			findingRef: { type: "string", description: "关联战果 finding id（redteam_finding_register 返回的 id，如 attack-defense-3）——链路节点与「redteam 成果」页互链；无关联省略" },
+			target: { type: "string", description: "登记到哪个目标的链路面（须为已登记 label；缺省=当前锚定目标）" },
 			src: { type: "string", description: "边起点节点 id（action=add-edge 必填）" },
 			dst: { type: "string", description: "边终点节点 id" },
 			edgeLabel: { type: "string", description: "边动作标签（获取权限/凭据复用/隔离突破…）" },
@@ -1147,10 +1177,11 @@ function apply(ctx) {
 			if (!session?.mode) return Promise.resolve({ ok: false, error: "仅专业模式会话内可用" });
 			if (!TAXONOMIES[session.mode]?.chain) return Promise.resolve({ ok: false, error: "本模式无链路拓扑体系（链路图仅 攻防评估/应急溯源/云安全 三模式）" });
 			try {
-				if (args.action === "list") return Promise.resolve({ ok: true, chain: listChain(theStore(), session.id, session.mode) });
-				if (args.action === "clear") { clearChain(theStore(), session.id, session.mode); return Promise.resolve({ ok: true, what: "链路已清空" }); }
-				if (args.action === "add-node") { const n = addChainNode(theStore(), session.id, session.mode, { id: args.id, label: args.label, kind: args.kind, seg: args.seg, note: args.note, major: args.major, findingRef: args.findingRef }); return Promise.resolve({ ok: true, what: `节点 ${n.label}（${chainKindLabel(n.kind)}${n.major ? "·重大" : ""}${n.findingRef ? `·关联成果 ${n.findingRef}` : ""}）` }); }
-				const e = addChainEdge(theStore(), session.id, session.mode, { src: args.src, dst: args.dst, label: args.edgeLabel, edgeType: args.edgeType });
+				const tgt = args.target !== undefined ? String(args.target) : "";
+				if (args.action === "list") return Promise.resolve({ ok: true, chain: listChain(theStore(), session.id, session.mode, args.target !== undefined ? String(args.target) : undefined) });
+				if (args.action === "clear") { clearChain(theStore(), session.id, session.mode, args.target !== undefined ? String(args.target) : undefined); return Promise.resolve({ ok: true, what: "链路已清空" }); }
+				if (args.action === "add-node") { const n = addChainNode(theStore(), session.id, session.mode, { id: args.id, label: args.label, kind: args.kind, seg: args.seg, note: args.note, major: args.major, findingRef: args.findingRef, target: tgt }); return Promise.resolve({ ok: true, what: `节点 ${n.label}（${chainKindLabel(n.kind)}${n.major ? "·重大" : ""}${n.findingRef ? `·关联成果 ${n.findingRef}` : ""}）` }); }
+				const e = addChainEdge(theStore(), session.id, session.mode, { src: args.src, dst: args.dst, label: args.edgeLabel, edgeType: args.edgeType, target: tgt });
 				return Promise.resolve({ ok: true, what: `边 ${e.src} → ${e.dst}${e.edgeType ? "（" + CHAIN_EDGE_TYPES[e.edgeType] + "）" : ""}${e.label ? "·" + e.label : ""}` });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
