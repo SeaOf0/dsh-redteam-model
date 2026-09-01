@@ -230,9 +230,10 @@ export const TAXONOMIES = {
 			{
 				id: "ai", label: "AI 面", desc: "AI 应用目标作战线（四分型）", forms: ["ai"],
 				items: [
-					{ id: "ai-profile", label: "四分型画像（对话入口/Agent/AI 基础设施/业务内嵌）", pb: "AI 应用作战线 §0（形态判定）" },
+					{ id: "ai-profile", label: "四分型画像（对话入口/Agent/AI 基础设施/业务内嵌）+纯文本模型判定（防目标幻觉）", pb: "AI 应用作战线 §0（形态判定）" },
 					{ id: "prompt-inj", label: "提示词注入（直接/间接/记忆投毒）", pb: "AI 应用作战线 §1", ref: "ai/ai-prompt-injection.md" },
 					{ id: "jailbreak", label: "越狱与 system prompt 泄露", pb: "AI 应用作战线 §1", ref: "ai/ai-jailbreak-techniques.md" },
+					{ id: "output-sink", label: "输出下游解析面（越狱→反序列化/SSTI/命令拼接；纯文本模型无此桥）", pb: "AI 应用作战线 §1" },
 					{ id: "sys-prompt", label: "系统提示词提取（诱导复述/格式绕过）", pb: "AI 应用作战线 §1", ref: "ai/ai-system-prompt-extraction.md" },
 					{ id: "tool-abuse", label: "工具调用滥用（MCP/插件——注入驱动+权限边界）", pb: "AI 应用作战线 §2", ref: "ai/ai-agent-safety.md" },
 					{ id: "config-poison", label: "配置投毒（AGENTS.md/skill）", pb: "AI 应用作战线 §2", ref: "ai/ai-agent-safety.md" },

@@ -83,16 +83,12 @@ var CSS = [
 	".dsh-ata-dot.d-budget{background:#ff9f43}",
 	".dsh-ata-dot.d-todo{background:transparent;border:1px dashed #55688a}",
 	".dsh-ata-hint{font-size:11px;color:#7d97b8}",
-	".dsh-ata-targets{display:flex;gap:6px;flex-wrap:wrap;align-items:center;padding:6px 14px 9px;flex:none;border-top:1px solid rgba(58,157,255,.2)}",
-	".dsh-ata-tgt-label{font-size:11px;color:#8fb4d9;letter-spacing:1px}",
-	".dsh-ata-tgt{display:inline-flex;align-items:center;gap:5px;border:1px solid rgba(58,157,255,.45);border-radius:6px;padding:2px 9px;font-size:11px;color:#d8ecff;background:rgba(58,157,255,.1);backdrop-filter:blur(6px);cursor:pointer;user-select:none;transition:border-color .2s,background .2s}",
-	".dsh-ata-tgt:hover{border-color:rgba(120,200,255,.8)}",
-	".dsh-ata-tgt.is-on{border-color:#38d4ff;background:rgba(56,212,255,.16);color:#eaf7ff}",
-	".dsh-ata-tgt.is-anchor{border-color:rgba(245,197,66,.75);box-shadow:0 0 8px rgba(245,197,66,.22)}",
-	".dsh-ata-tgt i{font-style:normal;font-size:10px;color:#7cc8ff}",
-	".dsh-ata-tgt em{font-style:normal;font-size:9px;color:#ffe9ad;border:1px solid rgba(245,197,66,.6);border-radius:4px;padding:0 3px;line-height:1.4}",
-	".dsh-ata-tgt b{font-weight:600;font-size:10px;color:#9fe8c5}",
-	".dsh-ata-chainscope{display:inline-flex;gap:5px;flex-wrap:nowrap;align-items:center;max-width:44%;overflow-x:auto;padding:1px 2px}",
+	".dsh-ata-targets{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding:6px 14px 9px;flex:none;border-top:1px solid rgba(58,157,255,.2)}",
+	".dsh-ata-tgt-label{font-size:11px;color:#8fb4d9;letter-spacing:1px;flex:none}",
+	".dsh-ata-tgtsel{max-width:460px;min-width:200px;flex:0 1 auto;border:1px solid rgba(58,157,255,.45);border-radius:6px;padding:3px 8px;font-size:11px;color:#d8ecff;background:rgba(10,30,60,.72);backdrop-filter:blur(6px);text-overflow:ellipsis}",
+	".dsh-ata-tgtsel:focus{outline:none;border-color:#38d4ff}",
+	".dsh-ata-tgtsel option{background:#081b33;color:#d8ecff}",
+	".dsh-ata-tgt-anchor{font-size:11px;color:#ffe9ad;border:1px solid rgba(245,197,66,.55);border-radius:6px;padding:2px 8px;flex:none;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}",
 	".dsh-ata-stages{display:flex;align-items:stretch;gap:0;padding:10px 14px;overflow-x:auto;flex:none}",
 	".dsh-ata-stage{position:relative;flex:1;min-width:86px;display:flex;flex-direction:column;align-items:center;gap:5px;padding:5px 4px;cursor:default;user-select:none}",
 	".dsh-ata-stage::before{content:\"\";position:absolute;top:50%;left:-50%;width:100%;height:1px;background:linear-gradient(90deg,transparent,rgba(58,157,255,.5),transparent)}",
@@ -530,7 +526,7 @@ function MatrixView(props) {
 				React.createElement("span", null, React.createElement("i", { className: "dsh-ata-dot d-na" }), S_META.na.label),
 				React.createElement("span", null, React.createElement("i", { className: "dsh-ata-dot d-budget" }), S_META["budget-stop"].label),
 				React.createElement("span", null, React.createElement("i", { className: "dsh-ata-dot d-todo" }), "未测"),
-					React.createElement("span", { className: "dsh-ata-hint" }, "双击阶段推进 · 双击主类整组开测 · 双击子项单格开测 · 目标带单击切视图双击切锚 · 右上「自定义工作方法论」自由编排")),
+					React.createElement("span", { className: "dsh-ata-hint" }, "双击阶段推进 · 双击主类整组开测 · 双击子项单格开测 · 目标带下拉选择锚定目标 · 右上「自定义工作方法论」自由编排")),
 			React.createElement("div", { className: "dsh-ata-forms" },
 				React.createElement("span", {
 					key: "all", className: "dsh-ata-form" + (form === "all" ? " is-on" : ""),
@@ -660,17 +656,15 @@ function ChainModal(props) {
 					"节点 ", React.createElement("b", { style: { color: "#d8ecff" } }, g.nodes.length),
 					" · 边 ", React.createElement("b", { style: { color: "#d8ecff" } }, g.edges.length),
 					" · 重大成果 ", React.createElement("b", { style: { color: "#f5c542" } }, majorN)),
-				multiT ? React.createElement("span", { className: "dsh-ata-chainscope" },
-					React.createElement("span", {
-						className: "dsh-ata-tgt" + (chainScope === "" ? " is-on" : ""),
-						onClick: function () { setChainView(""); }, title: "全部目标链路并图"
-					}, "全部"),
+				multiT ? React.createElement("select", {
+					className: "dsh-ata-tgtsel", style: { maxWidth: 300, minWidth: 160 },
+					value: chainScope,
+					onChange: function (e) { setChainView(e.target.value); },
+					title: "查看哪个目标的链路面（登记走当前锚定目标）；全部=并图"
+				},
+					React.createElement("option", { value: "" }, "全部（并图）"),
 					(props.targets || []).map(function (t) {
-						return React.createElement("span", {
-							key: t.seq, className: "dsh-ata-tgt" + (chainScope === t.label ? " is-on" : "") + (t.active ? " is-anchor" : ""),
-							onClick: function () { setChainView(t.label); },
-							title: "看该目标的链路面（登记走当前锚定目标）"
-						}, t.label, t.active ? React.createElement("em", null, "锚") : null);
+						return React.createElement("option", { key: t.seq, value: t.label }, t.label + (t.active ? " · 当前锚定" : ""));
 					})) : null,
 				React.createElement("span", { style: { flex: 1 } }),
 				React.createElement("button", { type: "button", className: "dsh-ata-chainbtn", onClick: function () { props.trigger({ level: "chain-gen" }); } }, "从会话生成（模型登记）"),
@@ -1518,28 +1512,27 @@ function TargetStrip(props) {
 			React.createElement("span", { className: "dsh-ata-tgt-label" }, anchor.word),
 			React.createElement("span", { className: "dsh-ata-hint" }, anchor.hint));
 	}
-	// 交互约定与矩阵一致：单击=切换视图（预览该目标矩阵），双击=设为当前锚定（回写缺省归属随锚）
+	// 下拉选择=设为当前锚定并查看该目标进度（此后双击派单与缺省回写都归它，不混淆）；
+	// 「全部」=聚合并集视图（不切锚，手动回写仍归当前锚定）。锚定徽标常驻右侧可见。
+	var act = targets.find(function (t) { return t.active; });
 	return React.createElement("div", { className: "dsh-ata-panel dsh-ata-targets" },
 		React.createElement("span", { className: "dsh-ata-tgt-label" }, anchor.word),
-		React.createElement("span", {
-			key: "__all", className: "dsh-ata-tgt" + (props.viewTarget === "" ? " is-on" : ""),
-			onClick: function () { props.onView(""); },
-			title: "聚合视图：全部目标覆盖并集（不改变当前锚定）"
-		}, "全部", props.totalLit ? React.createElement("b", null, props.totalLit) : null),
-		targets.map(function (t) {
-			var viewing = props.viewTarget === t.label;
-			return React.createElement("span", {
-				key: t.seq,
-				className: "dsh-ata-tgt" + (viewing ? " is-on" : "") + (t.active ? " is-anchor" : ""),
-				onClick: function () { props.onView(t.label); },
-				onDoubleClick: function () { props.onView(t.label); props.onSwitch(t); },
-				title: (t.note ? t.note + "｜" : "") + "单击看该目标进度 · 双击设为当前锚定" + (t.active ? "（已是当前锚定）" : "")
+		React.createElement("select", {
+			className: "dsh-ata-tgtsel",
+			value: props.viewTarget === "" ? "" : props.viewTarget,
+			onChange: function (e) {
+				var v = e.target.value;
+				if (v === "") props.onView("");
+				else props.onSwitch({ label: v });
 			},
-			t.label,
-			React.createElement("i", null, t.kindLabel || ""),
-			t.active ? React.createElement("em", null, "锚") : null,
-			(function (n) { return n ? React.createElement("b", null, n) : null; })(props.litCountOf ? props.litCountOf(t.label) : 0));
-		}));
+			title: "选择目标=设为当前锚定并查看其进度（双击派单/回写默认归它）；全部=聚合视图"
+		},
+			React.createElement("option", { value: "" }, "全部（聚合视图" + (props.totalLit ? " · " + props.totalLit + " 格" : "") + "）"),
+			targets.map(function (t) {
+				return React.createElement("option", { key: t.seq, value: t.label },
+					t.label + "（" + (t.kindLabel || "") + (t.active ? " · 当前锚定" : "") + " · " + (props.litCountOf ? props.litCountOf(t.label) : 0) + " 格）");
+			})),
+		act ? React.createElement("span", { className: "dsh-ata-tgt-anchor", title: "当前锚定目标：双击派单与不带 target 的回写默认归它" }, "当前锚定：" + act.label) : null);
 }
 function statCard(cls, value, label) {
 	return React.createElement("div", { className: "dsh-ata-stat " + cls },
