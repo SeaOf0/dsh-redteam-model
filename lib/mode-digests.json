@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
   "modes": {
-    "attack-defense": "sha256:3513636fcd261166cd3b398fa3976fcf4097c7fd55e8c3dbbabb5425f70abf4a",
+    "attack-defense": "sha256:d1717ca8bd9d41f72c12be480004524326844ea4bd1e79a846c3e2110ded0efb",
     "av-evasion": "sha256:42c25e31f83da988f6873403df480046231eb2426e31d9a7ae006d1ca4c3f72e",
     "binary-analysis": "sha256:d765519a06d80813d0f41f04c8eb30732618dd09d1a5b579dc61f9f3b0c7ac30",
-    "cloud-security": "sha256:606a113e387d27ddc7cce0a3207f21c742457e3f819ea2525d11a3403a979bfc",
-    "code-audit": "sha256:c0876f0e453e023fdb60c0fc6bb135417259ce565b05bb33d296c9bdea21b14e",
+    "cloud-security": "sha256:0d769f7419a27c5bf518ba08b49d890c50ae5e43fcb526ad64646be8e3c17d97",
+    "code-audit": "sha256:1fc3575702f95b3550688bef5591588a7276c68ab2368160abcc96cf9e736fb5",
     "ctf-solver": "sha256:57d62783b3d5c8d9ecb29a8c000ca2305dd6c374706791d9061c3f43303f9dd7",
     "incident-response": "sha256:4f6df300c543a285b0adbde5966547e712b9e71296a1697e8c63ef71e629322d",
-    "pentest": "sha256:588972aedb5728a99482fdd0845348dcac6f4f4c3f205d3c61ffb5f4a8617509",
+    "pentest": "sha256:d54e2e299e430f481eea7adbefb260e6f958d24e189a9eb603513d5ecf27502d",
     "redteam": "sha256:3d8a1c89167f0bd3282ff929b01fbd3a6a077f7199918b359861dd35737f9ade"
   }
 }
