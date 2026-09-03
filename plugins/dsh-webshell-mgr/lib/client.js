@@ -142,7 +142,7 @@ function installStyles() {
 	if (!document.getElementById("dsh-rt-tokens")) {
 		var tok = document.createElement("style");
 		tok.id = "dsh-rt-tokens";
-		tok.textContent = ":root{--rt-sev-critical:#c2182f;--rt-sev-high:#ff4d4d;--rt-sev-medium:#d9b00c;--rt-sev-low:#3b7dd8;--rt-sev-critical-bright:#ff8fa0;--rt-sev-high-bright:#ff6b8a;--rt-sev-medium-bright:#ffd43b;--rt-sev-low-bright:#4dabf7;--rt-ok:#2f9e44;--rt-dead:#c92a2a;--rt-ok-bright:#36f1b0;--rt-dead-bright:#ff8787;--rt-accent:var(--dsw-alias-accent,#4c6ef5);--rt-surface-card:var(--dsw-alias-bg-base,#fff);--rt-surface-tint:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff));--rt-border:var(--dsw-alias-border-l1,#e9e9ec);--rt-mono:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,monospace;--rt-navy-bg:rgba(8,24,46,.96);--rt-navy-bg-soft:rgba(12,32,62,.6);--rt-navy-line:rgba(58,157,255,.45);--rt-navy-line-soft:rgba(58,157,255,.28);--rt-navy-text:#e8f3ff;--rt-navy-text-2:#cfe6ff;--rt-navy-body:#b9d2ee;--rt-navy-dim:#7d97b8;--rt-navy-dim-2:#8fb4d9;--rt-navy-accent:#38d4ff;--rt-navy-accent-2:#3a9dff}";
+		tok.textContent = "body{--rt-sev-critical:#c2182f;--rt-sev-high:#ff4d4d;--rt-sev-medium:#d9b00c;--rt-sev-low:#3b7dd8;--rt-sev-critical-bright:#ff8fa0;--rt-sev-high-bright:#ff6b8a;--rt-sev-medium-bright:#ffd43b;--rt-sev-low-bright:#4dabf7;--rt-ok:#2f9e44;--rt-dead:#c92a2a;--rt-ok-bright:#36f1b0;--rt-dead-bright:#ff8787;--rt-accent:var(--dsw-alias-state-business-primary,#4c6ef5);--rt-surface-card:var(--dsw-alias-bg-base,#fff);--rt-surface-tint:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff));--rt-border:var(--dsw-alias-border-l1,#e9e9ec);--rt-mono:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,monospace;--rt-navy-bg:rgba(8,24,46,.96);--rt-navy-bg-soft:rgba(12,32,62,.6);--rt-navy-line:rgba(58,157,255,.45);--rt-navy-line-soft:rgba(58,157,255,.28);--rt-navy-text:#e8f3ff;--rt-navy-text-2:#cfe6ff;--rt-navy-body:#b9d2ee;--rt-navy-dim:#7d97b8;--rt-navy-dim-2:#8fb4d9;--rt-navy-accent:#38d4ff;--rt-navy-accent-2:#3a9dff}";
 		document.head.appendChild(tok);
 	}
 	var css = [
@@ -170,7 +170,7 @@ function installStyles() {
 		".dsh-wsm-pane{flex:1;min-height:0;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}",
 		".dsh-wsm-btn{border:1px solid var(--dsw-alias-border-l1,#e9e9ec);background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);border-radius:7px;padding:6px 12px;font-size:12.5px;cursor:pointer;white-space:nowrap}",
 		".dsh-wsm-btn:hover{background:var(--dsw-alias-interactive-bg-hover,#f4f4f5)}",
-		".dsh-wsm-btn.is-primary{background:var(--dsw-alias-accent,#4c6ef5);border-color:var(--dsw-alias-accent,#4c6ef5);color:#fff}",
+		".dsh-wsm-btn.is-primary{background:var(--rt-accent,#4c6ef5);border-color:var(--rt-accent,#4c6ef5);color:#fff}",
 		".dsh-wsm-btn.is-danger{color:var(--rt-sev-critical,#c92a2a);border-color:color-mix(in srgb,var(--rt-sev-critical,#c92a2a) 35%,transparent)}",
 		".dsh-wsm-btn.is-small{padding:3px 8px;font-size:12px}",
 		".dsh-wsm-btn:disabled{opacity:.45;cursor:not-allowed}",
@@ -210,17 +210,17 @@ function installStyles() {
 		".dsh-wsm-term .is-err{color:#ff8787}",
 		".dsh-wsm-term-in{flex:1;font-family:monospace;font-size:12.5px;border:1px solid var(--dsw-alias-border-l1,#e9e9ec);border-radius:8px;padding:8px 10px;background:var(--dsw-alias-bg-base,#fff);color:inherit}",
 		".dsh-wsm-crumbs{display:flex;gap:2px;align-items:center;flex-wrap:wrap;font-family:monospace;font-size:12px;flex:1;min-width:120px}",
-		".dsh-wsm-crumb{border:none;background:none;cursor:pointer;padding:3px 5px;border-radius:5px;color:var(--dsw-alias-accent,#4c6ef5);font-family:monospace;font-size:12px}",
+		".dsh-wsm-crumb{border:none;background:none;cursor:pointer;padding:3px 5px;border-radius:5px;color:var(--rt-accent,#4c6ef5);font-family:monospace;font-size:12px}",
 		".dsh-wsm-crumb:hover{background:var(--dsw-alias-interactive-bg-hover,#f4f4f5)}",
 		".dsh-wsm-ftype{display:inline-block;width:9px;height:9px;border-radius:2px;vertical-align:-1px;margin-right:6px;border:1.5px solid var(--dsw-alias-label-tertiary,#8a8a8f)}",
-		".dsh-wsm-ftype.is-dir{background:var(--dsw-alias-accent,#4c6ef5);border-color:var(--dsw-alias-accent,#4c6ef5)}",
+		".dsh-wsm-ftype.is-dir{background:var(--rt-accent,#4c6ef5);border-color:var(--rt-accent,#4c6ef5)}",
 		".dsh-wsm-name{cursor:pointer;font-family:monospace;font-size:12px}",
 		".dsh-wsm-name.is-dir{font-weight:600}",
-		".dsh-wsm-name:hover{color:var(--dsw-alias-accent,#4c6ef5);text-decoration:underline}",
+		".dsh-wsm-name:hover{color:var(--rt-accent,#4c6ef5);text-decoration:underline}",
 		".dsh-wsm-scrollbox{border:1px solid var(--dsw-alias-border-l1,#e9e9ec);border-radius:10px;max-height:52vh;overflow:auto}",
 		".dsh-wsm-scrollbox .dsh-wsm-table{border:none}",
 		".dsh-wsm-upbar{height:4px;border-radius:2px;background:var(--dsw-alias-border-l1,#e9e9ec);overflow:hidden}",
-		".dsh-wsm-upbar > div{height:100%;background:var(--dsw-alias-accent,#4c6ef5);transition:width .2s}",
+		".dsh-wsm-upbar > div{height:100%;background:var(--rt-accent,#4c6ef5);transition:width .2s}",
 		".dsh-wsm-skel{border:1px dashed var(--dsw-alias-border-l1,#e9e9ec);border-radius:10px;padding:36px 20px;text-align:center;color:var(--dsw-alias-label-tertiary,#8a8a8f)}",
 		".dsh-wsm-up{position:relative;overflow:hidden}",
 		".dsh-wsm-up input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}",
@@ -551,7 +551,7 @@ function TerminalPane(props) {
 				return h("div", { key: i, className: l.k === "cmd" ? "is-cmd" : l.k === "err" ? "is-err" : "" }, (l.k === "cmd" ? "$ " : "") + l.t);
 			}).concat(busy[0] ? [h("div", { key: "busy" }, "…")] : [])),
 		h("div", { className: "dsh-wsm-row" },
-			h("span", { className: "dsh-wsm-mono", style: { color: "var(--dsw-alias-accent,#4c6ef5)" } }, "$"),
+			h("span", { className: "dsh-wsm-mono", style: { color: "var(--rt-accent,#4c6ef5)" } }, "$"),
 			h("input", {
 				className: "dsh-wsm-term-in", value: input[0], disabled: busy[0],
 				placeholder: "输入命令回车执行（↑↓ 翻历史 / Ctrl+L 清屏）",

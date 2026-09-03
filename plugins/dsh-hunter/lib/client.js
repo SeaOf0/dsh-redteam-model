@@ -57,7 +57,7 @@ function installStyles() {
 	if (!document.getElementById("dsh-rt-tokens")) {
 		var tok = document.createElement("style");
 		tok.id = "dsh-rt-tokens";
-		tok.textContent = ":root{--rt-sev-critical:#c2182f;--rt-sev-high:#ff4d4d;--rt-sev-medium:#d9b00c;--rt-sev-low:#3b7dd8;--rt-sev-critical-bright:#ff8fa0;--rt-sev-high-bright:#ff6b8a;--rt-sev-medium-bright:#ffd43b;--rt-sev-low-bright:#4dabf7;--rt-ok:#2f9e44;--rt-dead:#c92a2a;--rt-ok-bright:#36f1b0;--rt-dead-bright:#ff8787;--rt-accent:var(--dsw-alias-accent,#4c6ef5);--rt-surface-card:var(--dsw-alias-bg-base,#fff);--rt-surface-tint:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff));--rt-border:var(--dsw-alias-border-l1,#e9e9ec);--rt-mono:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,monospace;--rt-navy-bg:rgba(8,24,46,.96);--rt-navy-bg-soft:rgba(12,32,62,.6);--rt-navy-line:rgba(58,157,255,.45);--rt-navy-line-soft:rgba(58,157,255,.28);--rt-navy-text:#e8f3ff;--rt-navy-text-2:#cfe6ff;--rt-navy-body:#b9d2ee;--rt-navy-dim:#7d97b8;--rt-navy-dim-2:#8fb4d9;--rt-navy-accent:#38d4ff;--rt-navy-accent-2:#3a9dff}";
+		tok.textContent = "body{--rt-sev-critical:#c2182f;--rt-sev-high:#ff4d4d;--rt-sev-medium:#d9b00c;--rt-sev-low:#3b7dd8;--rt-sev-critical-bright:#ff8fa0;--rt-sev-high-bright:#ff6b8a;--rt-sev-medium-bright:#ffd43b;--rt-sev-low-bright:#4dabf7;--rt-ok:#2f9e44;--rt-dead:#c92a2a;--rt-ok-bright:#36f1b0;--rt-dead-bright:#ff8787;--rt-accent:var(--dsw-alias-state-business-primary,#4c6ef5);--rt-surface-card:var(--dsw-alias-bg-base,#fff);--rt-surface-tint:color-mix(in srgb,var(--dsw-alias-label-primary,#1a1a1a) 4%,var(--dsw-alias-bg-base,#fff));--rt-border:var(--dsw-alias-border-l1,#e9e9ec);--rt-mono:ui-monospace,\"SF Mono\",SFMono-Regular,Menlo,Consolas,monospace;--rt-navy-bg:rgba(8,24,46,.96);--rt-navy-bg-soft:rgba(12,32,62,.6);--rt-navy-line:rgba(58,157,255,.45);--rt-navy-line-soft:rgba(58,157,255,.28);--rt-navy-text:#e8f3ff;--rt-navy-text-2:#cfe6ff;--rt-navy-body:#b9d2ee;--rt-navy-dim:#7d97b8;--rt-navy-dim-2:#8fb4d9;--rt-navy-accent:#38d4ff;--rt-navy-accent-2:#3a9dff}";
 		document.head.appendChild(tok);
 	}
 	var css = [
@@ -69,7 +69,7 @@ function installStyles() {
 		".dsh-hnt-body{flex:1;min-height:0;overflow:auto;padding:14px 16px;display:flex;flex-direction:column;gap:12px}",
 		".dsh-hnt-btn{border:1px solid var(--dsw-alias-border-l1,#e9e9ec);background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);border-radius:7px;padding:6px 12px;font-size:12.5px;cursor:pointer}",
 		".dsh-hnt-btn:hover{background:var(--dsw-alias-interactive-bg-hover,#f4f4f5)}",
-		".dsh-hnt-btn.is-primary{background:var(--dsw-alias-accent,#4c6ef5);border-color:var(--dsw-alias-accent,#4c6ef5);color:#fff}",
+		".dsh-hnt-btn.is-primary{background:var(--rt-accent,#4c6ef5);border-color:var(--rt-accent,#4c6ef5);color:#fff}",
 		".dsh-hnt-btn.is-danger{color:var(--rt-sev-critical,#c92a2a);border-color:color-mix(in srgb,var(--rt-sev-critical,#c92a2a) 35%,transparent)}",
 		".dsh-hnt-btn.is-small{padding:3px 8px;font-size:12px}",
 		".dsh-hnt-btn:disabled{opacity:.45;cursor:not-allowed}",
@@ -77,9 +77,9 @@ function installStyles() {
 		".dsh-hnt-input{flex:1;min-width:260px;border:1px solid var(--rt-border,#e9e9ec);border-radius:7px;padding:7px 10px;font-size:13px;background:var(--rt-surface-card,#fff);color:var(--dsw-alias-label-primary,#1a1a1a);font-family:var(--rt-mono,monospace)}",
 		".dsh-hnt-select{border:1px solid var(--dsw-alias-border-l1,#e9e9ec);border-radius:7px;padding:6px 8px;font-size:12.5px;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-primary,#1a1a1a)}",
 		".dsh-hnt-notice{border-radius:8px;padding:9px 12px;font-size:12.5px}",
-		".dsh-hnt-notice.is-info{background:color-mix(in srgb,var(--dsw-alias-accent,#4c6ef5) 10%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-accent,#4c6ef5) 35%,transparent)}",
-		".dsh-hnt-notice.is-error{background:#fff5f5;border:1px solid #ffc9c9;color:#c92a2a}",
-		".dsh-hnt-notice.is-success{background:#ebfbee;border:1px solid #b2f2bb;color:#2b8a3e}",
+		".dsh-hnt-notice.is-info{background:color-mix(in srgb,var(--rt-accent,#4c6ef5) 10%,transparent);border:1px solid color-mix(in srgb,var(--rt-accent,#4c6ef5) 35%,transparent)}",
+		".dsh-hnt-notice.is-error{background:color-mix(in srgb,var(--dsw-alias-state-error-primary,#c92a2a) 10%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-state-error-primary,#c92a2a) 35%,transparent);color:var(--dsw-alias-state-error-primary,#c92a2a)}",
+		".dsh-hnt-notice.is-success{background:color-mix(in srgb,var(--dsw-alias-state-success-primary,#2b8a3e) 10%,transparent);border:1px solid color-mix(in srgb,var(--dsw-alias-state-success-primary,#2b8a3e) 35%,transparent);color:var(--dsw-alias-state-success-primary,#2b8a3e)}",
 		".dsh-hnt-table{width:100%;border-collapse:collapse;font-size:12.5px}",
 		".dsh-hnt-table th,.dsh-hnt-table td{border-bottom:1px solid var(--dsw-alias-border-l2,#e4e4e7);padding:7px 8px;text-align:left;vertical-align:top}",
 		".dsh-hnt-table th{position:sticky;top:0;background:var(--dsw-alias-bg-base,#fff);color:var(--dsw-alias-label-secondary,#5b5b60);font-weight:600;font-size:12px;white-space:nowrap}",
@@ -107,7 +107,7 @@ function installStyles() {
 		".dsh-hnt-field label{color:var(--dsw-alias-label-secondary,#5b5b60);font-weight:600}",
 		".dsh-hnt-tabs{display:flex;gap:4px;border-bottom:1px solid var(--dsw-alias-border-l2,#e4e4e7);margin-bottom:4px}",
 		".dsh-hnt-tab{border:none;background:none;padding:7px 12px;font-size:13px;cursor:pointer;color:var(--dsw-alias-label-secondary,#5b5b60);border-bottom:2px solid transparent}",
-		".dsh-hnt-tab.is-active{color:var(--dsw-alias-label-primary,#1a1a1a);font-weight:600;border-bottom-color:var(--dsw-alias-accent,#4c6ef5)}",
+		".dsh-hnt-tab.is-active{color:var(--dsw-alias-label-primary,#1a1a1a);font-weight:600;border-bottom-color:var(--rt-accent,#4c6ef5)}",
 		"@media (max-width:720px){.dsh-hnt-head{flex-direction:column;align-items:flex-start}.dsh-hnt-input{min-width:100%}}"
 	].join("\n");
 	var style = document.createElement("style");
