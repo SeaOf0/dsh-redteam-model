@@ -210,11 +210,21 @@ function installStyles() {
 
 function apply(ctx) {
 	ctx.effect(function () { return installStyles(); }, "dsh-mode-group: styles");
-	ctx.inject(["slots", "conversation", "sessions", "workspaces", "connection", "remote"], function (scope) {
+	ctx.inject(["slots", "conversation", "sessions", "workspaces", "remote", "remote.agentPresets"], function (scope) {
 		var active = true;
 		var stops = [];
 		function addStop(f) { stops.push(f); }
-		var api = scope.get("connection").api;
+		// 宿主 0.1.2 起 connection 不再携带组装好的 api 表面——预设的读写走 remote
+		// 通道（list 无参、select(sessionId, presetId) 位置参数），这里桥接回旧调用形态。
+		function wrap(res) {
+			return { result: res && res.ok ? { ok: true, value: res.value } : { ok: false, error: res && res.error || { message: "request failed" } } };
+		}
+		var api = {
+			agentPresets: {
+				list: function () { return scope.remote.agentPresets.list().then(wrap); },
+				select: function (q) { return scope.remote.agentPresets.select(q.sessionId, q.agentPreset).then(wrap); }
+			}
+		};
 		var ctl = createController(api, function () {
 			if (!active) return undefined;
 			try {
@@ -258,5 +268,5 @@ function apply(ctx) {
 	});
 }
 
-module.exports = { name: "dsh-mode-group-client", inject: ["slots", "locale", "connection", "remote"], apply: apply };
+module.exports = { name: "dsh-mode-group-client", inject: ["slots", "locale", "remote", "remote.agentPresets"], apply: apply };
 return module.exports; } });
