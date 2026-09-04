@@ -34,7 +34,19 @@ import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import z from "@deepseek-ai/schemastery";
-import { installSettingsSection } from "@deepseek-ai/dsh-settings";
+import * as dshSettings from "@deepseek-ai/dsh-settings";
+
+// 具名 import 在导出被宿主移除时会链接期崩溃，这里按宿主版本选择注册路径：
+// 旧宿主提供顶层 installSettingsSection；新宿主将其收纳为 settings 服务的 installSection 方法。
+function installSettingsSection(ctx, ns, schema, entry, hooks) {
+	if (typeof dshSettings.installSettingsSection === "function") {
+		dshSettings.installSettingsSection(ctx, ns, schema, entry, hooks);
+		return;
+	}
+	ctx.inject(["settings"], function (sctx) {
+		sctx.settings.installSection(ctx, ns, schema, entry, hooks);
+	});
+}
 
 const name = "dsh-refusal-guard";
 
