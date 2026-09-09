@@ -66,7 +66,14 @@ export interface OperationStartPayload {
   readonly targets?: readonly string[]
 }
 
-export type RpcResult = { ok: true; value: unknown } | { ok: false; error: { message: string } }
+/**
+ * RPC result shape. The failure branch matches the host client-connection
+ * `rpcErrorSchema` contract (code/message/details) so the browser SDK can
+ * validate the envelope and surface `message` instead of a zod union error.
+ */
+export type RpcResult =
+  | { ok: true; value: unknown }
+  | { ok: false; error: { code: 'internal'; message: string; details: Record<string, unknown> } }
 
 /** Minimal face of the host `connection` service used by this plugin. */
 export interface HostConnectionHandle {

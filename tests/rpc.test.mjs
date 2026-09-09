@@ -43,13 +43,19 @@ test('RPC registers as loopback and rejects unknown input', async () => {
   const fixture = rpcFixture()
   try {
     assert.equal(fixture.authority(), 'loopback')
-    assert.equal((await fixture.call('unknown')).ok, false)
+    const unknown = await fixture.call('unknown')
+    assert.equal(unknown.ok, false)
+    // Failure envelopes must satisfy the host client-connection rpcErrorSchema
+    // (code/message/details) or the browser SDK hides the real cause (#10).
+    assert.equal(unknown.error.code, 'internal')
+    assert.equal(typeof unknown.error.message, 'string')
+    assert.deepEqual(unknown.error.details, {})
     assert.equal((await fixture.call('operation/start', { kind: 'shell', target: 'x' })).ok, false)
     assert.equal((await fixture.call('operation/start', { kind: 'repair', target: '../../outside' })).ok, false)
     assert.equal((await fixture.call('operation/start', { kind: 'repair', target: 'redteam', targets: {} })).ok, false)
     assert.equal((await fixture.call('operation/start', { kind: 'deploy-modes', target: 'redteam', targets: 'redteam' })).ok, false)
     assert.equal((await fixture.call('operation/start', { kind: 'install', target: 'missing-plugin' })).ok, false)
-    const overflow = Array.from({ length: 16 }, () => 'dsh-hunter')
+    const overflow = Array.from({ length: 33 }, () => 'dsh-hunter')
     assert.equal((await fixture.call('operation/start', { kind: 'install', target: 'missing', targets: overflow })).ok, false)
   } finally {
     fixture.cleanup()

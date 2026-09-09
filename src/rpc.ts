@@ -29,7 +29,8 @@ import {
 
 const ENDPOINTS = new Set(['status', 'operation/start', 'operation/cancel', 'operations/clear'])
 const OPERATION_KINDS = new Set<OperationKind>(['deploy-modes', 'install', 'update', 'uninstall', 'repair'])
-const MAX_TARGETS = 15
+/** Upper bound for one batch; must cover a full first-run install of every delivered plugin. */
+const MAX_TARGETS = 32
 /** Sentinel `target` values used by the client for batch operations. */
 const BATCH_TARGETS: Record<'install' | 'update' | 'uninstall', string> = {
   install: 'missing',
@@ -187,7 +188,9 @@ export function registerModelRpc(connection: HostConnectionHandle, queue: Operat
     try {
       return handleEndpoint(endpoint, rawPayload, queue)
     } catch (error) {
-      return { ok: false, error: { message: error instanceof Error ? error.message : String(error) } }
+      // Host-client `rpcErrorSchema` requires code+message+details; a bare
+      // `{message}` shape fails SDK validation and hides the real cause.
+      return { ok: false, error: { code: 'internal' as const, message: error instanceof Error ? error.message : String(error), details: {} } }
     }
   }, { authority: 'loopback' })
 }
