@@ -1,5 +1,8 @@
 /** Persistent Host settings for repository-owned conversation views. */
-import { settingsNamespace, type SettingsNamespace } from '@deepseek-ai/dsh-settings'
+// 具名 import 在宿主移除导出时会链接期崩溃（dsh 0.1.2+ 不再单独导出
+// settingsNamespace），改命名空间导入 + 运行时探测，缺失时降级为等价校验糖。
+import * as dshSettings from '@deepseek-ai/dsh-settings'
+import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
 import {
   DEFAULT_CONVERSATION_VIEW_SETTINGS,
@@ -13,7 +16,17 @@ export {
 } from './conversationViewState.ts'
 export type { ConversationViewField, ConversationViewSettings } from './conversationViewState.ts'
 
-export const CONVERSATION_VIEW_SETTINGS_NAMESPACE = settingsNamespace('redteam-manager-ui')
+const NAMESPACE_PATTERN = /^[a-z][a-z0-9-]*$/
+
+function fallbackNamespace(value: string): SettingsNamespace {
+  if (!NAMESPACE_PATTERN.test(value)) throw new TypeError(`settings namespace "${value}" must match ${String(NAMESPACE_PATTERN)}`)
+  return value as SettingsNamespace
+}
+
+export const CONVERSATION_VIEW_SETTINGS_NAMESPACE: SettingsNamespace =
+  typeof dshSettings.settingsNamespace === 'function'
+    ? dshSettings.settingsNamespace('redteam-manager-ui')
+    : fallbackNamespace('redteam-manager-ui')
 
 export const ConversationViewSettingsSchema: z<ConversationViewSettings> = z.object({
   showCampaignMemory: z.boolean().default(true),
