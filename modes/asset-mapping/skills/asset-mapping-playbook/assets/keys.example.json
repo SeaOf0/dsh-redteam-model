@@ -1,0 +1,10 @@
+{
+  "_comment": "平台密钥模板 — 复制到 <工作目录>/keys.json, 只填有的平台, 缺的平台自动跳过。fofa.key=FOFA个人API Key; hunter.key=鹰图平台API Key(hunter.qianxin.com); quake.key=Quake_TOKEN(quake.360.net); zoomeye.key=ZoomEye API-KEY(api.zoomeye.hk), base可选api.zoomeye.hk/api.zoomeye.org.cn; shodan.key=Shodan API Key; 可选: viewdns/securitytrails 用于DNS历史",
+  "fofa": {"key": ""},
+  "hunter": {"key": ""},
+  "quake": {"key": "", "size": 100},
+  "zoomeye": {"key": "", "base": "https://api.zoomeye.hk"},
+  "shodan": {"key": ""},
+  "viewdns": {"key": ""},
+  "securitytrails": {"key": ""}
+}

@@ -1,0 +1,31 @@
+{
+  "_comment": "范围定义文件模板 — 复制到 <工作目录>/scope.json 后按授权书填写。domains=单位主域(含集团遗产域归属此单位的); icp=备案号(去掉末尾-序号, 从爱企查/工信部/平台ICP字段获取); sub_overrides=域名后缀匹配不了的子域手工归属; group_domains_out_of_scope=集团母公司域(未授权的子域一律范围外); targets_ip=用户直接指定的IP/CIDR目标(网段内资产自动算范围内); keywords=靶标关联度打分词(命中=高关联)。只会给域名/IP/集团名? 先跑 scripts/s0_expand.py 自动展开成草稿再人工核对。",
+  "project": "示例集团",
+  "authorization": "授权方+授权窗口(如 2026-01-01~2026-01-14)+排除主体",
+  "criteria": "范围单位全部公网资产(不限于靶标系统)",
+  "units": [
+    {
+      "name": "示例二级单位A",
+      "system": "靶标系统名(无则写-)",
+      "domains": ["a-example.com"],
+      "icp": ["京ICP备12345678"],
+      "note": ""
+    },
+    {
+      "name": "示例二级单位B",
+      "system": "-",
+      "domains": ["b-example.com.cn"],
+      "icp": ["沪ICP备87654321"],
+      "note": "挂靠集团域的资产见 sub_overrides"
+    }
+  ],
+  "sub_overrides": {
+    "app.group.com": {"unit": "示例二级单位A", "note": "集团域下归属A单位的系统"}
+  },
+  "group_domains_out_of_scope": ["group.com"],
+  "targets_ip": ["203.0.113.10", "198.51.100.0/24"],
+  "keywords": {
+    "示例二级单位A": ["关键词1", "keyword2"]
+  },
+  "junk_ip_prefixes": ["1.2.3."]
+}

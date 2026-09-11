@@ -12,8 +12,8 @@ var useState = React.useState, useEffect = React.useEffect, useRef = React.useRe
 
 //#region 纯逻辑镜像（与 lib/pulse.js 保持逐行为等价）
 
-var PULSE_MODES = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver"];
-var MODE_LABELS = { redteam: "安全研究员", pentest: "渗透测试", "code-audit": "代码审计", "binary-analysis": "二进制分析", "attack-defense": "攻防评估", "av-evasion": "免杀对抗", "incident-response": "应急溯源", "cloud-security": "云安全攻防", "ctf-solver": "CTF 解题" };
+var PULSE_MODES = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver", "asset-mapping"];
+var MODE_LABELS = { redteam: "安全研究员", pentest: "渗透测试", "code-audit": "代码审计", "binary-analysis": "二进制分析", "attack-defense": "攻防评估", "av-evasion": "免杀对抗", "incident-response": "应急溯源", "cloud-security": "云安全攻防", "ctf-solver": "CTF 解题", "asset-mapping": "资产测绘" };
 
 function modeOk(agentPreset, serverMode) {
 	if (PULSE_MODES.includes(agentPreset)) return true;

@@ -118,8 +118,8 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	st.close();
 }
 
-// 7. 模式清单完整性（九模式）
-ok("九模式清单", Array.isArray(MODE_IDS) && MODE_IDS.length === 9);
+// 7. 模式清单完整性（十模式）
+ok("十模式清单", Array.isArray(MODE_IDS) && MODE_IDS.length === 10 && MODE_IDS.includes("asset-mapping"));
 
 // 8. apply 装配：defineTool 方言冒烟（真 dsh-tools）+ 事件接线 + 模式门禁
 //    库走 DSH_TRACE_VAULT_DB 临时文件，不碰真实过程库。

@@ -3,7 +3,7 @@
 // 把「模型停下等用户输入」的断点焊上：subagent 类执行体返回（tool/result）时，
 // 若意图台账有未收口方向，主动 followup 注入一条推进提醒——按台账收口本次执行
 // 对应的意图（done 附产出指位 / blocked 附原因），再依锚派下一步（operation_intent）
-// 或收工。事件驱动闭环的最后一环。
+// 或收工。这是 ARTEX NotifyDone→再规划的 dsh 翻译：事件驱动闭环的最后一环。
 //
 // 三护栏（自主不失控）：
 //   1) 轮数上限——连续自动推进 maxAutoTurns 轮封顶，真人消息（含其他插件注入）重置计数；
@@ -22,7 +22,7 @@ import z from "@deepseek-ai/schemastery";
 const name = "dsh-auto-advance";
 const inject = ["agentPresets"];
 
-export const MODE_IDS = ["pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver"];
+export const MODE_IDS = ["pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver", "asset-mapping"];
 
 const Config = z.object({
 	enable: z.boolean().default(true),
@@ -65,7 +65,8 @@ export const MODE_VOICE = {
 	"av-evasion": { done: "判定结果（过检或被检出，附判定环境）", next: "下一配对实验" },
 	"incident-response": { done: "证据指位与时间线位置", next: "下一排查项" },
 	"cloud-security": { done: "战果与攻击路径四要素位置", next: "下一身份或资源路径" },
-	"ctf-solver": { done: "flag 与解题路径", next: "下一题或下一模块" }
+	"ctf-solver": { done: "flag 与解题路径", next: "下一题或下一模块" },
+	"asset-mapping": { done: "测绘阶段产物（runs/ 落盘指位或 Excel 表）", next: "下一管线阶段或补充情报源" }
 };
 
 /** 推进决策（纯函数，供测试）：返回 {nudge:false,reason} 或 {nudge:true,text}。

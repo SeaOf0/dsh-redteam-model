@@ -20,11 +20,11 @@ test('scanPlugins discovers all 17 sub-plugins with correct planes', () => {
   }
 })
 
-test('scanModes discovers the nine security modes', () => {
+test('scanModes discovers the ten security modes', () => {
   const modes = scanModes(repoRoot)
-  assert.equal(modes.length, 9)
+  assert.equal(modes.length, 10)
   const ids = new Set(modes.map(mode => mode.id))
-  for (const expected of ['redteam', 'pentest', 'code-audit', 'binary-analysis', 'attack-defense', 'av-evasion', 'incident-response', 'cloud-security', 'ctf-solver']) {
+  for (const expected of ['redteam', 'pentest', 'code-audit', 'binary-analysis', 'attack-defense', 'av-evasion', 'incident-response', 'cloud-security', 'ctf-solver', 'asset-mapping']) {
     assert.equal(ids.has(expected), true, `missing mode: ${expected}`)
   }
 })
@@ -35,7 +35,7 @@ test('getStatus reports an untouched profile as all not-installed without profil
   process.env.DSH_HOME = isolatedHome
   try {
     const status = getStatus([], repoRoot)
-    assert.equal(status.summary.modesTotal, 9)
+    assert.equal(status.summary.modesTotal, 10)
     assert.equal(status.summary.pluginsTotal, 17)
     assert.equal(status.summary.pluginsInstalled, 0)
     assert.equal(status.summary.profileError, undefined)
@@ -56,10 +56,10 @@ test('deployModes copies modes into an existing real .agent-presets directory wi
   process.env.DSH_HOME = isolatedHome
   try {
     const detail = deployModes(repoRoot)
-    assert.match(detail, /copied 9 modes/)
+    assert.match(detail, /copied 10 modes/)
     assert.equal(existsSync(path.join(presetsDir, 'router-standard')), true)
     const status = getStatus([], repoRoot)
-    assert.equal(status.summary.modesReady, 9)
+    assert.equal(status.summary.modesReady, 10)
     const marker = JSON.parse(readFileSync(path.join(presetsDir, '.dsh-redteam-model.json'), 'utf8'))
     assert.equal(marker.schemaVersion, 2)
     assert.equal(marker.owner, '@dsh-external/dsh-redteam-model')

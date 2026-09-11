@@ -8,7 +8,7 @@
 >
 > ————不断完善workflow，用workflow的方式来尽可能补足缺陷；高效+真实是核心。
 
-基于 [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) web 实现的九个 redteam 安全研究工作模式（预设）及其运行时插件，自包含、可离线部署。目标是服务于 redteam 进行授权安全研究，覆盖渗透测试、红队评估、代码审计、二进制分析、免杀对抗、应急溯源、云安全攻防与 CTF 解题领域。
+基于 [dsh](https://www.npmjs.com/package/@deepseek-ai/dsh) web 实现的十个 redteam 安全研究工作模式（预设）及其运行时插件，自包含、可离线部署。目标是服务于 redteam 进行授权安全研究，覆盖渗透测试、红队评估、代码审计、二进制分析、免杀对抗、应急溯源、云安全攻防、CTF 解题与资产测绘领域。
 
 **该项目是为 [https://github.com/deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) 赋能的项目，先装好 deepseek-harness 以后，再装该项目；**
 
@@ -20,7 +20,7 @@
 2、在"AttackAtlas"插件中，右上角具备两个功能"自定义工作方法论"&"能力库"，如果内置能力中，没有你需要的能力，可以在"能力库"中添加主类、子类，完成以后再到"自定义工作方法论"中构建属于你的工作方法论（类似于workflow），有问题欢迎提或者自己再改。
 ```
 
-## 九个工作模式
+## 十个工作模式
 
 | 模式 | 定位 |
 |---|---|
@@ -33,6 +33,7 @@
 | `incident-response` 应急溯源 | Windows/Linux 应急响应与攻击溯源：多场景定义，建议prompt描述好处于什么场景（挖矿、蠕虫、病毒木马攻防下的排查等）——有兴趣的可以看下另一项目dumpall+AI分析，很好用还是。 |
 | `cloud-security` 云安全攻防 | 云平台与云原生渗透：这里就不再废话了， |
 | `ctf-solver` CTF 解题 | CTF 竞赛解题：题面登记、模块路由（web/pwn/reverse/crypto/misc 等）、解题循环、flag 台账与复盘 |
+| `asset-mapping` 资产测绘 | 资产测绘：有FOFA/Hunter/Quake/ZoomEye/Shodan + 子域/DNS 校验 + ICP 备案归属 + 指纹识别，产出可审计的资产清册 Excel（六工作表，看模板） |
 
 每个模式自包含四层资产：——根据dsh模式的设计论
 
@@ -52,15 +53,15 @@
 | `dsh-route-boost` | 逐轮治理信封：阶段推断+ 门禁清单 + 模式边界 + 证据等级预判 + refs 指针 + 技能依赖工具面就绪行+ operation 恢复行，任务口径判定、结构化标记块注入、整行粒度预算、变化才投递并落注入量记账 |
 | `dsh-sec-enforce` | 确定性工具拦截：报告门、写边界、高危命令先问后做、裸奔扫描限速 |
 | `dsh-refusal-guard` | —————反拒绝—————AGENTS.md兜底 |
-| `dsh-trace-vault` | 过程留痕库：九安全模式会话全量落库工具调用；`trace_search`/`trace_get`/`trace_recent`/`trace_stats` 检索与会话画像； |
+| `dsh-trace-vault` | 过程留痕库：十安全模式会话全量落库工具调用；`trace_search`/`trace_get`/`trace_recent`/`trace_stats` 检索与会话画像； |
 | `dsh-auto-advance` | 自动推进器：subagent 执行体返回且意图台账有未收口方向时注入推进提醒；开工三登记一次性提醒；轮数封顶/真人接管重置/冷却窗三护栏，无台账会话零干扰 |
 | `dsh-product-subagents` | `subagent_claude_code`/`subagent_codex` provider：无头 spawn 本机 claude/codex CLI，跨 harness 复核按建议项由用户触发 |
 | `dsh-mcp-studio` | MCP 加载工作台：通用类 MCP（burpsuite/yakit/chrome-dev-mcp 等）的接入、状态与诊断 |
 | `dsh-redteam-results` | redteam 成果：任务台账作战大屏 + 五板式成果页，九模式**跨会话**聚合与时间范围筛选，SQLite 行级持久 |
 | `dsh-hunter` | hunter 狩猎：FOFA / Hunter / Quake 三平台资产搜索，代码审计成果页「实测」按钮一键验证（指纹搜索→存活探测→EXP 验证，仅授权资产执行） |
 | `dsh-campaign-memory` | 战役记忆：跨会话打法沉淀，同模式同工作区同题写入即刷新不重复，读全文记账、热度×30 天时间衰减排序，按工作区隔离召回，检测指纹 30 天自动清理、目标指纹 180 天到期退场仍可检索； |
-| `dsh-mode-group` | 新建会话屏模式选择器两级化：内置模式与研究员模式留顶层，八个专业安全模式折叠进「专业安全模式」悬停/点击子菜单 |
-| `dsh-session-pulse` | 会话状态面板（九模式）：头部右上角任务进度 chip（任务清单实时汇总 done/total + 进度条，全部完成转绿）+ 子代理 chip；右侧「子智能体目录」抽屉（正在运行/已结束分组，点名进入子代理会话查看运行内容，打开期间目录实时更新）；对话页左侧「提示词」栏（用户输入按序成列，悬停预览、点击平滑定位到消息并高亮，仅对话标签页可见） |
+| `dsh-mode-group` | 新建会话屏模式选择器两级化：内置模式与研究员模式留顶层，九个专业安全模式折叠进「专业安全模式」悬停/点击子菜单 |
+| `dsh-session-pulse` | 会话状态面板（十模式）：头部右上角任务进度 chip（任务清单实时汇总 done/total + 进度条，全部完成转绿）+ 子代理 chip；右侧「子智能体目录」抽屉（正在运行/已结束分组，点名进入子代理会话查看运行内容，打开期间目录实时更新）；对话页左侧「提示词」栏（用户输入按序成列，悬停预览、点击平滑定位到消息并高亮，仅对话标签页可见） |
 | `dsh-attack-atlas` | AttackAtlas 攻击面图谱：八专业模式架构矩阵四态点亮与阶段带、目标锚定（覆盖态按目标分账、当前锚定切换、聚合视图，矩阵/阶段带/链路拓扑逐目标独立）、双击派单；自定义工作方法论；工具 / MCP / 自定义工具模块；能力库（自定义主类 / 子类并入图谱与方法论） |
 | `dsh-scanner-tools` | 本机扫描器封装：nuclei/httpx/ffuf + 声明式注册表十三工具（nmap·masscan·subfinder·gau·whatweb·wafw00f·dirsearch·sqlmap·nikto·hydra·impacket·netexec·crackmapexec）——六节点工具调用阶梯（本机→MCP→已装替代→MCP 备选→询问安装→脚本）、保守默认+显式覆盖留痕、防盲打登记、全文落盘+预览封顶+连续失败熔断 |
 | `dsh-semgrep-audit` | `semgrep_scan` 工具：本机 semgrep 封装 + 预设离线规则集自动定位（java 自建 / php / oss 三层），命中双写 `scan-reconcile.md`/`.csv` 对账（命中≠漏洞，复核补链后经成果登记升格），检测制绝不自动装、`--metrics=off` 离线、产物只落任务工作区 |
@@ -80,7 +81,7 @@ dsh plugin --profile web add github:SeaOf0/dsh-redteam-model
 
 打开 dsh web 设置页 → **Redteam Manager**，即可：
 
-- 一键部署九个安全模式（空目录使用整体链接；已有实体 `.agent-presets` 时写入管理器持有的实体副本）；
+- 一键部署十个安全模式（空目录使用整体链接；已有实体 `.agent-presets` 时写入管理器持有的实体副本）；
 - 安装 / 更新 / 卸载十七个运行时插件；
 - 查看操作进度与失败原因；最近 50 条记录按 profile 保留，重启时未完成任务会标记为中断失败。
 
@@ -95,7 +96,7 @@ dsh plugin --profile web add github:SeaOf0/dsh-redteam-model
 ```bash
 cd dsh-redteam-model/deploy
 node deploy.mjs            # 安装：预设链接 + 插件挂载 + 依赖安装（幂等可重跑）
-node deploy.mjs --check    # 离线校验：九预设挂载 + 插件真实 loader 路径 + bundle 声明
+node deploy.mjs --check    # 离线校验：十预设挂载 + 插件真实 loader 路径 + bundle 声明
 node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
 ```
 
@@ -105,9 +106,9 @@ node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
 
 部署后 2 分钟人工验证：
 
-1. 打开 [http://127.0.0.1:3080](http://127.0.0.1:3080)，roster 列出九个模式（redteam 安全研究员 + 八个专业模式）；
+1. 打开 [http://127.0.0.1:3080](http://127.0.0.1:3080)，roster 列出十个模式（redteam 安全研究员 + 九个专业模式）；
 2. 任一会话让模型调 `gates_list`，返回专业模式门禁 schema；
-3. pentest/attack-defense/cloud-security/ctf-solver 会话可见 `nuclei_scan` 等扫描工具（其余模式不可见 = preset 平面正确）；
+3. pentest/attack-defense/cloud-security/ctf-solver/asset-mapping 会话可见 `nuclei_scan` 等扫描工具（其余模式不可见 = preset 平面正确）；
 4. 发起任务后出现 `[route-boost] mode=... phase=...` 运行时信封快照；
 5. 未过报告门就写 `reports/` 会被 sec-enforce 拦截并指路。
 
@@ -119,7 +120,7 @@ node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
 
 ```mermaid
 flowchart TB
-    U[用户 @ dsh web :3080] --> PS[模式会话 redteam / pentest / code-audit / binary-analysis / attack-defense / av-evasion / incident-response / cloud-security / ctf-solver]
+    U[用户 @ dsh web :3080] --> PS[模式会话 redteam / pentest / code-audit / binary-analysis / attack-defense / av-evasion / incident-response / cloud-security / ctf-solver / asset-mapping]
 
     subgraph MODE[模式资产（预设四层）]
         PE[persona 角色与边界]
@@ -148,7 +149,7 @@ flowchart TB
     PS -->|复核委托| SA
     PS -->|审计实测| HU
     PS -->|矩阵覆盖与自定义方法论| AA
-    PS -->|pentest/ad 专用| SC
+    PS -->|pentest/ad 等 5 模式专用| SC
     SG -->|判定| GL[(gate-log.md)]
     SE -->|拒绝留痕| EL[(enforce-log.md)]
     SC -->|产物| EV[(evidence-index.md / scan-reconcile.md)]
@@ -158,13 +159,13 @@ flowchart TB
 
 ```
 dsh-redteam-model/
-├── modes/                    # 九个模式预设（DSH 发现器经 ~/.dsh/.agent-presets 链接扫描）
+├── modes/                    # 十个模式预设（DSH 发现器经 ~/.dsh/.agent-presets 链接扫描）
 │   └── <mode>/
 │       ├── preset.yml        # 模式名与定位
 │       ├── agent.cordis.yml  # persona + 组合行（工具/技能/MCP/子代理）
 │       ├── skills/           # playbook 等模式技能
 │       └── refs/             # 知识库（README.md 全量索引，零本机路径）
-├── shared/skills/            # 九预设共享技能（生态协作/独立复核/治理/边界）
+├── shared/skills/            # 十预设共享技能（生态协作/独立复核/治理/边界）
 ├── plugins/                  # 十七个运行时插件（各自含 lib/ 测试/README）
 └── deploy/                   # 一键部署 CLI（deploy.mjs / verify-deployment.mjs / check-sources.mjs / DEPLOY.md）
 ```
@@ -206,6 +207,13 @@ dsh-redteam-model/
 
 - https://github.com/Just-Hack-For-Fun/Linux-INCIDENT-RESPONSE-COOKBOOK
 - https://github.com/Just-Hack-For-Fun/Windows-INCIDENT-RESPONSE-COOKBOOK
+
+资产测绘模式全量指纹库重建脚本（`asset-mapping-playbook/scripts/fpdb_update.py`）运行时从以下开源指纹库拉取数据：
+
+- https://github.com/EASY233/Finger
+- https://github.com/EdgeSecurityTeam/EHole
+- https://github.com/0x727/FingerprintHub
+- https://github.com/Mr-xn/Finger
 
 ## 开源协议
 

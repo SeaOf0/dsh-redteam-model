@@ -61,7 +61,8 @@ const SECURITY_PRESETS = new Set([
 	"redteam",
 	"incident-response",
 	"cloud-security",
-	"ctf-solver"
+	"ctf-solver",
+	"asset-mapping"
 ]);
 
 // Three-tier detection: strong phrases full-text + weak keywords head-150 +

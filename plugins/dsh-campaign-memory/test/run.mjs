@@ -88,7 +88,7 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	const nMatch = / n="(\d+)">/.exec(fb2);
 	ok("预算截断硬上限 ≤700（修复 723 超限）", fb2.length <= 700 && fb2.endsWith("</dsh-campaign-memory>"));
 	ok("截断先减记忆行：指引行保留、首行保留、n 同步实留行数", fb2.includes("campaign_memory_search") && fb2.includes("超预算行0") && !fb2.includes("超预算行9") && nMatch !== null && Number(nMatch[1]) < 10);
-	ok("九模式名单齐", MODE_IDS.length === 9 && MODE_IDS.includes("redteam"));
+	ok("十模式名单齐", MODE_IDS.length === 10 && MODE_IDS.includes("redteam") && MODE_IDS.includes("asset-mapping"));
 	st.close();
 }
 

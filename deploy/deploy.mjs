@@ -1,14 +1,14 @@
 #!/usr/bin/env node
-// 六模式 + redteam 主模式 presets 自包含一键部署 CLI（win/mac/linux，零新增依赖：node>=22 + 网络）。
+// 九专业模式 + redteam 主模式 presets 自包含一键部署 CLI（win/mac/linux，零新增依赖：node>=22 + 网络）。
 //
-// dsh-redteam-model/ 即完整交付物：modes/（九预设：八专业模式 + redteam 主模式）+ shared/ +
-// plugins/（十五插件）+ deploy/（本工具）。发现链接指向 modes/，只扫九个干净预设；
+// dsh-redteam-model/ 即完整交付物：modes/（十预设：九专业模式 + redteam 主模式）+ shared/ +
+// plugins/（十五插件）+ deploy/（本工具）。发现链接指向 modes/，只扫十个干净预设；
 // 其余目录在链接之外不会入 roster。
 // 移交方式：打包 dsh-redteam-model（--bundle 产出 dsh-redteam-model-bundle-<date>.tar.gz），
 // 目标机解压后一条命令完成部署。
 //
 //   node deploy.mjs            # 安装：预设链接(备份不删) + 插件 link/bundle 登记 + pnpm install
-//   node deploy.mjs --check    # 离线校验：九预设挂载 + 插件真实 loader 路径 + dsh.bundle 声明
+//   node deploy.mjs --check    # 离线校验：十预设挂载 + 插件真实 loader 路径 + dsh.bundle 声明
 //   node deploy.mjs --start    # 后台启动 dsh web (:3080)
 //   node deploy.mjs --bundle   # 打包 presets 根为 tar.gz（系统 tar：mac/linux 及 Win10+ bsdtar）
 //
@@ -22,8 +22,8 @@ import os from "node:os";
 import { spawnSync, spawn } from "node:child_process";
 
 const IS_WIN = process.platform === "win32";
-// 布局：dsh-redteam-model/{ modes/<九预设>, shared/, plugins/<十五插件>, deploy/ }。
-// 预设发现链接指向 modes/（发现器只扫其直接子目录=九个干净预设；shared/plugins/deploy
+// 布局：dsh-redteam-model/{ modes/<十预设>, shared/, plugins/<十五插件>, deploy/ }。
+// 预设发现链接指向 modes/（发现器只扫其直接子目录=十个干净预设；shared/plugins/deploy
 // 平铺在 modes 之外，避免被当成缺 agent.cordis.yml 的损坏预设行）。
 const MODEL_ROOT = path.resolve(import.meta.dirname, ".."); // dsh-redteam-model/ 本身
 const PRESETS_ROOT = path.join(MODEL_ROOT, "modes");
@@ -32,7 +32,7 @@ const DSH_HOME = process.env.DSH_HOME ?? path.join(os.homedir(), ".dsh");
 const PRESET_LINK = path.join(DSH_HOME, ".agent-presets");
 const PROFILE_WEB = path.join(DSH_HOME, "profiles", "web");
 // hostPlane: true = 进 bundles（宿主平面、全模式可见）；false = 仅 link 依赖（preset 平面，
-// 由预设行挂载——scanner 允许 pentest/attack-defense/cloud-security/ctf-solver 可见，宿主不挂是设计而非遗漏）。
+// 由预设行挂载——scanner 允许 pentest/attack-defense/cloud-security/ctf-solver/asset-mapping 可见，宿主不挂是设计而非遗漏）。
 const PLUGINS = [
 	{ name: "dsh-stage-gate", hostPlane: true },
 	{ name: "dsh-attack-atlas", hostPlane: true },
@@ -205,7 +205,7 @@ function bundle() {
 		"dsh-redteam-model"];
 	// 从 dsh-redteam-model 的上级目录打包，使 tar 内含顶层 dsh-redteam-model/ 目录
 	run(["tar"], args, { cwd: path.dirname(MODEL_ROOT) });
-	log(`${out} 打包完成（打包源：${MODEL_ROOT}；交付净量：modes 九预设 + shared + plugins + deploy；管理文档不随包）`);
+	log(`${out} 打包完成（打包源：${MODEL_ROOT}；交付净量：modes 十预设 + shared + plugins + deploy；管理文档不随包）`);
 	log(`目标机：tar -xzf ${path.basename(out)} && cd dsh-redteam-model/deploy && node deploy.mjs（或 npx ./deploy）`);
 }
 

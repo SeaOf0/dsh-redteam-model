@@ -185,6 +185,7 @@
       - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('../redteam/skills/', baseUrl))"
       - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('../cloud-security/skills/', baseUrl))"
       - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('../ctf-solver/skills/', baseUrl))"
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('../asset-mapping/skills/', baseUrl))"
       - !!js "(() => { try { const f = process.getBuiltinModule('node:fs'); const u = process.getBuiltinModule('node:url'); const d = f.realpathSync(u.fileURLToPath(new URL('.', baseUrl))); return u.fileURLToPath(new URL('../../shared/skills/', u.pathToFileURL(d + '/'))); } catch { return '' } })()"
 
 - id: tool-skill

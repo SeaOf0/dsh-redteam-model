@@ -3,12 +3,12 @@
 // 本文件是可测的单一事实源：client.js 内为镜像实现（client 侧无法相对引用本文件，
 // 改动须双侧同步并保持逐行为等价——test/run.mjs 以本文件为准）。
 
-/** 九模式名单（会话状态面板的作用域）。 */
-export const PULSE_MODES = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver"];
+/** 十模式名单（会话状态面板的作用域）。 */
+export const PULSE_MODES = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver", "asset-mapping"];
 
 export const MODE_LABELS = {
 	redteam: "安全研究员", pentest: "渗透测试", "code-audit": "代码审计", "binary-analysis": "二进制分析",
-	"attack-defense": "攻防评估", "av-evasion": "免杀对抗", "incident-response": "应急溯源", "cloud-security": "云安全攻防", "ctf-solver": "CTF 解题"
+	"attack-defense": "攻防评估", "av-evasion": "免杀对抗", "incident-response": "应急溯源", "cloud-security": "云安全攻防", "ctf-solver": "CTF 解题", "asset-mapping": "资产测绘"
 };
 
 /** 会话摘要上的 agentPreset 是否属于九模式（列表源重启后可能退化为组合名，须走服务端兜底）。 */

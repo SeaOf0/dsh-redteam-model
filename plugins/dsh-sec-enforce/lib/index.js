@@ -49,7 +49,7 @@ const KILL_MARKER = () => process.env.DSH_KILL_SWITCH_FILE ?? path.join(os.homed
 const KILL_REASON = () => `全局熔断已触发：所有工具执行暂停（一键停止）。恢复方法：移除标记文件 ${KILL_MARKER()}。熔断期间仅回答问题，不执行任何操作。`;
 const killTripped = () => { try { return fs.existsSync(KILL_MARKER()); } catch { return false; } };
 
-const SECURITY_MODES = new Set(["pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "redteam", "incident-response", "cloud-security", "ctf-solver"]);
+const SECURITY_MODES = new Set(["pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "redteam", "incident-response", "cloud-security", "ctf-solver", "asset-mapping"]);
 /** 每模式的「报告门」——报告落盘前的最后一道覆盖度/完整性门（与 stage-gate GATES 对齐）。
  * redteam 刻意不在表内：主模式总控只消费专业模式报告（gate-pass 产物），不写 reports/——
  * 其全局总结落工作区根目录（summary.md + task-ledger.md）。命中 reports/ 时走专门的
@@ -138,7 +138,7 @@ export function scanAsk(command) {
 	const compact = cmd.replace(/\\\n/g, " ").replace(/\s+/g, " ");
 	// 账号与权限体系变更：新建/改密/删账号、SQL 授权面。
 	// passwd/chpasswd 只在命令位命中（行首/管道后/sudo 后）——裸子串会误伤 /etc/passwd
-	// 读取（LFI 验证正路）与代码里的字符串字面量。
+	// 读取（LFI 验证正路）与代码里的字符串字面量（T2 考场首轮实测教训）。
 	if (/\b(useradd|usermod|userdel|adduser|deluser)\b/.test(compact)
 		|| /(^|[|;&]|sudo )\s*(passwd|chpasswd)\b/.test(compact)
 		|| /\b(mysql|mariadb|psql|sqlplus|sqlite3)\b[^|;&]*\b(GRANT\s+|REVOKE\s+|CREATE\s+USER|DROP\s+USER|ALTER\s+USER)\b/i.test(compact)) {

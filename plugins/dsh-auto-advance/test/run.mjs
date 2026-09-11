@@ -40,7 +40,7 @@ ok("非执行体不命中", !isAdvanceTool("bash") && !isAdvanceTool("fetch") &&
 
 // 2b. 模式语态注入
 {
-	ok("八模式语态全覆盖", Object.keys(MODE_VOICE).length === 8 && MODE_IDS.every((m) => MODE_VOICE[m]?.done && MODE_VOICE[m]?.next));
+	ok("九模式语态全覆盖", Object.keys(MODE_VOICE).length === 9 && MODE_IDS.every((m) => MODE_VOICE[m]?.done && MODE_VOICE[m]?.next));
 	const ir = decideAdvance({ ...BASE, voice: MODE_VOICE["incident-response"] });
 	ok("IR 推进语态：产出=证据指位与时间线/下一步=排查项", ir.text.includes("证据指位与时间线位置") && ir.text.includes("（下一排查项）"));
 	ok("机制原子不随语态变", ir.text.includes("operation_progress") && ir.text.includes("operation_intent") && ir.text.includes("第 1/5 轮") && ir.text.includes("不硬造方向") && ir.text.includes("人工输入随时接管"));
@@ -180,8 +180,8 @@ ok("非执行体不命中", !isAdvanceTool("bash") && !isAdvanceTool("fetch") &&
 	fs.rmSync(tmp, { recursive: true, force: true });
 }
 
-// 5. 模式清单：八专业、不含 redteam
-ok("八专业模式清单", MODE_IDS.length === 8 && !MODE_IDS.includes("redteam") && MODE_IDS.includes("ctf-solver"));
+// 5. 模式清单：九专业、不含 redteam
+ok("九专业模式清单", MODE_IDS.length === 9 && !MODE_IDS.includes("redteam") && MODE_IDS.includes("ctf-solver") && MODE_IDS.includes("asset-mapping"));
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail > 0 ? 1 : 0);

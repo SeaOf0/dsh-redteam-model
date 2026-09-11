@@ -1,6 +1,6 @@
-// Offline deployment verification for the seven-preset bundle (six modes + redteam controller).
+// Offline deployment verification for the ten-preset bundle (nine modes + redteam controller).
 // Boots a minimal cordis host (same seam set as the real one), then:
-//   1. mounts all nine presets via agentPresets.standingKeyFor (composition files load);
+//   1. mounts all ten presets via agentPresets.standingKeyFor (composition files load);
 //   2. loads every deployed plugin's bundle row through the REAL loader path
 //      (loader.create with the profile's baseUrl — bare specifiers resolve exactly as at boot);
 //   3. reads each preset's preset.yml metadata (roster display parses).
@@ -26,7 +26,7 @@ const load = async (name) => {
 	}
 };
 
-const { Context } = await load("cordis");
+const { Context, Service } = await load("cordis");
 const LoaderMod = await load("cordis-plugin-loader");
 const Loader = LoaderMod.default;
 const Group = LoaderMod.Group;
@@ -46,12 +46,20 @@ await app.plugin(Loader);
 app.loader.builtins.group = Group;
 for (const p of Object.values(providers)) await app.plugin(p, {});
 await app.plugin(ShellEnv, {});
+// 环境适配：dsh-agent-presets ≥0.1.5 inject sessionProjections（真实宿主由会话插件提供，
+// 离线校验只走到 register()——no-op 桩即可让 standingKeyFor 可用，不影响真实宿主路径）。
+const SessionProjectionsStub = class extends Service {
+	constructor(ctx) { super(ctx, "sessionProjections"); }
+	register() {}
+	stateOf() { return undefined; }
+};
+await app.plugin(SessionProjectionsStub, {});
 await app.plugin(AgentPresets, { default: "pentest" });
 
 let failed = 0;
 
-// 1) nine presets mount (eight modes + redteam controller)
-const ids = ["pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "redteam", "incident-response", "cloud-security", "ctf-solver"];
+// 1) ten presets mount (nine modes + redteam controller)
+const ids = ["pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "redteam", "incident-response", "cloud-security", "ctf-solver", "asset-mapping"];
 for (const id of ids) {
 	try {
 		await app.agentPresets.standingKeyFor(id);

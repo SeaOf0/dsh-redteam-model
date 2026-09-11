@@ -185,6 +185,7 @@
       - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('../incident-response/skills/', baseUrl))"
       - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('../cloud-security/skills/', baseUrl))"
       - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('../ctf-solver/skills/', baseUrl))"
+      - !!js "process.getBuiltinModule('node:url').fileURLToPath(new URL('../asset-mapping/skills/', baseUrl))"
       - !!js "(() => { try { const f = process.getBuiltinModule('node:fs'); const u = process.getBuiltinModule('node:url'); const d = f.realpathSync(u.fileURLToPath(new URL('.', baseUrl))); return u.fileURLToPath(new URL('../../shared/skills/', u.pathToFileURL(d + '/'))); } catch { return '' } })()"
 
 - id: tool-skill
@@ -355,7 +356,7 @@
   config:
     fetch: true
     searchTimeoutMs: 60000
-# 扫描器封装（preset 平面：pentest / attack-defense / cloud-security / ctf-solver 四预设可见；速率纪律/防盲打/证据落盘内置；
+# 扫描器封装（preset 平面：pentest / attack-defense / cloud-security / ctf-solver / asset-mapping 五预设可见；速率纪律/防盲打/证据落盘内置；
 # 仅用检测到的本机工具，缺装走三级兜底提示，绝不自动安装)
 - id: tool-scanner
   name: '@dsh-external/dsh-scanner-tools'

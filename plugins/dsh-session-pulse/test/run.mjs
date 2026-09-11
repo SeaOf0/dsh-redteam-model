@@ -10,8 +10,8 @@ import { dispatch, isTrustedRequest, subagentTranscript, ROUTE_PATH, checkCsrf }
 let pass = 0;
 const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); } else { console.log(`FAIL ${label}`); process.exitCode = 1; } };
 
-// 1. 模式门控：九模式名单 + 判定（含服务端兜底）
-ok("九模式名单齐（redteam + 八专业）", PULSE_MODES.length === 9 && PULSE_MODES.includes("redteam") && PULSE_MODES.includes("ctf-solver") && Object.keys(MODE_LABELS).length === 9);
+// 1. 模式门控：十模式名单 + 判定（含服务端兜底）
+ok("十模式名单齐（redteam + 九专业）", PULSE_MODES.length === 10 && PULSE_MODES.includes("redteam") && PULSE_MODES.includes("ctf-solver") && PULSE_MODES.includes("asset-mapping") && Object.keys(MODE_LABELS).length === 10);
 ok("modeOk：直判/服务端兜底/组合名拒绝", modeOk("pentest", "") === true && modeOk("cordis", "incident-response") === true && modeOk("cordis", "") === false && modeOk("", "") === false);
 
 // 2. 任务进度：todos 投影 → 汇总

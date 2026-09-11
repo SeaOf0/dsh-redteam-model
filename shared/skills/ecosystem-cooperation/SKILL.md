@@ -1,20 +1,21 @@
 ---
 name: ecosystem-cooperation
-description: 九预设动态生态协作规则：模式是主镜头不是边界；主镜头选择与切换指南（redteam 总入口 → 八专业模式升级路径）、跨模式技能加载与统一授权立场、产物落盘与交接约定、经验台账（lessons.md 开工召回/收工蒸馏）、产物流转表、子代理/claude 跨模式配合与跨 harness 双签（DSH=DeepSeek + claude/codex CLI，后端随各自配置：不同源=异构双签，同源=同源互证并在报告注明；用户触发制——不主动执行，报告结尾列为建议项）、报告归属。任何一个安全预设需要其他模式能力时按本技能配合。
+description: 十预设动态生态协作规则：模式是主镜头不是边界；主镜头选择与切换指南（redteam 总入口 → 九专业模式升级路径）、跨模式技能加载与统一授权立场、产物落盘与交接约定、经验台账（lessons.md 开工召回/收工蒸馏）、产物流转表、子代理/claude 跨模式配合与跨 harness 双签（DSH=DeepSeek + claude/codex CLI，后端随各自配置：不同源=异构双签，同源=同源互证并在报告注明；用户触发制——不主动执行，报告结尾列为建议项）、报告归属。任何一个安全预设需要其他模式能力时按本技能配合。
 ---
 
-# 九预设动态生态协作规则
+# 十预设动态生态协作规则
 
 > 本技能被九个预设共同加载（位于 `plugins/dsh-redteam-model/shared/skills/`）。
 
 
 ## 核心原则
 
-**模式是主镜头，不是边界。** 九个预设（redteam 总入口 + 八专业模式 pentest / code-audit /
-binary-analysis / attack-defense / av-evasion / incident-response / cloud-security）是一个动态生态：当前模式决定本次任务以什么为主，
+**模式是主镜头，不是边界。** 十个预设（redteam 总入口 + 九专业模式 pentest / code-audit /
+binary-analysis / attack-defense / av-evasion / incident-response / cloud-security / ctf-solver /
+asset-mapping）是一个动态生态：当前模式决定本次任务以什么为主，
 但当任务需要其他模式的能力时，应当按生态规则配合，而不是在边界内硬撑。
 
-- 需要其他模式的方法论 → 加载对应 playbook 技能（七个 playbook 都在你的技能目录里）。
+- 需要其他模式的方法论 → 加载对应 playbook 技能（各模式的 playbook 都在你的技能目录里）。
 - 需要其他模式的执行 → 派子代理按该模式的 playbook 干活，产物回主模式合并。
 - 结果不确定或过复杂 → 按 persona 的 claude 规则升级。
 
@@ -33,6 +34,7 @@ binary-analysis / attack-defense / av-evasion / incident-response / cloud-securi
 | 失陷主机调查 / 日志与样本排查 / 应急响应与攻击链还原报告 | incident-response |
 | 云平台 / 云原生目标（AWS/Azure/GCP/阿里云/腾讯云/华为云、K8s/容器/Serverless），要云攻击路径验证与权限链收口 | cloud-security |
 | CTF 竞赛解题（赛题/题目环境/附件，要 flag 与解题复盘） | ctf-solver |
+| 企业外部资产测绘立项（集团/单位名/域名/IP 入口，要归属/备案/指纹的可审计清册，止步测绘） | asset-mapping |
 
 **升级路径**：redteam 总入口命中某专业模式决定性特征（router-playbook 路由表）→ 生成任务书、
 指引切换对应专业模式会话——总控只消费其 gate-pass 落盘产物做汇总，不代专业判定。
@@ -143,6 +145,8 @@ WORKSPACE.md 内容：任务名 / 发起模式 / 状态 / 参与模式与活跃�
 | cloud-security ↔ binary-analysis | 容器镜像/云函数样本 ↔ 恶意样本深析 | 哈希+provenance 登记后移交；结论回填 |
 | ctf-solver → pentest / binary-analysis | 解题沉淀的 payload/脚本/技巧 | 作为真实目标测试与样本分析的知识输入 |
 | pentest / binary-analysis → ctf-solver | 真实环境手法与样本知识 | 作为赛题解题的技法参考（按题面取用） |
+| asset-mapping → pentest / attack-defense | 框架资产表（Excel 第 5 表：指纹+敏感路径命中）、单位汇总 | 作为打点优先级输入与战场底图；范围口径随表交接（范围外资产不得转打点） |
+| attack-defense → asset-mapping | 目标画像需求升级为全量清册（集团/单位名/域名/IP 入口 + 已收集线索） | 入口形态与授权范围（scope 口径）明确后交接 |
 
 ## 产物落盘与交接约定
 

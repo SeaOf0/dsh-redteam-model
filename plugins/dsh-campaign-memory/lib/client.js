@@ -42,7 +42,8 @@ var MODES = [
 	{ id: "av-evasion", label: "免杀对抗" },
 	{ id: "incident-response", label: "应急溯源" },
 	{ id: "cloud-security", label: "云安全攻防" },
-	{ id: "ctf-solver", label: "CTF 解题" }
+	{ id: "ctf-solver", label: "CTF 解题" },
+	{ id: "asset-mapping", label: "资产测绘" }
 ];
 var KIND_LABEL = { tactic: "战术打法", fingerprint: "目标指纹", tooling: "工具可用性", lesson: "教训", detect: "检测指纹" };
 var KINDS = ["", "tactic", "fingerprint", "tooling", "lesson", "detect"];

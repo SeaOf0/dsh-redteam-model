@@ -21,10 +21,10 @@ import { openStore, writeMemory, searchMemories, topForInjection, listMemories, 
 const name = "dsh-campaign-memory";
 const inject = ["tools", "webServer", "webRuntime", "agentPresets", "systemPrompt"];
 
-export const MODE_IDS = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver"];
+export const MODE_IDS = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver", "asset-mapping"];
 const MODE_LABELS = {
 	redteam: "安全研究员", pentest: "渗透测试", "code-audit": "代码审计", "binary-analysis": "二进制分析",
-	"attack-defense": "攻防评估", "av-evasion": "免杀对抗", "incident-response": "应急溯源", "cloud-security": "云安全攻防", "ctf-solver": "CTF 解题"
+	"attack-defense": "攻防评估", "av-evasion": "免杀对抗", "incident-response": "应急溯源", "cloud-security": "云安全攻防", "ctf-solver": "CTF 解题", "asset-mapping": "资产测绘"
 };
 const DB_PATH = path.join(os.homedir(), ".dsh", "campaign-memory", "memory.db");
 const ROUTE_PATH = "/dsh-campaign-memory";

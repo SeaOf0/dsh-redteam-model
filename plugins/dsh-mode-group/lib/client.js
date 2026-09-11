@@ -1,5 +1,5 @@
 // dsh-mode-group 客户端：新建会话屏模式选择 chip 两级化。
-// 内置模式与研究员模式留顶层；八个专业模式折叠进「专业安全模式」子菜单（悬停预览+
+// 内置模式与研究员模式留顶层；九个专业模式折叠进「专业安全模式」子菜单（悬停预览+
 // 点击固定，视口自适应翻转）。数据与动作走 connection.api.agentPresets，语义与原生
 // seat 一致：选择=暂存+空白会话即应用；会话列表变化时补投。
 window.__ModuleLoader__.load({ id: "@dsh-external/dsh-mode-group", factory: (require) => {
@@ -8,11 +8,11 @@ var module = { exports: {} }; var exports = module.exports;
 var React = require("react");
 var useState = React.useState, useEffect = React.useEffect, useRef = React.useRef, useCallback = React.useCallback;
 
-var PRO_IDS = ["attack-defense", "pentest", "code-audit", "av-evasion", "incident-response", "binary-analysis", "cloud-security", "ctf-solver"];
+var PRO_IDS = ["attack-defense", "pentest", "code-audit", "av-evasion", "incident-response", "binary-analysis", "cloud-security", "ctf-solver", "asset-mapping"];
 var RESEARCHER = "redteam";
 var L10N = {
-	zh: { group: "专业安全模式", groupDesc: "八个专业安全模式", researcher: "研究员模式" },
-	en: { group: "Professional security", groupDesc: "Eight specialist modes", researcher: "Researcher" }
+	zh: { group: "专业安全模式", groupDesc: "九个专业安全模式", researcher: "研究员模式" },
+	en: { group: "Professional security", groupDesc: "Nine specialist modes", researcher: "Researcher" }
 };
 function t() {
 	return /^zh/.test(navigator.language || "") ? L10N.zh : L10N.en;
