@@ -238,7 +238,7 @@ function createStatusHandler(section, viewOf, tracker, executions) {
   };
 }
 function registerStudioRpc(connection, settings, ns, status, diagnose, clearExecutions) {
-  connection.rpc.handle(STUDIO_CHANNEL, async (endpoint, rawPayload) => {
+  const dispatch = async (endpoint, rawPayload) => {
     if (endpoint === "status") return status();
     if (endpoint === "executions/clear") {
       if (clearExecutions === void 0) return badRequest("execution log unavailable");
@@ -275,7 +275,38 @@ function registerStudioRpc(connection, settings, ns, status, diagnose, clearExec
     } catch (error) {
       return failure(error, ns);
     }
-  }, { authority: "loopback" });
+  };
+  // 新宿主（0.1.2+）的 rpc.handle 注册静默失效：通道改走 /api 下的精确 Fetch
+  // 路由（信封与旧通道一致）；旧宿主回退 rpc.handle 裸通道。
+  if (typeof connection.fetch?.register === "function") {
+    for (const endpoint of ["status", "executions/clear", "diagnose", "settings/get", "settings/mutate"]) {
+      connection.fetch.register({
+        path: `/api${STUDIO_CHANNEL}/${endpoint}`,
+        methods: ["POST"],
+        requestBody: "buffered",
+        fetch: async (request) => {
+          if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
+          const respond = (rpcId, result) => Response.json({ type: "server-response", rpcId, result });
+          let body;
+          try {
+            body = await request.json();
+          } catch {
+            return new Response("body is not JSON", { status: 400 });
+          }
+          const rpcId = typeof body?.rpcId === "string" ? body.rpcId : "invalid-request";
+          if (body?.type !== "client-request" || body?.method !== endpoint) {
+            return respond(rpcId, failure(new Error("invalid client-request envelope"), ns));
+          }
+          return respond(rpcId, await dispatch(endpoint, body.payload));
+        },
+      });
+    }
+  }
+  try {
+    connection.rpc.handle(STUDIO_CHANNEL, dispatch, { authority: "loopback" });
+  } catch {
+    // 新宿主上旧通道注册抛错（webServer 未 inject），Fetch 路由已是正路。
+  }
 }
 
 // src/diagnose.ts

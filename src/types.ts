@@ -84,4 +84,13 @@ export interface HostConnectionHandle {
       options: { authority: 'trusted-host' | 'loopback' },
     ): unknown
   }
+  /** Exact Fetch routes under /api (Host 0.1.2+); absent on legacy Hosts. */
+  fetch?: {
+    register(route: {
+      path: string
+      methods: string[]
+      requestBody: 'buffered' | 'streamed'
+      fetch: (request: Request) => Promise<Response>
+    }): unknown
+  }
 }

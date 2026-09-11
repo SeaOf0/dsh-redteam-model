@@ -1409,7 +1409,36 @@ var StudioScope = class {
   }
 };
 function createStudioScope(connection) {
-  return new StudioScope((endpoint, payload) => connection.rpc.call(STUDIO_CHANNEL, endpoint, payload));
+  // Modern Hosts serve the channel from /api Fetch routes; legacy Hosts keep
+  // the bare channel. The /api spelling nests below the reserved channel
+  // grammar, so fetch it directly and fall back to rpc.call once.
+  const apiChannel = "/api" + STUDIO_CHANNEL;
+  let modern = true;
+  let legacyTried = false;
+  let rpcId = 0;
+  const callApi = (endpoint, payload) => fetch(`${apiChannel}/${endpoint}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ type: "client-request", rpcId: "studio-" + ++rpcId, method: endpoint, payload }),
+  }).then((response) => {
+    if (!response.ok) throw new Error(`transport failure for ${apiChannel}/${endpoint}: HTTP ${response.status}`);
+    return response.json();
+  }).then((envelope) => {
+    if (envelope?.type !== "server-response" || envelope.result === void 0) throw new Error("malformed envelope");
+    return envelope.result;
+  });
+  return new StudioScope((endpoint, payload) => {
+    if (modern) {
+      return callApi(endpoint, payload).catch(() => {
+        if (legacyTried) throw new Error(`mcp-studio: ${endpoint} failed: modern /api channel unavailable`);
+        legacyTried = true;
+        modern = false;
+        return connection.rpc.call(STUDIO_CHANNEL, endpoint, payload);
+      });
+    }
+    return connection.rpc.call(STUDIO_CHANNEL, endpoint, payload);
+  });
 }
 
 // src/client/locales.ts

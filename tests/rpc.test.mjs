@@ -12,6 +12,7 @@ function rpcFixture() {
   const queue = new OperationQueue()
   let handler
   let authority
+  const fetchRoutes = new Map()
   const connection = {
     rpc: {
       handle(channel, registered, options) {
@@ -20,15 +21,39 @@ function rpcFixture() {
         authority = options.authority
       },
     },
+    fetch: {
+      register(route) {
+        assert.match(route.path, /^\/api\/dsh-redteam-model\//)
+        assert.deepEqual(route.methods, ['POST'])
+        fetchRoutes.set(route.path, route)
+      },
+    },
   }
   process.env.DSH_HOME = home
   registerModelRpc(connection, queue)
   return {
     home,
     queue,
+    fetchRoutes,
     authority: () => authority,
     call(endpoint, payload = {}) {
       return handler(endpoint, payload)
+    },
+    /** Round-trip one envelope through the registered Fetch route. */
+    async callFetch(endpoint, payload = {}) {
+      const route = fetchRoutes.get(`/api/dsh-redteam-model/${endpoint}`)
+      if (route === undefined) throw new Error(`no fetch route for ${endpoint}`)
+      const request = new Request(`http://host/api/dsh-redteam-model/${endpoint}`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: 't-1', method: endpoint, payload }),
+      })
+      const response = await route.fetch(request)
+      assert.equal(response.status, 200)
+      const envelope = await response.json()
+      assert.equal(envelope.type, 'server-response')
+      assert.equal(envelope.rpcId, 't-1')
+      return envelope.result
     },
     cleanup() {
       queue.dispose()
@@ -57,6 +82,36 @@ test('RPC registers as loopback and rejects unknown input', async () => {
     assert.equal((await fixture.call('operation/start', { kind: 'install', target: 'missing-plugin' })).ok, false)
     const overflow = Array.from({ length: 33 }, () => 'dsh-hunter')
     assert.equal((await fixture.call('operation/start', { kind: 'install', target: 'missing', targets: overflow })).ok, false)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('Fetch routes under /api carry the RPC envelope end to end (#11 follow-up)', async () => {
+  const fixture = rpcFixture()
+  try {
+    assert.equal(fixture.fetchRoutes.size, 4)
+    const status = await fixture.callFetch('status', {})
+    assert.equal(status.ok, true)
+    assert.equal(typeof status.value.summary.pluginsTotal, 'number')
+    const bad = await fixture.callFetch('status', {})
+    assert.equal(bad.ok, true)
+    const envelopeMismatch = await (async () => {
+      const route = fixture.fetchRoutes.get('/api/dsh-redteam-model/status')
+      const request = new Request('http://host/api/dsh-redteam-model/status', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ type: 'client-request', rpcId: 't-2', method: 'other/endpoint', payload: {} }),
+      })
+      const response = await route.fetch(request)
+      const envelope = await response.json()
+      return envelope.result
+    })()
+    assert.equal(envelopeMismatch.ok, false)
+    assert.equal(envelopeMismatch.error.code, 'internal')
+    const started = await fixture.callFetch('operation/start', { kind: 'deploy-modes', target: 'redteam' })
+    assert.equal(started.ok, true)
+    await fixture.queue.whenIdle()
   } finally {
     fixture.cleanup()
   }

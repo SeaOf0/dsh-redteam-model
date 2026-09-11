@@ -31,6 +31,13 @@ const ENDPOINTS = new Set(['status', 'operation/start', 'operation/cancel', 'ope
 const OPERATION_KINDS = new Set<OperationKind>(['deploy-modes', 'install', 'update', 'uninstall', 'repair'])
 /** Upper bound for one batch; must cover a full first-run install of every delivered plugin. */
 const MAX_TARGETS = 32
+/**
+ * Channel spellings: modern Hosts (0.1.2+) serve plugin RPC over exact Fetch
+ * routes under /api (`connection.fetch.register`), because the legacy
+ * `rpc.handle` channel registration silently stops working there. Legacy
+ * Hosts (0.1.1 and older) only know the bare channel, so both are registered.
+ */
+const API_CHANNEL = '/api/dsh-redteam-model'
 /** Sentinel `target` values used by the client for batch operations. */
 const BATCH_TARGETS: Record<'install' | 'update' | 'uninstall', string> = {
   install: 'missing',
@@ -183,16 +190,63 @@ function handleEndpoint(endpoint: string, rawPayload: unknown, queue: OperationQ
   throw new Error(`unknown endpoint: ${endpoint}`)
 }
 
-export function registerModelRpc(connection: HostConnectionHandle, queue: OperationQueue): void {
-  connection.rpc.handle(RPC_CHANNEL, async (endpoint, rawPayload): Promise<RpcResult> => {
+/** Invoke the endpoint handler with the host rpcErrorSchema failure contract. */
+async function invokeEndpoint(endpoint: string, payload: unknown, queue: OperationQueue): Promise<RpcResult> {
+  try {
+    return handleEndpoint(endpoint, payload, queue)
+  } catch (error) {
+    return { ok: false, error: { code: 'internal' as const, message: error instanceof Error ? error.message : String(error), details: {} } }
+  }
+}
+
+/** Wrap one endpoint handler as a Fetch-route handler speaking the host RPC envelope. */
+function fetchHandlerFor(endpoint: string, queue: OperationQueue) {
+  return async (request: Request): Promise<Response> => {
+    const respond = (rpcId: string, result: unknown): Response =>
+      Response.json({ type: 'server-response', rpcId, result })
+    if (request.method !== 'POST') return new Response('method not allowed', { status: 405 })
+    const contentType = request.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase()
+    if (contentType !== 'application/json') return new Response('content type must be application/json', { status: 415 })
+    let body: { type?: unknown; rpcId?: unknown; method?: unknown; payload?: unknown }
     try {
-      return handleEndpoint(endpoint, rawPayload, queue)
-    } catch (error) {
-      // Host-client `rpcErrorSchema` requires code+message+details; a bare
-      // `{message}` shape fails SDK validation and hides the real cause.
-      return { ok: false, error: { code: 'internal' as const, message: error instanceof Error ? error.message : String(error), details: {} } }
+      body = await request.json() as typeof body
+    } catch {
+      return new Response('body is not JSON', { status: 400 })
     }
-  }, { authority: 'loopback' })
+    const rpcId = typeof body.rpcId === 'string' ? body.rpcId : 'invalid-request'
+    if (body.type !== 'client-request' || body.method !== endpoint) {
+      return respond(rpcId, { ok: false, error: { code: 'internal', message: 'invalid client-request envelope', details: {} } })
+    }
+    return respond(rpcId, await invokeEndpoint(endpoint, body.payload, queue))
+  }
+}
+
+export function registerModelRpc(connection: HostConnectionHandle, queue: OperationQueue): void {
+  // Modern Hosts (0.1.2+): exact Fetch routes under /api keep the channel alive.
+  if (typeof connection.fetch?.register === 'function') {
+    for (const endpoint of ENDPOINTS) {
+      connection.fetch.register({
+        path: `${API_CHANNEL}/${endpoint}`,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: fetchHandlerFor(endpoint, queue),
+      })
+    }
+  }
+  // Legacy Hosts (0.1.1 and older): bare rpc channel. On modern Hosts this
+  // registration silently fails, which is harmless — the Fetch routes above
+  // are the transport there.
+  // Legacy Hosts (0.1.1 and older): bare rpc channel. On modern Hosts this
+  // registration throws ("cannot get property webServer without inject") and
+  // must not escape — the throw also aborts sibling registrations in the
+  // same inject callback, so guard it.
+  try {
+    connection.rpc.handle(RPC_CHANNEL, async (endpoint, rawPayload): Promise<RpcResult> => {
+      return invokeEndpoint(endpoint, rawPayload, queue)
+    }, { authority: 'loopback' })
+  } catch {
+    // Modern Host: the Fetch routes above are the transport.
+  }
 }
 
 export type { OperationStartPayload }
