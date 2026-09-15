@@ -140,12 +140,14 @@ for _ in range(2**40):
 
 ## CBC IV Forgery + Block Truncation for Authentication Bypass (0CTF 2017)
 
-**Pattern:** Service encrypts `MD5(padded_name) || padded_name` with AES-CBC. The MD5 serves as an integrity check on login. Two attacks combine: (1) IV manipulation: XOR IV bytes to change the decrypted first block from the source MD5 to the target MD5. (2) Block truncation: register with `pad("admin") + 16_junk_bytes`, then strip trailing ciphertext blocks — AES-CBC has no length field, so shorter ciphertext decrypts validly if PKCS7 padding is correct.
+**Pattern:** Service encrypts `MD5(padded_name) || padded_name` with AES-CBC. The MD5 serves as an integrity check on login. Two attacks combine: (1) IV manipulation: XOR IV bytes to change the decrypted first block from the source MD5 to the target MD5. (2) Block truncation: register with `pad(b"admin", 16) + 16_junk_bytes`, then strip trailing ciphertext blocks — AES-CBC has no length field, so shorter ciphertext decrypts validly if PKCS7 padding is correct.
 
 ```python
+from Crypto.Util.Padding import pad
+
 # Forge IV to flip MD5 from registered user to "admin"
-source_md5 = md5(pad("admin") + b"A"*16)
-target_md5 = md5(pad("admin"))
+source_md5 = md5(pad(b"admin", 16) + b"A"*16)
+target_md5 = md5(pad(b"admin", 16))
 new_iv = bytes(a ^ b ^ c for a, b, c in zip(original_iv, source_md5, target_md5))
 
 # Strip last 2 blocks (junk + PKCS padding block)
@@ -290,11 +292,30 @@ for guess in range(256):
 # 3. Gaussian elimination to find 256 linearly independent vectors
 # 4. Target: h_new XOR (XOR of sha256(basis_files)) = h_orig
 # 5. Solve the linear system to find which basis files to include
+from sympy import Matrix
+
+M = Matrix([hash_to_bits(sha256(f)) for f in basis_files])
+target = Matrix([hash_to_bits(sha256(malicious_zip))[i] ^ hash_to_bits(original_hash)[i] for i in range(256)])
+# Solve M^T * x = target over GF(2) (solve_left => x*M = target => M^T*x = target)
+solution = M.T.gauss_jordan_solve(target)  # reduce mod 2; or use rref iszerofunc
+# For GF(2), reduce entries mod 2 after rref
+```
+
+<details><summary>Sage fallback (optional)</summary>
+
+```python
+# 1. Generate ~300 random valid Python files
+# 2. Compute SHA-256 of each -> 256-bit vectors over GF(2)
+# 3. Gaussian elimination to find 256 linearly independent vectors
+# 4. Target: h_new XOR (XOR of sha256(basis_files)) = h_orig
+# 5. Solve the linear system to find which basis files to include
 from sage.all import GF, matrix
 M = matrix(GF(2), [hash_to_bits(sha256(f)) for f in basis_files])
 target = hash_to_bits(sha256(malicious_zip)) ^ hash_to_bits(original_hash)
 solution = M.solve_left(target)
 ```
+
+</details>
 
 **Key insight:** SHA-256 hashes are 256-bit vectors over GF(2). Given ~256 random hashes, they almost certainly span the full space, meaning you can XOR-combine them to produce any target 256-bit value. This breaks XOR-based aggregate hash verification: if the system checks `XOR(sha256(file_i)) == expected`, you can replace files while maintaining the aggregate. The attack does NOT find SHA-256 collisions -- it exploits the linearity of XOR aggregation over non-linear hash outputs.
 
@@ -322,10 +343,12 @@ forged_mac = mac1 ^ mac2 ^ mac3  # XOR cancellation = fmac(cmdline)
 **Pattern:** Flawed HMAC computes `sha256((key XOR msg) + msg)` where `+` is bitwise addition (not concatenation). Sending `msg=0` gives `sha256(key)`. For bit position `i`, sending `msg=2^i`: if key bit `i` is set, XOR clears it and addition restores it, giving the same hash. (Midnight Sun CTF 2018)
 
 ```python
+from Crypto.Util.number import long_to_bytes
+
 key_hash = get_digest(b'\x00')  # sha256(key + 0) = sha256(key)
 key = 0
 for i in range(key_bits):
-    digest = get_digest(int_to_bytes(2**i))
+    digest = get_digest(long_to_bytes(2**i))
     if digest == key_hash:
         key |= (1 << i)  # bit i is set in key
 ```
@@ -377,10 +400,55 @@ for ch in string.printable:
 **Pattern:** Service sends 40 plaintext/ciphertext pairs over the network. Extract from pcap with tshark, build a 40×40 matrix `A` and vector `b` over `GF(p)`, then solve for the unknown AES round-key bytes.
 
 ```python
+from sympy import Matrix
+
+A = Matrix(A_rows)
+b_vec = Matrix(b)
+# Solve A * key = b over GF(p)
+# Use sympy rref with modulus p (prime)
+# Convert to field via mod p
+p_inv = p  # modulus
+# Gauss-Jordan mod p helper
+def solve_mod(A, b, mod):
+    aug = A.row_join(b)
+    # rref over integers then reduce mod; sympy handles rational but mod p needs custom
+    # Use sympy's rref then mod, or manual elimination
+    n = A.cols
+    # Use manual GF(p) elimination
+    M = [[int(A[i,j] % mod) for j in range(n)] + [int(b[i] % mod)] for i in range(A.rows)]
+    # forward elimination
+    row = 0
+    sol = [0]*n
+    where = [-1]*n
+    for col in range(n):
+        sel = next((i for i in range(row, len(M)) if M[i][col] % mod != 0), None)
+        if sel is None: continue
+        M[row], M[sel] = M[sel], M[row]
+        where[col]=row
+        inv = pow(M[row][col], -1, mod)
+        M[row]=[(x*inv)%mod for x in M[row]]
+        for i in range(len(M)):
+            if i!=row and M[i][col]!=0:
+                f=M[i][col]
+                M[i]=[(M[i][j]-f*M[row][j])%mod for j in range(n+1)]
+        row+=1
+    for i in range(n):
+        if where[i]!=-1:
+            sol[i]=M[where[i]][n]
+    return Matrix(sol)
+
+key = solve_mod(A, b_vec, p)
+```
+
+<details><summary>Sage fallback (optional)</summary>
+
+```python
 from sage.all import matrix, GF
 A = matrix(GF(p), 40, A_rows)
 key = A.solve_right(vector(GF(p), b))
 ```
+
+</details>
 
 Use `tshark -r file.pcap -Y 'data.len>0' -T fields -e data` to dump the packet bytes, parse into rows, feed to Sage.
 

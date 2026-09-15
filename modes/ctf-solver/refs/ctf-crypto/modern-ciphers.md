@@ -163,7 +163,7 @@ Affine encryption `c = A*x + b (mod M)` with composite M: split into prime facto
 
 ```python
 import hashlib
-from Cryptodome.Cipher import AES
+from Crypto.Cipher import AES
 
 # Common key derivation chain:
 # 1. Recover secret bytes (s_bytes) from crypto challenge
@@ -193,6 +193,69 @@ AES-GCM (Galois/Counter Mode) combines AES-CTR encryption with a GHASH polynomia
 
 ```python
 from Crypto.Cipher import AES
+# Pure-Python GHASH over GF(2^128) using pycryptodome / galois
+# GHASH is polynomial evaluation; use galois or manual GF(2^128) arithmetic
+
+def xor(a, b): return bytes(x ^ y for x, y in zip(a, b))
+
+# Given: two (ciphertext, tag, nonce) pairs with same nonce
+# Step 1: Recover plaintext via CTR keystream reuse
+keystream = xor(known_plaintext, ciphertext1)
+plaintext2 = xor(keystream, ciphertext2)
+
+# Step 2: Recover GHASH auth key H
+# GHASH(H, aad, ciphertext) = sum blocks * H^{n-i+1} over GF(2^128).
+# Long messages: pip install galois + factor P(H)=T1-T2-GHASH_diff(H),
+# or use nonce-disrespect tool. 1-block case below needs nothing else:
+# verified end-to-end against real AES-GCM (forge passes decrypt_and_verify).
+_MASK128 = (1 << 128) - 1
+
+def gmul(x, y):
+    """GF(2^128) multiply, NIST SP 800-38D Alg.1. Ints are big-endian blocks."""
+    z, v = 0, y & _MASK128
+    for i in range(128):
+        if (x >> (127 - i)) & 1:
+            z ^= v
+        lsb = v & 1
+        v >>= 1
+        if lsb:
+            v ^= 0xE1000000000000000000000000000000
+    return z & _MASK128
+
+def _gpow(a, e):
+    r = 1 << 127  # field identity in this encoding
+    while e:
+        if e & 1:
+            r = gmul(r, a)
+        a = gmul(a, a)
+        e >>= 1
+    return r
+
+def ginv(a):
+    return _gpow(a, (1 << 128) - 2)  # Fermat, single-primitive
+
+def _gsqrt(a):
+    for _ in range(127):  # a^(2^127): sqrt in char 2, single-primitive
+        a = gmul(a, a)
+    return a
+
+# 1-block empty-AAD: GHASH = ((C*H) ^ L)*H with L = 128-bit length block,
+# so T1 ^ T2 = (C1 ^ C2)*H^2 -- quadratic, solve H^2 then sqrt.
+def ghash_recover_h_1block(c1, c2, t1, t2):
+    d = (int.from_bytes(c1, "big") ^ int.from_bytes(c2, "big")) & _MASK128
+    t = (int.from_bytes(t1, "big") ^ int.from_bytes(t2, "big")) & _MASK128
+    if d == 0:
+        raise ValueError("ciphertexts identical -- need distinct blocks")
+    return _gsqrt(gmul(t, ginv(d)))  # H as int; verify by recomputing tag
+
+# Step 3: Forge tags for arbitrary messages
+# GHASH(H, aad, ciphertext) computed with recovered H
+```
+
+<details><summary>Sage fallback (optional)</summary>
+
+```python
+from Crypto.Cipher import AES
 from sage.all import GF, PolynomialRing
 
 # Given: two (ciphertext, tag, nonce) pairs with same nonce
@@ -210,6 +273,8 @@ F = GF(2**128, 'x', modulus=...)  # GCM polynomial
 # Step 3: Forge tags for arbitrary messages
 # GHASH(H, aad, ciphertext) computed with recovered H
 ```
+
+</details>
 
 **Tool:** [nonce-disrespect](https://github.com/nonce-disrespect/nonce-disrespect) automates GHASH key recovery and tag forgery from nonce-reused GCM ciphertexts.
 

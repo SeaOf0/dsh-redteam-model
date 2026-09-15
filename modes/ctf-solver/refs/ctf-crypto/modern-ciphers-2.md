@@ -541,14 +541,15 @@ forged_tag = (c0 + sum(bytes_to_long(b) * pow(H, i + 1, n) for i, b in enumerate
 ```python
 import hashpumpy, binascii, base64, urllib
 from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
 
 # Extract AES key from leaked rack.session cookie
 key = base64.b64decode(urllib.unquote(cookies['rack.session'].split('--')[0]))[-32:]
 user = binascii.unhexlify(cookies['user'])
 iv, ct = user[:16], user[16:]
 
-def decrypt(c): return AES.new(key, AES.MODE_CBC, iv).decrypt(c).rstrip(b'\x10\x0f\x0e...')
-def encrypt(p): pad = 16 - len(p) % 16; return AES.new(key, AES.MODE_CBC, iv).encrypt(p + bytes([pad])*pad)
+def decrypt(c): return unpad(AES.new(key, AES.MODE_CBC, iv).decrypt(c), 16)
+def encrypt(p): return AES.new(key, AES.MODE_CBC, iv).encrypt(pad(p, 16))
 
 # Length-extend signature (secret length guessed = 8)
 new_sig, new_plain = hashpumpy.hashpump(cookies['signature'], decrypt(ct), b'\nUID 0\n', 8)
