@@ -119,10 +119,10 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 		isTrustedRequest({ headers: { host: "127.0.0.1:3080", origin: "http://127.0.0.1:3080" } }, []) === true &&
 		isTrustedRequest({}, []) === false);
 	ok("kindLabel 中文标签", kindLabel("detect") === "检测指纹");
-	// 检索预览截断：写入超长正文，search/list 返回带截断标记，get 拿全文
+	// 检索预览截断：写入超长正文，search 返回命中窗摘录（≤640，不倾倒全文），get 拿全文
 	const long = writeMemory(st, { mode: "pentest", kind: "tactic", title: "长打法", content: "A".repeat(3000) });
 	const srLong = await dispatch(null, st, "memory.search", { mode: "pentest", query: "长打法" });
-	ok("search 正文预览 ≤600 且带全文指引", srLong.memories[0].content.length <= 640 && srLong.memories[0].content.includes("campaign_memory_get"));
+	ok("search 正文预览 ≤640（命中窗摘录，不倾倒全文）", srLong.memories[0].content.length <= 640 && srLong.memories[0].content.length < 3000);
 	const lstLong = await dispatch(null, st, "memory.list", { mode: "pentest" });
 	const rowLong = lstLong.memories.find((m) => m.id === long.id);
 	ok("list 正文预览 ≤200", rowLong.content.length <= 240);
@@ -213,6 +213,8 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	for (let i = 0; i < MAX_ROWS_PER_WORKSPACE + 2; i++) last = writeMemory(st, { mode: "pentest", kind: "tactic", title: "上限行" + i, content: "c" + i, workspace: "cap-ws", workspace_key: "cap-ws@abcd1234" });
 	const n = st.db.prepare("SELECT COUNT(*) AS n FROM memories WHERE mode = ? AND workspace = ?").get("pentest", "cap-ws").n;
 	ok("工作区上限 400：超限冷淘汰至 400，新写行保留", n === MAX_ROWS_PER_WORKSPACE && last.evicted >= 1 && !!st.db.prepare("SELECT id FROM memories WHERE id = ?").get(last.id));
+	const arch = st.db.prepare("SELECT COUNT(*) AS n, SUM(CASE WHEN archived_at IS NOT NULL AND archived_at != '' THEN 1 ELSE 0 END) AS stamped FROM memories_archive WHERE mode = ? AND workspace = ?").get("pentest", "cap-ws");
+	ok("冷淘汰行已归档（memories_archive 可恢复，带归档时间与最早行）", arch.n === 2 && arch.n === arch.stamped && !!st.db.prepare("SELECT id FROM memories_archive WHERE title = ?").get("上限行0"));
 	writeMemory(st, { mode: "pentest", kind: "tactic", title: "另键位行", content: "x", workspace: "cap-ws", workspace_key: "cap-ws@zzzz9999" });
 	ok("冷淘汰只动本键位行（另键位行不受影响）", st.db.prepare("SELECT COUNT(*) AS n FROM memories WHERE mode = ? AND workspace = ? AND workspace_key = ?").get("pentest", "cap-ws", "cap-ws@zzzz9999").n === 1);
 	st.close();
@@ -239,6 +241,29 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	ok("IR 按 target_kind 过滤检索", searchMemories(st, { mode: "incident-response", query: "银狐", target_kind: "case-2026-01" }).length === 1);
 	const top = topForInjection(st, "incident-response", "ir-ws", 3, "ir-ws@11111111");
 	ok("IR 注入行带案件标注（多目标提示触发）", top.length === 2 && top.some((r) => r.targetKind === "case-2026-01"));
+	st.close();
+}
+
+// 13. FTS5 trigram 检索（分词 OR 召回/bm25 混排/刷新同步/短词回落）+ 截断显式化 + 刷新带回执 + 行净化
+{
+	const st = openStore(":memory:");
+	ok("FTS5 trigram 可用", st.fts === true);
+	writeMemory(st, { mode: "pentest", kind: "tactic", title: "入口打法", content: "入口经 Shiro 反序列化，绕 WAF 后直达后台", tags: "java" });
+	writeMemory(st, { mode: "pentest", kind: "tactic", title: "另一条", content: "只有反序列化一条线" });
+	ok("分词 OR 召回：任一词命中即回（整串 LIKE 两词分离时打不通）", searchMemories(st, { mode: "pentest", query: "反序列化 WAF" }).length === 2);
+	const mixed = searchMemories(st, { mode: "pentest", query: "后台 shiro" });
+	ok("混排：FTS 词+短词 LIKE 补位（大小写折叠）", mixed.length === 1 && mixed[0].title === "入口打法");
+	const rank = searchMemories(st, { mode: "pentest", query: "shiro 反序列化" });
+	ok("bm25 混排：双词命中排前", rank.length === 2 && rank[0].title === "入口打法");
+	writeMemory(st, { mode: "pentest", kind: "tactic", title: "入口打法", content: "v2 改走 fastjson 利用链" });
+	ok("刷新后 FTS 同步（update 触发器）：新词命中、旧词退场", searchMemories(st, { mode: "pentest", query: "fastjson" }).length === 1 && searchMemories(st, { mode: "pentest", query: "WAF" }).length === 0);
+	ok("全短词回落整串 LIKE（历史行为一致）", searchMemories(st, { mode: "pentest", query: "改走" }).length === 1);
+	const big = writeMemory(st, { mode: "pentest", kind: "tactic", title: "超长正文", content: "B".repeat(5000) });
+	ok("超 4000 字符显式截断（truncated 标记+实存 4000）", big.truncated === true && getMemory(st, big.id).content.length === 4000);
+	writeMemory(st, { mode: "pentest", kind: "tactic", title: "回执卡", content: "v1" });
+	const r2 = writeMemory(st, { mode: "pentest", kind: "tactic", title: "回执卡", content: "v2 更长" });
+	ok("刷新带回执（原正文字数+预览，误合并可察觉）", r2.refreshed === true && r2.truncated === false && r2.prev.chars === 2 && r2.prev.preview === "v1" && r2.chars === 5);
+	ok("检索行无内部列泄漏（snip/rel）", searchMemories(st, { mode: "pentest", query: "回执卡" }).every((r) => !("snip" in r) && !("rel" in r)));
 	st.close();
 }
 

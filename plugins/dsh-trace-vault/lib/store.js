@@ -23,8 +23,9 @@ export const OUTCOMES = ["ok", "blocked", "error"];
 
 const BLOCKED_RE = /\b(403|forbidden|waf|blocked|rate.?limit|429|too many requests|captcha|denied)\b/i;
 
-/** 出局分类（纯函数）：工具报错优先；文本命中拦截特征归 blocked（blocked 之于
- *  规划者是「换路径/降速」信号，不是死路）；其余 ok。isError 未知时按文本判定。 */
+/** 出局分类（纯函数）：工具报错优先；文本命中拦截特征归 blocked（对应 ARTEX guard
+ *  postToolUse 的失败归因——blocked 之于规划者是「换路径/降速」信号，不是死路）；
+ *  其余 ok。isError 未知时按文本判定。 */
 export function classifyOutcome(isError, text) {
 	if (isError === true) return "error";
 	return BLOCKED_RE.test(String(text ?? "")) ? "blocked" : "ok";

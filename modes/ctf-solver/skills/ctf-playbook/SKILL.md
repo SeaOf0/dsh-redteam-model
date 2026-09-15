@@ -1,6 +1,6 @@
 ---
 name: ctf-playbook
-description: CTF 解题模式作战手册：题面登记与线索梳理、模块路由表（web/pwn/reverse/crypto/misc/forensics/mobile/cloud/AI/AD/供应链 → refs 知识库与生态加载）、解题循环纪律（flag 真实性=平台回显或本地 check、不猜不撞不伪造、沙盒内解题、爆破最后手段限速）、卡点升级阶梯、多题并行编排、两门 board/flag、flag 台账与复盘报告模板。发现 ≠ 真实存在；flag + 验证 = 真实有效、模块路由到预设内建 refs 知识库（118 篇：web/pwn/reverse/crypto/forensics/misc/ai-ml/osint/malware+solve-challenge 分诊；AD/云/mobile 生态加载）、赛制作战卡（Jeopardy 动态记分/AWD 三线：批量攻击·防御 patch·应急反打/KotH 占点/混合赛制卡：双得分形态资源分配+两线台账分列）、比赛策略层（调度优先级/卡点 30-45 分钟量化/hint 期望值/提交纪律/**收官纪律**：剩余 15-20% 切换——未提交 flag 对账第一优先+软题快抢+不开新硬题+AWD 终盘 patch 稳定优先）、平台提交自动化（CTFd 类 API 规则允许时结果回写台账）、writeup 检索合规边界与模板库闭环。
+description: CTF 解题模式作战手册：题面登记与线索梳理、模块路由表（web/pwn/reverse/crypto/misc/forensics/mobile/cloud/AI/AD/供应链 → refs 知识库与生态加载）、解题循环纪律（flag 真实性=平台回显或本地 check、不猜不撞不伪造、沙盒内解题、爆破最后手段限速）、卡点升级阶梯、多题并行编排、两门 board/flag、flag 台账与复盘报告模板。发现 ≠ 真实存在；flag + 验证 = 真实有效、模块路由到预设内建 refs 知识库（124 篇：web/pwn/reverse/crypto/forensics/misc/ai-ml/osint/malware+solve-challenge 分诊；AD/云/mobile 生态加载）、赛制作战卡（Jeopardy 动态记分/AWD 三线：批量攻击·防御 patch·应急反打/KotH 占点/混合赛制卡：双得分形态资源分配+两线台账分列）、比赛策略层（调度优先级/卡点 30-45 分钟量化/hint 期望值/提交纪律/**收官纪律**：剩余 15-20% 切换——未提交 flag 对账第一优先+软题快抢+不开新硬题+AWD 终盘 patch 稳定优先）、平台提交自动化（CTFd 类 API 规则允许时结果回写台账）、writeup 检索合规边界与模板库闭环。
 ---
 
 # CTF 解题作战手册
@@ -15,7 +15,7 @@ description: CTF 解题模式作战手册：题面登记与线索梳理、模块
 ## 定位与设计依据
 
 CTF 解题模式（ctf-solver）是轻量解题台：题目与题目环境默认沙盒内解题（题目环境=授权解题
-对象），flag 是唯一可交付物。知识层=预设内建 `refs/` 知识库（118 篇，模块化：web/pwn/
+对象），flag 是唯一可交付物。知识层=预设内建 `refs/` 知识库（124 篇，模块化：web/pwn/
 reverse/crypto/forensics/misc/ai-ml/osint/malware + solve-challenge 分诊入口），跨模块面
 （AD/云/mobile）按生态协作就地加载对应专业模式 refs。与评估类模式的差异：无授权评估语义、
 无六字段报告、无检测缺口——本模式只做「解题编排 + 赛制策略 + flag 台账 + 复盘」。
@@ -142,9 +142,10 @@ reverse/crypto/forensics/misc/ai-ml/osint/malware + solve-challenge 分诊入口
 - **赛中检索边界**：不检索本届比赛同名题/近似题的公开 writeup 与题解（按平台规则属
   作弊线）；通用技术文档、官方工具手册、历史无关题型的技术文章检索正常——判据=
   「检索的是技术知识还是这道题的答案」。
-- **模板库闭环**：每题 exp 落 `exp/<题名>/`（可参数化重跑）；赛后复盘把可复用解法模板
-  化沉淀进工作区 `lessons.md` 与模板目录（exploit 骨架/解码脚本/取证流程）——下次比赛
-  开局按 lessons 召回（对齐生态经验台账机制）。
+- **模板库闭环**：每题 exp 落 `exp/<题名>/`（可参数化重跑）；赛后复盘把可复用解法沉淀战役记忆
+  `campaign_memory_write`（题解套路→tactic、工具配方→tooling、卡点教训→lesson，target_kind=平台名
+  区分同名题），解法模板（exploit 骨架/解码脚本/取证流程）归模板目录——下次比赛开局按战役记忆
+  检索召回（两轨归一：跨赛事可复用经验走战役记忆，`lessons.md` 仅本工作区交接便签）。
 
 ## flag 台账模板
 
@@ -195,5 +196,5 @@ searchsploit——宿主须可达，不可自配）；**附件=未知文件**：
 
 ## 附录
 
-- refs 知识库总索引见 `refs/README.md`（118 篇（含分诊入口）；MIT 许可证随附 refs/LICENSE）。
+- refs 知识库总索引见 `refs/README.md`（124 篇（含分诊入口）；MIT 许可证随附 refs/LICENSE）。
 - 跨平台执行公约（win/mac/linux 等价表，见 ecosystem-cooperation）。

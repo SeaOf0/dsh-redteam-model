@@ -202,7 +202,7 @@ function apply(ctx) {
 	//#region 模型工具（宿主平面；九模式会话内可用）
 	ctx.tools.register(defineTool({
 		name: "campaign_memory_write",
-		description: "把本次战役中验证有效的打法/目标指纹/工具可用性/教训/检测指纹沉淀为战役记忆（跨会话长期复用）。存储原文不做脱敏——内网地址/指纹细节/凭据均原样入库（记忆库是本地库）；已有独立凭据库（hunter key 库/webshell 连接库等）时也可只写指位（存哪、叫什么）。同模式同工作区同题写入=刷新既有记忆（正文与时效更新、热度保留，不产生重复——复用标题即可更新）。kind：tactic 战术打法 / fingerprint 目标指纹（默认 180 天时效，到期退出自动召回、检索仍可命中带过期标记，同题重写即刷新；代审的框架 sink 特征归此档）/ tooling 工具可用性（代审的 semgrep 规则集调优结论归此档）/ lesson 教训 / detect 检测指纹（默认 30 天过期并清理，可 expires_days 覆盖）。本模式作战记忆以本工具为准沉淀；用户偏好/环境事实等通用记忆（如有其他记忆工具）不在此沉淀。有效即可记，不必等收口。同模式同工作区上限 400 条，超限自动冷淘汰（热度×半衰最旧让位）；同目录多目标（多云厂商/多样本/多题）时 target_kind 填目标标识（厂商名/样本哈希前 8 位/平台名）——召回注入按目标标注，适用性按目标自判。CTF：题解套路与非预期解→tactic、工具配方（完整命令行/参数）→tooling、卡点教训→lesson；开赛/换题型先检索；同名题跨平台/赛事以 target_kind=平台名区分（同题同平台才刷新，不互覆）。应急溯源：排查配方与处置手法→tactic、家族/威胁指纹→fingerprint、取证工具可用性→tooling、检测规则时效情报→detect、复盘教训→lesson；接案/换案件先检索；多案件同目录以 target_kind=案件号区分。",
+		description: "把本次战役中验证有效的打法/目标指纹/工具可用性/教训/检测指纹沉淀为战役记忆（跨会话长期复用）。存储原文不做脱敏——内网地址/指纹细节/凭据均原样入库（记忆库是本地库）；已有独立凭据库（hunter key 库/webshell 连接库等）时也可只写指位（存哪、叫什么）。正文建议四段结构：命中条件/打法步骤/关键参数/验证结果——完整可续接、条目可辨；超 4000 字符会截断（返回 truncated 提示），建议精简或同题拆卡。同模式同工作区同题写入=刷新既有记忆（正文与时效更新、热度保留，不产生重复——复用标题即可更新；刷新带回执：原正文字数与开头预览，非同题误合并可察觉）。kind：tactic 战术打法 / fingerprint 目标指纹（默认 180 天时效，到期退出自动召回、检索仍可命中带过期标记，同题重写即刷新；代审的框架 sink 特征归此档）/ tooling 工具可用性（代审的 semgrep 规则集调优结论归此档）/ lesson 教训 / detect 检测指纹（默认 30 天过期并清理，可 expires_days 覆盖）。本模式作战记忆以本工具为准沉淀；用户偏好/环境事实等通用记忆（如有其他记忆工具）不在此沉淀。有效即可记，不必等收口。同模式同工作区上限 400 条，超限自动冷淘汰（热度×半衰最旧让位、淘汰行归档可恢复）；同目录多目标（多云厂商/多样本/多题）时 target_kind 填目标标识（厂商名/样本哈希前 8 位/平台名）——召回注入按目标标注，适用性按目标自判。CTF：题解套路与非预期解→tactic、工具配方（完整命令行/参数）→tooling、卡点教训→lesson；开赛/换题型先检索；同名题跨平台/赛事以 target_kind=平台名区分（同题同平台才刷新，不互覆）。应急溯源：排查配方与处置手法→tactic、家族/威胁指纹→fingerprint、取证工具可用性→tooling、检测规则时效情报→detect、复盘教训→lesson；接案/换案件先检索；多案件同目录以 target_kind=案件号区分。",
 		parameters: {
 			title: { type: "string", required: true, description: "一句话标题（如：XX 框架后台默认凭据直连）；同题同 target_kind 即刷新而非新增（跨平台同名题不互覆）" },
 			content: { type: "string", required: true, description: "打法/事实正文（怎么做的、命中条件、关键参数；原样入库不做脱敏——凭据/密钥也原样存储）" },
@@ -213,7 +213,7 @@ function apply(ctx) {
 		},
 		output: {
 			schema: { type: "object", additionalProperties: true, properties: { ok: { type: "boolean", required: true } } },
-			render: (_a, v) => [{ type: "text", text: v.ok ? `记忆已${v.refreshed ? "刷新" : "沉淀"}：${v.id}${v.expires_at ? "（" + v.expires_at + " 过期）" : ""}${v.evicted ? `（本工作区超上限，冷淘汰 ${v.evicted} 条）` : ""}` : `沉淀失败：${v.error}` }]
+			render: (_a, v) => [{ type: "text", text: v.ok ? `记忆已${v.refreshed ? "刷新" : "沉淀"}：${v.id}${v.expires_at ? "（" + v.expires_at + " 过期）" : ""}${v.refreshed && v.prev ? `（原正文 ${v.prev.chars} 字符→${v.chars} 字符，原开头是「${v.prev.preview}…」——非同题勿合并）` : ""}${v.truncated ? "（正文超 4000 字符已截断——建议精简或同题拆卡）" : ""}${v.evicted ? `（本工作区超上限，冷淘汰 ${v.evicted} 条，已归档可恢复）` : ""}` : `沉淀失败：${v.error}` }]
 		},
 		execute(args, exec) {
 			const session = sessionOf(ctx, exec);
@@ -221,7 +221,7 @@ function apply(ctx) {
 			try {
 				const ws = workspaceOf(exec?.agent);
 				const m = writeMemory(theStore(), { mode: session.mode, kind: args.kind, title: args.title, content: args.content, tags: args.tags, target_kind: args.target_kind, expires_days: args.expires_days, source_session: session.id, workspace: ws.name, workspace_key: ws.key });
-				return Promise.resolve({ ok: true, id: m.id, expires_at: m.expires_at, refreshed: m.refreshed, evicted: m.evicted });
+				return Promise.resolve({ ok: true, id: m.id, expires_at: m.expires_at, refreshed: m.refreshed, evicted: m.evicted, truncated: m.truncated, chars: m.chars, prev: m.prev });
 			} catch (e) {
 				return Promise.resolve({ ok: false, error: e?.message ?? String(e) });
 			}
@@ -230,7 +230,7 @@ function apply(ctx) {
 
 	ctx.tools.register(defineTool({
 		name: "campaign_memory_search",
-		description: "检索本模式战役记忆（开战或换目标类型时先查——历史打法可能直接给出可复用路径；本模式作战记忆以本工具为准，通用记忆检索不作前置）。跨工作区检索：全部工作区的同模式记忆都可命中，每行带 workspace 来源标注——跨客户/项目经验复用是显式动作。按热度排序（使用频次×30 天时间衰减，久未读取自然让位）；命中不记账，campaign_memory_get 读全文即记账并复活热度；已过期目标指纹仍可命中（带过期标记）。行内为正文预览，全文经 campaign_memory_get 按需读取。返回为空说明该方向没有历史沉淀。",
+		description: "检索本模式战役记忆（开战或换目标类型时先查——历史打法可能直接给出可复用路径；本模式作战记忆以本工具为准，通用记忆检索不作前置）。多关键词空格分词（任一命中即召回，词法更贴者排前）——换词多试几种表述可补召回。跨工作区检索：全部工作区的同模式记忆都可命中，每行带 workspace 来源标注——跨客户/项目经验复用是显式动作。按 bm25×热度混排（使用频次×30 天时间衰减，久未读取自然让位）；命中不记账，campaign_memory_get 读全文即记账并复活热度；已过期目标指纹仍可命中（带过期标记）。行内为命中窗摘录，全文经 campaign_memory_get 按需读取。返回为空说明该方向没有历史沉淀。",
 		parameters: {
 			query: { type: "string", required: true, description: "关键词（标题/正文/标签匹配，如：XX 云台 弱口令）" },
 			kind: { type: "string", enum: MEMORY_KINDS, description: "限定类别（可选）" },
