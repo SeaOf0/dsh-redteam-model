@@ -8,14 +8,17 @@
 > 覆盖面：恶意样本分析（静态/动态/内存/持久化/勒索）/ 逆向工具（IDA/Ghidra/r2/x64dbg）/
 > 平台逆向（macOS/.NET/Go·Rust/JS/协议/胖客户端/浏览器扩展）/ 移动逆向与脱壳
 > （Android/iOS/加固专项）/ 方法论（反调试/壳/混淆还原/补丁对比/1day）/ 固件 /
-> 检测规则 / pwn / 漏洞挖掘与利用开发（fuzz/崩溃/缓解/边界/shellcode） / 硬件与无线 / EDR 绕过逆向 / 趋势。共 270 篇 md
+> 检测规则 / pwn / 漏洞挖掘与利用开发（fuzz/崩溃/缓解/边界/shellcode） / 硬件与无线 / EDR 绕过逆向 /
+> Windows 专项作战（混合托管桥接/IPC 控制面/启动链/驱动样本/注入链还原/UI 消息流/内存映像重建/套壳分诊） / 趋势。共 278 篇 md
 > （扩容：reverse-engineering 补 20 篇 + pwn/hardware/edr-bypass-re + android v1/v2；
 > 本轮补 binary-analysis 审计 13 缺口 +10 篇：Windows 壳脱壳 OEP/IAT、注册算法还原、macOS 破解、
 > RAT 配置提取、native VM devirt、符号执行深度、Volatility 取证、UEFI、Rust、浏览器扩展、
 > 驱动回调/签名、符号恢复、JA3·JARM；扩展 +5 篇：frida 脚本库、IDA 插件生态、
 > x64dbg 调试方法论/插件、Ghidra MCP 联动、下载器链逐级解码；
 > 补足 exploit-dev/ 10 篇：fuzzing 双篇、漏洞利用开发双篇、崩溃分析、Windows 缓解机制、
-> Windows 安全边界、漏洞类别与 CVE 实例、基础利用、shellcode）.
+> Windows 安全边界、漏洞类别与 CVE 实例、基础利用、shellcode；
+> 补 Windows 专项作战 8 篇：windows/ 目录，覆盖混合托管互操作/IPC 持久化控制面/异常启动链/
+> 内存取证映像重建/Loader 注入链/UI 消息流/驱动样本/Web 套壳分诊）.
 
 ## 快速路由（按任务类型找目录）
 
@@ -31,6 +34,7 @@
 | 漏洞挖掘与利用开发（fuzz/崩溃/缓解/边界） | `exploit-dev/`（10 篇：fuzzing·课程、利用开发·路线图、崩溃分析、Windows 缓解、Windows 边界、漏洞类别、基础利用、shellcode） |
 | 硬件/无线/工控（固件相邻） | `hardware/`（hardware-security/radio-sdr/ot-ics/wifi-wireless 四技能） |
 | EDR 绕过逆向（检测侧视角） | `edr-bypass-re/`（telemetry-blinding/hook-survey/unhook + SKILL） |
+| Windows 专项作战（混合托管/IPC 控制面/启动链/驱动/注入还原/UI/内存重建/套壳） | `windows/`（8 篇） |
 | IOC/YARA 输出 | `detection/` + methodology/malware-analysis |
 | 2025–2026 工具链风向 | `trends/`（1） |
 
@@ -148,6 +152,21 @@ opcode 提取分类、运行时 VM 状态捕获——js-reverse 去混淆之外�
 
 > 生态边界：本目录收**知识与方法论**；利用验证实操交 pentest/attack-defense，载荷规避与免杀交 av-evasion（与库尾「路径与链接约定」一致）。
 
+### windows/（Windows 专项作战协议，8 篇）
+
+专项纪律型手册（命中信号→最小目标→静态观察→动态取证→还原修补→常见失误），与 playbook「Windows 专项作战纪律」五则配套；篇内动态取证动作一律受本模式动态隔离铁律约束。
+
+| 文件 | 内容 | 何时读 |
+|---|---|---|
+| mixed-mode-interop-playbook.md | 混合托管互操作逆向（C++/CLI/IJW/P/Invoke/COM interop/CLR hosting：边界判定→桥接链建立→bridge-map） | 托管↔原生混合样本 |
+| ipc-persistence-playbook.md | IPC 与持久化控制面还原（Service/schtasks/WMI/NamedPipe/RPC/ALPC/COM LocalServer：launcher→registrar→writer→reader→use 链路） | 样本带服务/管道/COM 控制面 |
+| exception-runtime-playbook.md | 异常与启动链分析（TLS callback→EP→CRT→SEH/VEH 枚举；断点失效五因排查；CFG/CET） | Windows PE 分诊/OEP 定位受阻 |
+| memory-forensics-playbook.md | 内存取证与映像重建（VAD 地图/dump 粒度决策/manual map·hollowing 残留/远端映像优先） | 内存映像提取与重建 |
+| loader-injection.md | Loader 与注入链还原（CreateRemoteThread/APC/Reflective/Manual Map/Hollowing：最小链重建+remote-map） | 注入类样本/装载链还原 |
+| ui.md | Windows UI 消息流逆向（自绘 UI：WndProc 消息分支/hit-test/dispatch_action 映射/UIElement 结构模板） | 自绘 UI 目标/授权弹窗定位 |
+| driver.md | 驱动样本分析（DriverEntry 检查表/IOCTL 解码与探测/WinDbg KD 命令/内核回调与 rootkit 指标） | 驱动样本/内核回调规避样本（卡 D） |
+| web-shell-triage.md | Web 套壳分诊（Electron/CEF/WebView2/Tauri/Wails：目录结构+PE 依赖+bundle 指纹三路判定→bridge 定位→下一跳） | 安装目录携带大量前端资源时 |
+
 ### trends/（1 篇）
 
 | 文件 | 内容 | 何时读 |
@@ -197,6 +216,10 @@ opcode 提取分类、运行时 VM 状态捕获——js-reverse 去混淆之外�
 - **补足 exploit-dev/ 10 篇（2026-08-19）**：fuzzing 双篇 / 利用开发双篇 / 崩溃分析 /
   Windows 缓解 / Windows 边界 / 漏洞类别 / 基础利用 / shellcode，按原文收录（覆盖本库此前
   libFuzzer·honggfuzz·CWE·崩溃分析·Windows 利用开发·Windows 缓解·shellcode 机制七项零覆盖缺口）。
+- **补 Windows 专项作战 8 篇（windows/）**：混合托管互操作 / IPC 持久化控制面 / 异常启动链 /
+  内存取证映像重建 / Loader 注入链 / UI 消息流 / 驱动样本 / Web 套壳分诊——自写收录，
+  产物落盘路径已适配本模式 `artifacts/<样本哈希>/` 约定（覆盖本库此前 WOW64·C++/CLI·
+  CLR hosting·ALPC 控制面·WndProc·Schannel 六项零覆盖缺口）。
 - 本目录随预设打包分发；第三方来源文件的许可注记见各 README。
 - 与 playbook 的关系：速查卡（playbook）→ 深度手册（refs/）→ 证据落盘（任务工作区，见
   ecosystem-cooperation 技能「产物落盘与交接约定」）。

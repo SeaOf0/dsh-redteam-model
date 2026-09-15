@@ -1,6 +1,6 @@
 ---
 name: re-playbook
-description: 二进制分析模式作战手册：样本登记与活体处置 SOP、壳/混淆识别与脱壳、多视角分析、frida 插桩 SOP、angr 符号执行分工、IOC 与检测规则输出、时间线/残留/敏感数据三件套、报告模板。结论必须有字节/指令级证据引用、家族指纹快筛路由与多样本批次聚类（代表深析+变体外推）、IAT 修复三情形分诊（保留/TRACE 重建/hook wrapper）、VM 壳（指令虚拟化）处置分叉（病毒分析=行为级+trace 代替指令还原/破解=关键 handler 逐条还原/还原深度三档如实标注）、逆向破解决策（授权模型四分类路径+keygen 验证闭环）、固件与硬件作战卡（binwalk 提取/敏感面/diff/物理接口）、场景作战卡族四卡（勒索样本——密钥管理缺陷检测→解密器复现交 IR/移动样本——权限组件面+家族快筛/平台特化——.NET·浏览器扩展·变种语言审计面挂 code-audit sink 大表/EDR 规避样本——检测面反推+规则回馈 av-evasion 收口）、漏洞样本分析线（崩溃分诊→根因定位→利用条件评估→按需交接 ctf-solver；fuzzing 入口）、ioc.txt 机器可读工件、内存镜像产物衔接。
+description: 二进制分析模式作战手册：样本登记与活体处置 SOP、壳/混淆识别与脱壳、多视角分析、frida 插桩 SOP、angr 符号执行分工、IOC 与检测规则输出、时间线/残留/敏感数据三件套、报告模板。结论必须有字节/指令级证据引用、家族指纹快筛路由与多样本批次聚类（代表深析+变体外推）、IAT 修复三情形分诊（保留/TRACE 重建/hook wrapper）、VM 壳（指令虚拟化）处置分叉（病毒分析=行为级+trace 代替指令还原/破解=关键 handler 逐条还原/还原深度三档如实标注）、逆向破解决策（授权模型四分类路径+keygen 验证闭环）、固件与硬件作战卡（binwalk 提取/敏感面/diff/物理接口）、场景作战卡族四卡（勒索样本——密钥管理缺陷检测→解密器复现交 IR/移动样本——权限组件面+家族快筛/平台特化——.NET·浏览器扩展·变种语言审计面挂 code-audit sink 大表/EDR 规避样本——检测面反推+规则回馈 av-evasion 收口）、Windows 专项作战纪律五则（架构/WOW64 边界·混合托管互操作桥接·IPC 持久化控制面·自绘 UI 消息流·网络栈定栈）、防护定级 T0-T6、启动链枚举（TLS callback/SEH/VEH）、Web 套壳分流（Electron/CEF/WebView2/Tauri/Wails）、切入点纪律、漏洞样本分析线（崩溃分诊→根因定位→利用条件评估→按需交接 ctf-solver；fuzzing 入口）、ioc.txt 机器可读工件、内存镜像产物衔接。
 tools: jadx, frida
 ---
 
@@ -23,6 +23,23 @@ tools: jadx, frida
 - 收到样本先登记：哈希（sha256）、来源、日期、获取方式，再开始任何分析。
 - 一律视为活体恶意软件：不双击、不在非分析环境执行、默认断网。
 - 样本与产物（脱壳文件、dump、trace）分开存放，目录以样本哈希命名。
+
+## 防护定级（分诊产物·工具链选择前置）
+
+结构解析完成后先定级（三路分诊共用），定级决定工具链投入与降级预期：
+
+| 级 | 特征 | 工具链预期 |
+|---|---|---|
+| T0 | 无明显保护，单进程、直接入口、静态即可建立主链 | 基础静态链（objdump/capstone） |
+| T1 | 轻度混淆、导入隐藏、字符串加密、简单反调试或配置跳板 | 静态+脚本化解密；frida 按需 |
+| T2 | 单层壳、异常门、单个远端装载链、单层网络或运行时校验 | 脱壳管线主链（OEP/IAT） |
+| T3 | 多模块、WOW64 边界、混合托管、服务/IPC 控制面或多条入口链并存 | 专项纪律启用（见 Windows 专项作战纪律）+ 多视角 |
+| T4 | 注入+抗分析、多进程协同、手工装载、内存重映射或驱动伴随 | 动态取证+内存映像重建（隔离铁律内） |
+| T5 | 用户态/内核态或托管/非托管/IPC 多层强耦合，单一工具已无法闭环 | 组合编排：专项纪律多则并行+假设台账 |
+| T6 | 高对抗组合场景，需静态、动态、内存与协议证据联动拆解 | 全形态联动（覆盖台账按维度登记缺口） |
+
+**定级纪律**：未完成架构边界、启动链和真实触发面裁定前，不得把单个函数语义直接提升为高置信
+业务结论；定级写入分诊产物，升级/降级须附证据。
 
 ## 家族指纹快筛路由（分诊后、假设循环前）
 
@@ -99,6 +116,14 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 - 结构解析先行：`file` / `otool` / `objdump` 判断 PE/ELF/Mach-O、位数、节区异常。
 - 壳指纹识别：入口点特征、节区熵值、导入表残缺度。
 - 脱壳策略：静态脱壳（定位 OEP）、动态 dump（frida/调试器）——脱壳产物回填资产清单并注明来源。
+- **启动链枚举（Windows PE 必过）**：枚举 `TLS callback → entrypoint → CRT → SEH/VEH` 完整启动链——
+  `main/WinMain/DllMain` 不是唯一真实入口（TLS callback 先于 OEP 执行，常承载反分析/解密门）；
+  断点未命中 ≠ 逻辑未执行（先查架构不匹配、异常吞掉、TLS 先跑、CFG/CET 保护、WOW64 边界）。
+  深读 `refs/windows/exception-runtime-playbook.md`。
+- **Web 套壳分流**：安装目录携带大量 js/html/asar/pak/locales 前端资源 → 先走套壳分诊线路
+  （wrapper/runtime 指纹 → 主入口资源与 bridge 定位 → 再决定是否深挖宿主 EXE），深读
+  `refs/windows/web-shell-triage.md`；前端/客户端侧深水区衔接 pentest 客户端作战线
+  （跨模式能力会话内直接生效）。
 
 ## 脱壳与还原（app 壳 / Windows 壳 + IAT 修复）
 
@@ -127,6 +152,24 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 - **还原完整性验证（persona 硬规则）**：dex 校验、IAT 有效性、可运行性三项通过后才可作为分析依据；不完整的还原标「疑似」，禁止在残缺产物上下结论。
 - 还原产物重新登记哈希与来源，再交 code-audit（分工见 audit-playbook）。
 - 工具现状按检测制：开工 `command -v` 探测 frida/jadx/apktool 等；dex2jar、脱壳机、x64dbg/Scylla 等 Windows 工具链属补充工具集（检测缺失时按安装请求兜底，逐工具讨论时一并处理）。
+
+## Windows 专项作战纪律（分诊后技术面特化）
+
+> 与场景作战卡族同型（卡=场景特化，本节=技术面纪律）；每则=命中信号 → 最小必做 → 禁止性结论。
+> 命中任一则时通用流程不豁免；各则详情深读 `refs/windows/` 对应篇。
+
+| 纪律 | 命中信号 | 最小必做 | 禁止性结论 |
+|---|---|---|---|
+| **架构/WOW64 边界** | x86/x64/ARM64/WOW64 交叉；32 位进程跑在 64 位宿主 | ①确认目标架构、调试器架构、宿主架构与 wow64 状态 ②判定入口在原生、桥接还是远端进程触发 ③给出跨架构调试/hook/dump 策略 ④结论写入分析报告与分诊产物 | 架构边界未裁定前，不得把「断点未命中」解释为「逻辑未执行」 |
+| **混合托管互操作** | C++/CLI、IJW、P/Invoke、COM interop、CLR hosting、mscoree 导入 | ①判定托管/非托管边界与加载顺序 ②建立至少一条 managed↔native 桥接链（记录承载方式：P/Invoke/IJW thunk/COM vtable/CLR hosting callback） ③产物：mixed-mode-notes + bridge-map | 未完成最小桥接链前，不得把某一侧局部函数当成完整业务结论 |
+| **IPC/持久化控制面** | Service、schtasks、WMI、NamedPipe、RPC、ALPC、COM LocalServer | ①列出控制面载体与触发条件 ②建立 launcher→registrar→writer→reader→use 链路 ③记录权限/会话/启动时机/副作用 ④产物：ipc-surface + persistence-map | 未完成控制面链路前，不得只凭单个注册表键或单个命名管道下「持久化/控制逻辑已完整恢复」结论 |
+| **UI 消息流** | 自绘 UI、无标准子控件、WndProc 手动 hit-test、皮肤位图 | ①GetMessage→Dispatch→WndProc 主链定位 ②关键消息分支（WM_PAINT/WM_LBUTTONDOWN/WM_USER+N 内部消息协议） ③点击→hit_test→dispatch_action 映射到关键校验函数 | 未定位消息分发主链前，不得把资源位图/字符串当作功能面结论 |
+| **Windows 网络栈** | WinHTTP/WinINet/Schannel/静态链接 OpenSSL/raw socket | ①先识别栈类型（决定 hook 点选择） ②区分网络/TLS/协议三层证据 ③优先定位明文缓冲区、证书校验点、请求构造点与发送边界 | 未定栈前不得盲目下网络 hook（钩错层=白跑） |
+
+深读路由：混合托管 `windows/mixed-mode-interop-playbook.md`；IPC 控制面
+`windows/ipc-persistence-playbook.md`；UI 消息流 `windows/ui.md`；内存映像重建与 dump 粒度
+决策（manual map/hollowing 残留、远端映像优先于磁盘原件）`windows/memory-forensics-playbook.md`
+与 `windows/loader-injection.md`。
 
 ## 逆向破解决策（授权机制强度评估）
 
@@ -215,6 +258,9 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
   ③ **检测规则回馈**：YARA/Sigma 初稿 → **生态协作 av-evasion 模式收口**（攻防模式
   防御验证章已定"av-evasion 产出→攻防收口"方向；本卡=检测规则候选的又一来源，方向
   相同：二进制分析产出→av-evasion 收口）。
+- **驱动伴随样本**：内核回调/IOCTL 面的静态分析（DriverEntry 检查表/MajorFunction 分发/
+  CTL_CODE 解码）与设备交互探测——驱动动态分析只在带快照 VM 内进行（内核崩溃=蓝屏，
+  同受隔离铁律约束），深读 `refs/windows/driver.md`。
 - **边界**：分析规避手法≠开发规避手法（后者是 av-evasion 的定位）；本卡产物是**检测
   侧**规则与遥测建议。
 - 图谱：EDR 规避样本卡（edrre/macos-bypass 格）。
@@ -437,6 +483,7 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 | 漏洞挖掘与利用开发（fuzz 搭建/崩溃分析/利用构造/缓解与边界） | exploit-dev/（10 篇：fuzzing·课程、exploit-development·路线图、crash-analysis、windows-mitigations、windows-boundaries、vuln-classes、basic-exploitation、shellcode；利用验证实操交 pentest/attack-defense、载荷规避交 av-evasion） |
 | 硬件/无线/工控（固件相邻面） | hardware/（hardware-security/radio-sdr/ot-ics/wifi-wireless） |
 | EDR 绕过逆向（检测侧视角，分析归本模式、规则产出接 av） | edr-bypass-re/（telemetry-blinding/hook-survey/unhook） |
+| Windows 专项作战（混合托管桥接/IPC 控制面/启动链/驱动样本/注入链还原/UI 消息流/内存映像重建/Web 套壳分诊） | windows/（8 篇） |
 | Android 逆向增量（Kotlin 名恢复/动态分析/frida 脚本） | mobile/android-reverse/engineering-skill-v1、v2/ |
 | Android 壳全景与脱壳决策（36+ 壳 SO/工具矩阵） | mobile/android-reverse/references/unpack-tool-matrix.md |
 | Android DEX/ARM64 VMP 恢复（handler 表/字节码还原） | mobile/android-reverse/references/vmp-analysis-playbook.md |
@@ -522,6 +569,15 @@ refs/methodology/reverse-engineering/references/anti-analysis.md、anti-debuggin
 总控立假设（台账登记）→ 静态多视角组并行取证 → 动态插桩员验证/证伪 → 对抗审查员
 反证扫描 → 假设更新（确认/证伪/新假设）→ 循环至结论收敛 → IOC 提取 + 复核 + 报告。
 每轮循环产物落盘 artifacts/<sha256>/，trace 入证据索引。
+
+### 切入点纪律（总控推进防绕圈）
+
+- 假设台账管「假设真伪」，切入点管「推进路线」——两套账并行维护；
+- 每轮列 2-5 个候选切入点，按「成本最低、信息增益最高」排序，**同时活跃最多 2 个**；
+- 某切入点无效时，必须把**失败原因、失败证据、下一跳切入点**写回台账（路线失败入账，
+  与假设证伪同权——防同一死路反复重试，也防已排除路线换皮回流）；
+- 现有切入点全部无效 → 先做一次复盘（基于失败证据生成新切入点）再继续循环，不硬撞；
+- 复合场景（多技术面并存）先判定「先做哪个」再开工，不在多个切入点间来回横跳。
 
 ### claude 升级判据（二进制差异化）——建议项制
 
