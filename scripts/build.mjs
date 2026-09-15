@@ -50,6 +50,8 @@ async function digestDirectory(directory) {
     const entries = await readdir(current, { withFileTypes: true })
     entries.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : 0)
     for (const entry of entries) {
+      // 评测设施目录（标定/judge/runs 运行产物）不属模式分发内容，不进 digest
+      if (entry.isDirectory() && entry.name === 'lab-t2') continue
       const absolute = path.join(current, entry.name)
       const child = relative === '' ? entry.name : `${relative}/${entry.name}`
       if (entry.isDirectory()) {
