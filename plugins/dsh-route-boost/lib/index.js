@@ -192,6 +192,10 @@ const TARGET_ANCHOR_TEXT = {
 const targetAnchorText = (presetId) => TARGET_ANCHOR_TEXT[presetId]
 	?? "target: 开战先 redteam_atlas_target 登记目标；每阶段/每次派单开头重读图谱目标带与 assets.md 核对当前作业对象——对未登记对象作业或超出授权=漂移，立即停手回锚";
 
+/** 目标侧零破坏铁律行（persona 共性条款⑫的信封随行版）——置顶第二行、尾部裁剪不可达，
+ *  防长会话压缩后删除纪律漂移；所有拿信封的模式统一携带。 */
+const ZERO_DESTRUCTION_LINE = "redline: 目标侧零破坏（共性条款⑫）——目标的数据/整体系统/代码/服务，没有用户明确指定严禁删除或破坏（删除=高危，只呈报精确删除计划，获明确指示后才执行并登记）；我方攻击残留清理同走用户确认制";
+
 /** 目的原文单行化+裁剪（粘滞随轮携带，防长会话目的漂移）。 */
 export function purposeLine(text, max = 120) {
 	const oneLine = String(text ?? "").replace(/\s+/g, " ").trim();
@@ -206,6 +210,7 @@ export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidenc
 		.join(" | ");
 	const lines = [
 		`[route-boost] mode=${presetId}（${mode.label}） phase=${phase.id} ${phase.label}（推断，不符以实际为准）`,
+		ZERO_DESTRUCTION_LINE,
 		gateLines
 			? `gates: ${gateLines} —— 结构校验调 stage_gate；语义门禁归复核员（independent-review）`
 			: "gates: 本模式无自建门——总控只消费专业模式 gate-pass 落盘产物；台账终态见 router-playbook",

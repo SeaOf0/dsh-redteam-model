@@ -49,6 +49,13 @@ function makeGuard(overrides = {}, gateLog = "") {
 	ok("rm -rf / blocked", scanDangerous("rm -rf /tmp/x; rm -rf /") !== undefined);
 	ok("rm -rf ~ blocked", scanDangerous("rm -rf ~/everything") !== undefined);
 	ok("scoped rm inside workspace allowed", scanDangerous("rm -rf ./artifacts/old") === undefined);
+	ok("rm root message cites clause 12", (scanDangerous("rm -rf /") || "").includes("共性条款⑫"));
+	ok("Remove-Item -Recurse on C:\\Windows blocked", scanDangerous("powershell Remove-Item -Recurse -Force C:\\Windows\\Temp\\all") !== undefined);
+	ok("rd /s on drive root blocked", scanDangerous("cmd /c rd /s /q C:\\") !== undefined);
+	ok("del /s on drive-root path blocked", scanDangerous("del /f /s /q C:\\Users\\public\\dump") !== undefined);
+	ok("scoped Remove-Item inside workspace allowed", scanDangerous("powershell Remove-Item -Recurse ./artifacts/old") === undefined);
+	ok("format C: blocked", scanDangerous("format C: /fs:ntfs") !== undefined);
+	ok("mkfs blocked", scanDangerous("mkfs.ext4 /dev/sdb1") !== undefined);
 	ok("DROP TABLE blocked", scanDangerous("mysql -e 'DROP TABLE users'") !== undefined);
 	ok("normal SELECT allowed", scanDangerous("mysql -e 'SELECT * FROM users'") === undefined);
 	ok("systemctl restart blocked", scanDangerous("systemctl restart nginx") !== undefined);

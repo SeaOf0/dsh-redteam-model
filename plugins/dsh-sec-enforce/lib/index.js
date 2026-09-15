@@ -112,7 +112,17 @@ export function scanDangerous(command) {
 	const cmd = String(command ?? "");
 	const compact = cmd.replace(/\\\n/g, " ").replace(/\s+/g, " ");
 	if (/(^|[;&|]\s*)rm\s+(-[a-zA-Z]*[rf][a-zA-Z]*\s+)+(\/|~|\$HOME)(\/|\s|$)/.test(compact)) {
-		return "大范围删除（rm 涉及 / 或 ~ 根级路径）被确定性门禁拦截：删除范围必须限定在任务工作区内；确需删除请先列出清单征得用户批准（ask_user_question），再逐项执行。降级替代：cd 到工作区后限定路径逐项删除，或只生成删除清单交由用户手动执行。";
+		return "大范围删除（rm 涉及 / 或 ~ 根级路径）被确定性门禁拦截：目标侧零破坏（共性条款⑫）——删除范围必须限定在任务工作区内；确需删除请先列出清单征得用户批准（ask_user_question），再逐项执行。降级替代：cd 到工作区后限定路径逐项删除，或只生成删除清单交由用户手动执行。";
+	}
+	// Windows 删除族（对齐上条 rm 根级口径）：Remove-Item -Recurse / rd /s / del /s 指向盘根或系统目录
+	if (/\bremove-item\b[^|;&]*-recurse[^|;&]*([a-z]:\\|\\windows\\|\\users\\)/i.test(compact)
+		|| /\b(rd|rmdir)\b\s+\/s\b[^|;&]*[a-z]:\\/i.test(compact)
+		|| /\bdel\b[^|;&]*\/s\b[^|;&]*[a-z]:\\/i.test(compact)) {
+		return "Windows 大范围删除（盘根/系统目录）被确定性门禁拦截：目标侧零破坏（共性条款⑫）——删除范围必须限定在任务工作区内；确需删除请先列出清单征得用户批准（ask_user_question），再逐项执行。降级替代：生成删除清单交由用户手动执行。";
+	}
+	// 格式化/抹除介质：无「小范围」正当形态，全拦
+	if (/\bformat\s+[a-z]:\s/i.test(compact) || /\bmkfs(\.\w+)?\b/.test(compact)) {
+		return "格式化/抹除介质属不可逆破坏，被拦截：目标侧零破坏（共性条款⑫）——没有用户明确指定一律严禁；需要时只生成操作计划呈报，获明确批准后由用户执行或确认后代执行。降级替代：只读挂载核对数据现状，处置建议写入报告。";
 	}
 	if (/\b(DROP\s+TABLE|DROP\s+DATABASE|TRUNCATE\s+TABLE)\b/i.test(compact) && !/^\s*#/.test(compact)) {
 		return "破坏数据完整性操作（DROP/TRUNCATE）被拦截：负面清单禁止破坏数据完整性；验证类需求请用 SELECT 复现影响或在对靶场快照说明并获用户批准后进行。降级替代：SELECT 只读查询复现影响；或靶场快照上验证并注明环境。";
