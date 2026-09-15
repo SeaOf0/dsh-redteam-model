@@ -178,7 +178,7 @@ export function runCli({ id, bin, args, input, env, cwd, timeoutMs, signal, coll
 					finalText = finalTextFromStreamJson(await readFile(traceFile, "utf8")) ?? finalText;
 				} catch {}
 			}
-			// 留痕提示行：编排模型由此得知过程流位置（stream 模式才有；codex 本批无留痕）。
+			// 留痕提示行：编排模型由此得知过程流位置（stream 模式才有；codex 通道当前无留痕）。
 			const meta = traceFile && finalFromStream ? `\n[claude 过程流已留痕：${traceFile}]` : "";
 			if (code === 0) return { stopReason: "completed", output: finalText ? text(finalText + meta) : text("(CLI 无输出)" + meta) };
 			return { stopReason: "error", output: text(`CLI 退出码 ${code}${stderr ? `\nstderr 尾部：\n${tail(stderr)}` : stdout ? `\nstdout 尾部：\n${tail(stdout)}` : ""}${fallbackHint}`) };
