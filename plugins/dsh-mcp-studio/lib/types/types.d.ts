@@ -5,7 +5,7 @@ import type { Config as McpClientConfig } from '@deepseek-ai/dsh-mcp-client';
 export declare const ID_PATTERN: RegExp;
 /** Default per-tool-call timeout passed to the mcp-client bridge (ms). */
 export declare const DEFAULT_TOOL_CALL_TIMEOUT_MS = 60000;
-export type Transport = 'stdio' | 'streamable-http';
+export type Transport = 'stdio' | 'streamable-http' | 'sse';
 /** One user-configured MCP server row. */
 export interface ServerEntry {
     /** Stable row identity used to diff mounted instances. */

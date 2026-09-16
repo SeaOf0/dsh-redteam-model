@@ -24,7 +24,7 @@ var ServerEntrySchema = z.object({
   id: z.string().required().pattern(ID_PATTERN),
   enabled: z.boolean().default(true),
   name: z.string().default(""),
-  transport: z.union([z.const("stdio"), z.const("streamable-http")]).default("stdio"),
+  transport: z.union([z.const("stdio"), z.const("streamable-http"), z.const("sse")]).default("stdio"),
   command: z.string().default(""),
   argsLine: z.string().default(""),
   env: z.dict(z.string()),
@@ -97,9 +97,19 @@ function toMcpClientConfig(server) {
       cwd: server.cwd
     };
   }
+  if (server.transport === "sse") {
+    return {
+      ...base,
+      transport: "stdio",
+      command: process.execPath,
+      args: [SSE_BRIDGE_PATH, server.url, JSON.stringify(server.headers ?? {})],
+      env: {},
+      cwd: ""
+    };
+  }
   return {
     ...base,
-    transport: "streamable-http",
+    transport: server.transport,
     url: server.url,
     headers: server.headers
   };
@@ -118,7 +128,7 @@ function validateSection(value) {
     if (server.transport === "stdio" && server.command.trim() === "") {
       throw new Error(`mcp-studio: stdio server "${server.name}" has no command`);
     }
-    if (server.transport === "streamable-http") {
+    if (server.transport === "streamable-http" || server.transport === "sse") {
       if (server.url.trim() === "") throw new Error(`mcp-studio: server "${server.name}" has no url`);
       let parsed;
       try {
@@ -311,7 +321,9 @@ function registerStudioRpc(connection, settings, ns, status, diagnose, clearExec
 
 // src/diagnose.ts
 import { spawn } from "node:child_process";
+import { fileURLToPath } from "node:url";
 var TIMEOUT_MS = 1e4;
+var SSE_BRIDGE_PATH = fileURLToPath(new URL("./sse-bridge.mjs", import.meta.url));
 function line(obj) {
   return `${JSON.stringify(obj)}
 `;
@@ -352,6 +364,7 @@ function stdioTransport(server) {
   };
 }
 async function httpTransport(server, messages) {
+  if (server.transport === "sse") return await sseTransport(server, messages);
   const url = new URL(server.url);
   const responses = [];
   for (const message of messages) {
@@ -387,10 +400,87 @@ async function httpTransport(server, messages) {
   }
   return responses;
 }
+async function sseTransport(server, messages) {
+  const base = new URL(server.url);
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  const pending = messages.filter((message) => message.id !== void 0);
+  const wanted = new Set(pending.map((message) => message.id));
+  const responses = [];
+  let messageUrl = null;
+  let sent = false;
+  let finished = false;
+  const sendAll = async () => {
+    if (sent || messageUrl === null) return;
+    sent = true;
+    for (const message of messages) {
+      const response = await fetch(messageUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json", ...server.headers },
+        body: JSON.stringify(message),
+        signal: controller.signal
+      });
+      if (!(response.status >= 200 && response.status < 300)) {
+        throw new Error(`HTTP ${response.status} ${response.statusText}`);
+      }
+    }
+  };
+  try {
+    const stream = await fetch(base, {
+      headers: { accept: "text/event-stream", ...server.headers },
+      signal: controller.signal
+    });
+    if (!stream.ok) throw new Error(`HTTP ${stream.status} ${stream.statusText}`);
+    const reader = stream.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (!finished) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      // SSE 行终止符按规范归一为 \n（服务器可能发 \r\n、\r 或混合）
+      buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n|\r/g, "\n");
+      let sep;
+      while ((sep = buffer.indexOf("\n\n")) >= 0) {
+        const frame = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        let event = "message";
+        let data = "";
+        for (const line of frame.split("\n")) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data += (data === "" ? "" : "\n") + line.slice(5).trim();
+        }
+        if (event === "endpoint") {
+          if (data === "") continue;
+          messageUrl = new URL(data, base).toString();
+          await sendAll();
+        } else if (data !== "") {
+          let message;
+          try {
+            message = JSON.parse(data);
+          } catch {
+            continue;
+          }
+          if (message.id !== void 0 && wanted.has(message.id)) {
+            responses.push(message);
+            if (responses.length === pending.length) finished = true;
+          }
+        }
+      }
+    }
+    if (messageUrl === null) throw new Error(`no endpoint event received from ${server.url}`);
+    if (responses.length < pending.length) {
+      throw new Error(`incomplete SSE session: ${responses.length}/${pending.length} responses from ${server.url}`);
+    }
+    return responses;
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+}
 async function diagnoseServer(server) {
   const started = Date.now();
   try {
-    if (server.transport === "streamable-http") {
+    if (server.transport === "streamable-http" || server.transport === "sse") {
       const messages = [
         { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "dsh-mcp-studio-diag", version: "0.1.0" } } },
         { jsonrpc: "2.0", method: "notifications/initialized" },

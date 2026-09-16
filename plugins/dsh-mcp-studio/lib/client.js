@@ -133,7 +133,7 @@ function parseServerEntry(name2, raw) {
     id: "",
     enabled: entry.disabled !== true,
     name: name2,
-    transport: isHttp ? "streamable-http" : "stdio",
+    transport: isHttp ? (declared === "sse" ? "sse" : "streamable-http") : "stdio",
     command: isHttp ? "" : command,
     argsLine: isHttp ? "" : argsToLine(args),
     env: isHttp ? [] : toPairs(entry.env),
@@ -214,7 +214,7 @@ function serversToMcpJson(servers) {
       ...Object.keys(pairsToRecord(server.env)).length === 0 ? {} : { env: pairsToRecord(server.env) },
       ...server.cwd.trim() === "" ? {} : { cwd: server.cwd }
     } : {
-      type: "http",
+      type: server.transport === "sse" ? "sse" : "http",
       url: server.url,
       ...Object.keys(pairsToRecord(server.headers)).length === 0 ? {} : { headers: pairsToRecord(server.headers) }
     };
@@ -240,7 +240,7 @@ function parseMcpJson(text, existing = []) {
       if (rawName === "_meta" || rawName === "inputs" || rawName.startsWith("$")) continue;
       const draft = parseServerEntry(rawName, rawEntry);
       if (draft === void 0) {
-        warnings.push(`skipped "${rawName}": no command (stdio) or url (http)`);
+        warnings.push(`skipped "${rawName}": no command (stdio) or url (http/sse)`);
         continue;
       }
       servers2.push(draft);
@@ -292,13 +292,14 @@ function parseMcpJson(text, existing = []) {
 // src/client/ServerCard.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
 function transportDisplay(value) {
-  return value === "stdio" ? "stdio" : "http";
+  return value === "stdio" ? "stdio" : value === "sse" ? "sse" : "http";
 }
 function parseTransportInput(text) {
   const normalized = text.trim().toLowerCase().replace(/[\s_-]/g, "");
   if (normalized === "") return void 0;
   if (normalized === "stdio") return "stdio";
-  if (normalized === "http" || normalized === "sse" || normalized === "streamablehttp") return "streamable-http";
+  if (normalized === "sse") return "sse";
+  if (normalized === "http" || normalized === "streamablehttp") return "streamable-http";
   return void 0;
 }
 var stateLabel = {
@@ -466,7 +467,7 @@ function ServerCard(props) {
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `dsh-mcs-dot ${stateClass[state]}` }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dsh-mcs-name", children: server.name === "" ? t("unnamedServer") : server.name }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: server.transport === "stdio" ? "dsh-mcs-chip" : "dsh-mcs-chip dsh-mcs-chip--http", children: server.transport === "stdio" ? "stdio" : "http" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: server.transport === "stdio" ? "dsh-mcs-chip" : "dsh-mcs-chip dsh-mcs-chip--http", children: server.transport === "stdio" ? "stdio" : server.transport === "sse" ? "sse" : "http" }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dsh-mcs-cmd", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("code", { children: summary }) }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `dsh-mcs-state ${stateTextClass[state]}`, children: t(stateLabel[state]) }),
           state === "connected" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
@@ -517,7 +518,7 @@ function ServerCard(props) {
           {
             value: transportText,
             spellCheck: false,
-            placeholder: "stdio | http",
+            placeholder: "stdio | http | sse",
             onChange: (event) => {
               const text = event.target.value;
               setTransportText(text);
@@ -1511,8 +1512,8 @@ var en = {
   filter_connected: "Connected",
   filter_down: "Not connected",
   filter_disabled: "Disabled",
-  transportHint: "Type stdio or http.",
-  transportInvalid: "Enter stdio or http.",
+  transportHint: "Type stdio, http or sse.",
+  transportInvalid: "Enter stdio, http or sse.",
   compact: "Compact",
   comfortable: "Comfortable",
   execTitle: "Recent tool calls",
@@ -1601,8 +1602,8 @@ var zh = {
   filter_connected: "\u5DF2\u8FDE\u63A5",
   filter_down: "\u672A\u8FDE\u63A5",
   filter_disabled: "\u5DF2\u7981\u7528",
-  transportHint: "\u8F93\u5165 stdio \u6216 http\u3002",
-  transportInvalid: "\u8BF7\u8F93\u5165 stdio \u6216 http\u3002",
+  transportHint: "\u8F93\u5165 stdio\u3001http \u6216 sse\u3002",
+  transportInvalid: "\u8BF7\u8F93\u5165 stdio\u3001http \u6216 sse\u3002",
   compact: "\u7D27\u51D1",
   comfortable: "\u8212\u9002",
   execTitle: "\u6700\u8FD1\u5DE5\u5177\u8C03\u7528",

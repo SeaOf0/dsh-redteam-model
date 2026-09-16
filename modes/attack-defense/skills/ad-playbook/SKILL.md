@@ -1,6 +1,6 @@
 ---
 name: ad-playbook
-description: 攻防评估模式作战手册：Agentic Red Teaming 定位（AEV 持续验证）、阶段编排（侦察/突破/横向/持久化/报告+复测闭环）、外网打点作战流程（hunter 测绘联动/入口面价值提级序/登陆口 JS 专线）、社工与钓鱼作战线（独立人面入口：OSINT 分层/邮件批量文案分级/IM 钓鱼/载荷免杀协作/C2 基础设施/AiTM 会话直进）、内网攻防作战流程（环境判定四型分流：Windows 工作组/Linux/云环境/域内——起手序与各自打法/共性横切线（服务线弱口令+锁定闸/被动凭据线+中继 RBCD/数据库五问）/跨段递进与隔离突破（C 段最快打法序+一血优先序+工具被杀分叉+B 段递进+三私网段隔离突破）/SYSVOL GPP/Shadow Credentials/跨域信任/DevOps 与邮件·OA·VPN 高价值线/堡垒机·安防设备·网管设备优先/横向痕迹管理（目标侧定向清痕+本地台账留痕双轨）/穷尽终止+机器可读黑板与操作痕迹台账）、防御验证（detection gap）、AI 应用红队（Garak/PyRIT/Promptfoo 工具矩阵）、验证与评分、MITRE ATT&CK 映射、证据收集规范与报告模板。
+description: 攻防评估模式作战手册：Agentic Red Teaming 定位（AEV 持续验证）、阶段编排（侦察/突破/横向/持久化/报告+复测闭环）、外网打点作战流程（hunter 测绘联动/入口面价值提级序（含后台功能面三查：定时任务命令执行/模板功能 SSTI/fastjson·shiro·log4j 组件指纹——拿到后台后固定动作）/登陆口 JS 专线）、社工与钓鱼作战线（独立人面入口：OSINT 分层/邮件批量文案分级/IM 钓鱼/载荷免杀协作/C2 基础设施/AiTM 会话直进）、内网攻防作战流程（环境判定四型分流：Windows 工作组/Linux/云环境/域内——起手序与各自打法/共性横切线（服务线弱口令+锁定闸/被动凭据线+中继 RBCD/数据库五问）/跨段递进与隔离突破（C 段最快打法序+一血优先序+工具被杀分叉+B 段递进+三私网段隔离突破）/SYSVOL GPP/Shadow Credentials/跨域信任/DevOps 与邮件·OA·VPN 高价值线/堡垒机·安防设备·网管设备优先/横向痕迹管理（目标侧定向清痕+本地台账留痕双轨）/穷尽终止+机器可读黑板与操作痕迹台账）、防御验证（detection gap）、AI 应用红队（Garak/PyRIT/Promptfoo 工具矩阵）、验证与评分、MITRE ATT&CK 映射、证据收集规范与报告模板。
 tools: nmap, fscan, nuclei, netexec, crackmapexec, impacket
 ---
 
@@ -159,6 +159,12 @@ evidence-index），作业结束后**清理目标侧攻击痕迹**（webshell/�
 9. **SQL 注入**（读凭据→复用）
 10. **SSRF**（内网探针/云元数据）
 11. **边界设备/VPN Nday**（防火墙/SSLVPN 类——指纹命中即试，EXP 纪律照通用防崩溃条款）
+12. **后台功能面三查**（拿到后台/管理台后的固定动作）：**定时任务功能**（任务字段是否
+    达执行层——cron/命令拼接/若依类 job handler 反射，命令执行向）；**模板功能**（短信/邮件/
+    页面模板编辑点 SSTI——freemarker/velocity/thymeleaf 只读探测，渲染回显即证）；**组件指纹
+    三查**——fastjson（JSON 提交点 autoType）/shiro（rememberMe 特征+key 比对）/log4j（日志点
+    ${jndi:}，验证走安全回连 sink）；细节走 pentest-playbook 漏洞挖掘面·后台功能面与
+    `refs/components/java-framework-vulns.md`（生态跨模式取）
 
 - 每类打法细节走 pentest-playbook 挖掘面与 refs（本模式是编排者，不复制工具手册）；
 - 任一命中 → 验证（对照三件套）→ **突破成立即登记成果** → 转横向衔接（见 §3）。

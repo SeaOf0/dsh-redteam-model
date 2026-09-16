@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/dsh-mcp-studio",
-  "version": "1.0.2",
-  "description": "MCP server studio for DeepSeek Harness: live-mounted servers with real connection status, a per-server tool browser, JSON import, and a dashboard-grade settings page.",
+  "version": "1.0.3",
+  "description": "MCP server studio for DeepSeek Harness: live-mounted servers with real connection status, a per-server tool browser, JSON import, and a dashboard-grade settings page. v1.0.3 adds the sse transport: JSON import keeps a declared sse type, diagnose speaks the streamable SSE legacy protocol (endpoint event + POST message URL, CRLF-normalized frames), and host mounting runs a bundled stdio<->sse bridge process so servers like yak-mcp work without host-side sse support.",
   "type": "module",
   "main": "./lib/index.js",
   "types": "./lib/types/index.d.ts",
