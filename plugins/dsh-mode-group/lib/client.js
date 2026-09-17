@@ -210,21 +210,36 @@ function installStyles() {
 
 function apply(ctx) {
 	ctx.effect(function () { return installStyles(); }, "dsh-mode-group: styles");
-	ctx.inject(["slots", "conversation", "sessions", "workspaces", "remote", "remote.agentPresets"], function (scope) {
+	ctx.inject(["slots", "conversation", "sessions", "workspaces", "connection", "remote"], function (scope) {
 		var active = true;
 		var stops = [];
 		function addStop(f) { stops.push(f); }
-		// 宿主 0.1.2 起 connection 不再携带组装好的 api 表面——预设的读写走 remote
-		// 通道（list 无参、select(sessionId, presetId) 位置参数），这里桥接回旧调用形态。
-		function wrap(res) {
-			return { result: res && res.ok ? { ok: true, value: res.value } : { ok: false, error: res && res.error || { message: "request failed" } } };
-		}
-		var api = {
-			agentPresets: {
-				list: function () { return scope.remote.agentPresets.list().then(wrap); },
-				select: function (q) { return scope.remote.agentPresets.select(q.sessionId, q.agentPreset).then(wrap); }
+		// 双宿主适配：新宿主（0.1.2 起，connection 不再携带组装好的 api 表面）优先走
+		// remote 通道（list 无参、select(sessionId, presetId) 位置参数），桥接回旧调用形态；
+		// 旧宿主回退 connection.api 表面；两代都不可用时透明失活（保留原生选择器，不阻塞 boot）。
+		var api = null;
+		var remotePresets = null;
+		try { remotePresets = scope.remote && scope.remote.agentPresets; } catch { /* 属性不存在 */ }
+		if (remotePresets && typeof remotePresets.list === "function" && typeof remotePresets.select === "function") {
+			function wrap(res) {
+				return { result: res && res.ok ? { ok: true, value: res.value } : { ok: false, error: res && res.error || { message: "request failed" } } };
 			}
-		};
+			api = {
+				agentPresets: {
+					list: function () { return remotePresets.list().then(wrap); },
+					select: function (q) { return remotePresets.select(q.sessionId, q.agentPreset).then(wrap); }
+				}
+			};
+		} else {
+			try {
+				var connection = scope.connection !== undefined ? scope.connection : (typeof scope.get === "function" ? scope.get("connection") : undefined);
+				api = connection && connection.api;
+			} catch { /* 旧表面获取失败 */ }
+		}
+		if (!api || !api.agentPresets || typeof api.agentPresets.list !== "function") {
+			console.warn("[dsh-mode-group] 当前宿主未提供预设读写表面（remote.agentPresets 与 connection.api 均不可用）——保留原生模式选择器");
+			return function () { active = false; };
+		}
 		var ctl = createController(api, function () {
 			if (!active) return undefined;
 			try {
@@ -268,5 +283,5 @@ function apply(ctx) {
 	});
 }
 
-module.exports = { name: "dsh-mode-group-client", inject: ["slots", "locale", "remote", "remote.agentPresets"], apply: apply };
+module.exports = { name: "dsh-mode-group-client", inject: ["slots", "locale", "connection", "remote"], apply: apply };
 return module.exports; } });

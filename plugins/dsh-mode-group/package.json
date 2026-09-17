@@ -1,28 +1,34 @@
 {
-	"name": "@dsh-external/dsh-mode-group",
-	"version": "1.0.0",
-	"description": "DSH web client plugin: two-tier agent-preset picker on the new-session screen — built-ins and the researcher entry stay top-level while the eight professional security modes fold into a hover/click submenu, viewport-adaptive, with no other surface touched.",
-	"keywords": ["deepseek", "deepseek-harness", "dsh-plugin", "dsh-bundle", "preset-picker"],
-	"type": "module",
-	"main": "./lib/index.js",
-	"exports": {
-		".": "./lib/index.js",
-		"./client": "./lib/client.js",
-		"./package.json": "./package.json"
-	},
-	"license": "MIT",
-	"author": "SeaOf0",
-	"dsh": {
-		"bundle": {
-			"patch": "./cordis.patch.yml"
-		},
-		"client": {
-			"platform": "web",
-			"inject": [
-				"@deepseek-ai/dsh-client-connection",
-				"@deepseek-ai/dsh-client-runtime",
-				"@deepseek-ai/dsh-client-ui-slots"
-			]
-		}
-	}
+  "name": "@dsh-external/dsh-mode-group",
+  "version": "1.0.1",
+  "description": "DSH web client plugin: two-tier agent-preset picker on the new-session screen — built-ins and the researcher entry stay top-level while the eight professional security modes fold into a hover/click submenu, viewport-adaptive, with no other surface touched. v1.0.1 dual-host adaptation: the preset read/write surface is resolved at runtime (remote.agentPresets on hosts 0.1.2+, the legacy connection.api surface on older hosts) instead of a hard inject, so older hosts no longer stall web boot with a pending entry; when neither surface exists the plugin deactivates transparently and keeps the native picker.",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh-plugin",
+    "dsh-bundle",
+    "preset-picker"
+  ],
+  "type": "module",
+  "main": "./lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "author": "SeaOf0",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-slots"
+      ]
+    }
+  }
 }
