@@ -16,7 +16,7 @@
     "plugins",
     "deploy",
     "cordis.patch.yml",
-    "AGENTS.md",
+    "AGENTS.security.md",
     "README.md",
     "LICENSE"
   ],

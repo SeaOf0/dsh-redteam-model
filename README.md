@@ -50,9 +50,9 @@
 | 插件 | 作用 |
 |---|---|
 | `dsh-stage-gate` | `stage_gate`/`gates_list` 工具：八模式 32 道阶段门的结构校验，判定写入 `gate-log.md`；`operation_goal`/`operation_progress` 目标契约与进度收口（`operation-state.json` 驱动中断恢复） |
-| `dsh-route-boost` | 逐轮治理信封：阶段推断+ 门禁清单 + 模式边界 + 证据等级预判 + refs 指针 + 技能依赖工具面就绪行+ operation 恢复行，任务口径判定、结构化标记块注入、整行粒度预算、变化才投递并落注入量记账 |
+| `dsh-route-boost` | 逐轮治理信封 + 十模式全局作战语境条件注入（global-agents）：阶段推断+ 门禁清单 + 模式边界 + 证据等级预判 + refs 指针 + 技能依赖工具面就绪行+ operation 恢复行，任务口径判定、结构化标记块注入、整行粒度预算、变化才投递并落注入量记账 |
 | `dsh-sec-enforce` | 确定性工具拦截：报告门、写边界、高危命令先问后做、裸奔扫描限速 |
-| `dsh-refusal-guard` | —————反拒绝—————AGENTS.md兜底 |
+| `dsh-refusal-guard` | —————反拒绝—————AGENTS.security.md兜底 |
 | `dsh-trace-vault` | 过程留痕库：十安全模式会话全量落库工具调用；`trace_search`/`trace_get`/`trace_recent`/`trace_stats` 检索与会话画像； |
 | `dsh-auto-advance` | 自动推进器：subagent 执行体返回且意图台账有未收口方向时注入推进提醒；开工三登记一次性提醒；轮数封顶/真人接管重置/冷却窗三护栏，无台账会话零干扰 |
 | `dsh-product-subagents` | `subagent_claude_code`/`subagent_codex` provider：无头 spawn 本机 claude/codex CLI，跨 harness 复核按建议项由用户触发 |
@@ -102,7 +102,7 @@ node deploy.mjs --start    # 后台启动 dsh web → http://127.0.0.1:3080
 
 也支持 `npx ./deploy`。Windows（Win10+ 自带 bsdtar）：流程一致，预设链接用 junction 免管理员。
 
-两种安装方式都会把随包的 `AGENTS.md` 落地为 dsh 全局指令文件 `~/.dsh/AGENTS.md`（dsh 原生机制，对所有会话生效，新会话读入）：仅当该文件不存在时安装；已存在则**不覆盖**，安装输出会提示如何自行改用本包版本。
+两种安装方式都会把随包的安全预设支撑规范落地为 `~/.dsh/AGENTS.security.md`（本合集专属命名空间），由 `dsh-route-boost` 的 global-agents 上下文**仅注入十个安全模式会话**——其他模式/标准会话零注入、零额外开销；文件随版本更新直达覆盖。早期版本曾把该规范装入 dsh 用户全局文件 `~/.dsh/AGENTS.md`（宿主机制对所有会话无差别生效，会造成跨模式语境污染），升级安装会自动把它收尾为可恢复的备份文件（`.bak-` 前缀）；非本包内容的全局文件绝不触碰。
 
 部署后 2 分钟人工验证：
 

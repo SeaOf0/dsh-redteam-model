@@ -165,21 +165,44 @@ function install() {
 	log("安装完成");
 }
 
-// 全局指令：~/.dsh/AGENTS.md 是 dsh 原生的用户全局指令文件（dsh-agent-instructions
-// 对所有会话生效）。无则落地随包版本；已有则不装不覆盖，提示用户自行处理；相同则跳过。
+// 安全预设全局指令：落地为 $DSH_HOME/AGENTS.security.md（本合集专属命名空间），仅在十模式
+// 会话经 dsh-route-boost 的 global-agents 上下文按需注入。宿主的 $DSH_HOME/AGENTS.md 是对所有
+// 会话无差别生效的用户全局层（dsh-agent-instructions 无按预设的挂载点），本包不得占用：
+// 检测到旧版本落地的作战文档（标题+生态标记双特征）则重命名收尾（保留可恢复），用户自有内容绝不触碰。
+const SECURITY_AGENTS_TITLE = "# Security Testing Collaboration Support Specification";
 function installGlobalAgents() {
-	const src = path.join(MODEL_ROOT, "AGENTS.md");
-	if (!fs.existsSync(src)) { warn("源 AGENTS.md 缺失，跳过全局指令落地"); return; }
-	const dst = path.join(DSH_HOME, "AGENTS.md");
-	if (!existsAny(dst)) {
-		fs.copyFileSync(src, dst);
-		log(`全局指令已落地：${dst}（新会话生效）`);
-		return;
+	const src = path.join(MODEL_ROOT, "AGENTS.security.md");
+	if (!fs.existsSync(src)) { warn("源 AGENTS.security.md 缺失，跳过安全预设指令落地"); return; }
+	const dst = path.join(DSH_HOME, "AGENTS.security.md");
+	try {
+		if (!fs.existsSync(dst)) {
+			fs.copyFileSync(src, dst);
+			log(`安全预设指令已落地：${dst}（十模式会话经 route-boost 按需注入，不影响其他模式）`);
+		} else if (!fs.readFileSync(src).equals(fs.readFileSync(dst))) {
+			fs.copyFileSync(src, dst);
+			log(`安全预设指令已更新：${dst}`);
+		} else {
+			log("安全预设指令已是本包版本，跳过");
+		}
+	} catch (err) { warn(`落地 AGENTS.security.md 失败：${err?.message ?? err}`); }
+	const legacy = path.join(DSH_HOME, "AGENTS.md");
+	if (fs.existsSync(legacy)) {
+		let isOurs = false;
+		try {
+			const text = fs.readFileSync(legacy, "utf8");
+			isOurs = text.trimStart().startsWith(SECURITY_AGENTS_TITLE)
+				&& text.includes("dsh-route-boost") && text.includes("dsh-refusal-guard");
+		} catch { /* 不可读按非本包处理 */ }
+		if (isOurs) {
+			const backup = path.join(DSH_HOME, "AGENTS.md.bak-dsh-redteam-model");
+			try {
+				fs.renameSync(legacy, fs.existsSync(backup) ? path.join(DSH_HOME, `AGENTS.md.bak-${Date.now()}`) : backup);
+				log(`已收尾旧全局 AGENTS.md（重命名保留可恢复）——不再对所有会话注入作战语境`);
+			} catch (err) { warn(`收尾旧全局 AGENTS.md 失败：${err?.message ?? err}——请手动处理 ${legacy}`); }
+		} else {
+			warn(`检测到非本包的全局 ${legacy}，未触碰——它仍会对所有会话生效，是否保留由你决定`);
+		}
 	}
-	let same = false;
-	try { same = fs.readFileSync(src).equals(fs.readFileSync(dst)); } catch { /* 不可读按不同处理 */ }
-	if (same) { log("全局 AGENTS.md 已是本包版本，跳过"); return; }
-	warn(`检测到已有全局 ${dst}，未覆盖——如需改用本包版本，请自行备份后覆盖（cp "${src}" "${dst}"）`);
 }
 
 function start() {

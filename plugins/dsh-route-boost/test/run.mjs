@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 // rendering, plus contract checks against dsh-stage-gate's real GATES and the
 // presets' top-level refs README indexes.
 import { MODES, inferPhase, inferRefs, inferEvidence, buildEnvelope, buildEnvelopeDetailed, purposeLine, wrapEnvelope, isEnvelopeText, envelopeRev, appendAccounting, isHumanUser, matchKeyword, escapePromptBraces, hasNegation, buildAuditRow, Config } from "../lib/index.js";
-import { buildSurfaceGuard, isWrapPhase } from "../lib/index.js";
+import { buildSurfaceGuard, isWrapPhase, GLOBAL_AGENTS_MODES, GLOBAL_AGENTS_FILE, dshHomeDir, readSecurityAgentsText, buildGlobalAgentsText } from "../lib/index.js";
 import { scanSkillDeps, checkTool } from "../lib/skilltools.mjs";
 import { detectScope } from "../lib/scope.mjs";
 import { TAXONOMIES } from "../../dsh-attack-atlas/lib/taxonomy.js";
@@ -406,6 +406,37 @@ console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pas
 	ok("信封渲染收尾工具面行", env.includes("工具面: 收尾相位") && env.includes("已收起"));
 	const execPhase = m.phases.find((p) => p.id === "verify");
 	ok("执行相位无工具面行", !buildEnvelope({ presetId: "pentest", mode: m, phase: execPhase, refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, surface: "" }).includes("工具面: 收尾相位"));
+}
+
+// ── global-agents 条件注入：十模式全文、其余预设空、缺文件退化 ───────────────
+{
+	const ALL_TEN = ["redteam", "pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver", "asset-mapping"];
+	ok("门控集合=十模式（含 asset-mapping）", ALL_TEN.every((m) => GLOBAL_AGENTS_MODES.has(m)) && GLOBAL_AGENTS_MODES.size === 10);
+	ok("专属命名空间文件名", GLOBAL_AGENTS_FILE === "AGENTS.security.md");
+	const home = fs.mkdtempSync(path.join(os.tmpdir(), "rb-ga-home-"));
+	try {
+		const doc = "# Security Testing Collaboration Support Specification\n\nbody mentioning dsh-route-boost.\n";
+		fs.writeFileSync(path.join(home, GLOBAL_AGENTS_FILE), doc, "utf8");
+		ok("十模式渲染全文", ALL_TEN.every((m) => buildGlobalAgentsText({ presetId: m, dshHomeDir: home }) === doc.trim()));
+		ok("非安全预设渲染空", ["", "plain-chat", "code", "unknown", undefined, null].every((p) => buildGlobalAgentsText({ presetId: p, dshHomeDir: home }) === ""));
+		ok("读全文=文件内容去首尾空白", readSecurityAgentsText(home) === doc.trim());
+		fs.rmSync(path.join(home, GLOBAL_AGENTS_FILE), { force: true });
+		ok("缺文件→空文本（十模式也不炸）", buildGlobalAgentsText({ presetId: "pentest", dshHomeDir: home }) === "" && readSecurityAgentsText(home) === "");
+		ok("缺目录→空文本", readSecurityAgentsText(path.join(os.tmpdir(), "rb-ga-missing-" + Date.now())) === "");
+	} finally {
+		fs.rmSync(home, { recursive: true, force: true });
+	}
+	const ORIGINAL_HOME = process.env.DSH_HOME;
+	try {
+		process.env.DSH_HOME = "/tmp/rb-ga-env-home";
+		ok("DSH_HOME 环境变量优先", dshHomeDir() === "/tmp/rb-ga-env-home");
+		process.env.DSH_HOME = "  ";
+		ok("空白 DSH_HOME 回退 ~/.dsh", dshHomeDir() === path.join(os.homedir(), ".dsh"));
+		delete process.env.DSH_HOME;
+		ok("未设置 DSH_HOME 回退 ~/.dsh", dshHomeDir() === path.join(os.homedir(), ".dsh"));
+	} finally {
+		if (ORIGINAL_HOME === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = ORIGINAL_HOME;
+	}
 }
 
 process.exit(fail ? 1 : 0);

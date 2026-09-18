@@ -1012,32 +1012,67 @@ export function repairMode(id: string, root = locateRoot(), onProgress?: Progres
 }
 
 /**
- * Deploy the packaged AGENTS.md as the DSH user-global instruction file
- * (`~/.dsh/AGENTS.md`, read natively by dsh-agent-instructions for every
- * session). Never overwrites: absent → install; already present and
- * different → leave untouched and point the user at the manual copy;
- * identical → already installed.
+ * Deploy the packaged security-preset instruction file as
+ * `$DSH_HOME/AGENTS.security.md` — this package's own namespace, consumed by
+ * dsh-route-boost's global-agents context and injected only into the ten
+ * security-preset sessions. The host's user-global `$DSH_HOME/AGENTS.md`
+ * applies to EVERY session with no per-preset scope, so this package must not
+ * occupy it: a legacy copy previously deployed there is retired (renamed to a
+ * recoverable backup) when its content matches this package's document
+ * (title + ecosystem markers); user-owned files are never touched.
  */
+const SECURITY_AGENTS_TITLE = '# Security Testing Collaboration Support Specification'
+const LEGACY_AGENTS_BACKUP = 'AGENTS.md.bak-dsh-redteam-model'
+
 export function deployGlobalAgents(root = locateRoot(), onProgress?: ProgressCallback): string {
-  const src = path.join(root, 'AGENTS.md')
-  if (!existsSync(src)) return 'global AGENTS.md source missing from package: skipped'
-  const dst = path.join(dshHome(), 'AGENTS.md')
-  onProgress?.('checking global AGENTS.md')
+  const src = path.join(root, 'AGENTS.security.md')
+  if (!existsSync(src)) return 'security-preset instructions source missing from package: skipped'
+  const home = dshHome()
+  const dst = path.join(home, 'AGENTS.security.md')
+  onProgress?.('checking security-preset instructions')
+  const notices: string[] = []
   if (!existsAny(dst)) {
-    mkdirSync(dshHome(), { recursive: true })
+    mkdirSync(home, { recursive: true })
     copyFileSync(src, dst)
-    const detail = `global instructions installed: ${dst} (effective on new sessions)`
-    onProgress?.(detail)
-    return detail
+    notices.push(`security-preset instructions installed: ${dst} (injected into the ten security presets via dsh-route-boost only)`)
+  } else {
+    let identical = false
+    try {
+      identical = readFileSync(src).equals(readFileSync(dst))
+    } catch {
+      // Unreadable target: treat as different; this namespace is package-owned, so refresh it.
+    }
+    if (identical) notices.push(`security-preset instructions already match this package: ${dst}`)
+    else {
+      copyFileSync(src, dst)
+      notices.push(`security-preset instructions updated: ${dst}`)
+    }
   }
-  let identical = false
-  try {
-    identical = readFileSync(src).equals(readFileSync(dst))
-  } catch {
-    // Unreadable target (dangling link, permissions): treat as different and never touch it.
+  const legacy = path.join(home, 'AGENTS.md')
+  if (existsAny(legacy)) {
+    let ours = false
+    try {
+      const text = readFileSync(legacy, 'utf8')
+      ours = text.trimStart().startsWith(SECURITY_AGENTS_TITLE)
+        && text.includes('dsh-route-boost') && text.includes('dsh-refusal-guard')
+    } catch {
+      // Unreadable target: never touch it.
+    }
+    if (ours) {
+      try {
+        const backup = path.join(home, LEGACY_AGENTS_BACKUP)
+        renameSync(legacy, existsAny(backup) ? path.join(home, `AGENTS.md.bak-${Date.now()}`) : backup)
+        notices.push(`legacy global AGENTS.md from an earlier release retired (renamed, recoverable) — it no longer injects into every session`)
+      } catch (error) {
+        notices.push(`legacy global AGENTS.md matched this package but could not be renamed: ${legacy} — remove it manually (${String(error)})`)
+      }
+    } else {
+      notices.push(`existing global ${legacy} is not from this package: left untouched — it still applies to every session, keep or remove it yourself`)
+    }
   }
-  if (identical) return `global AGENTS.md already matches this package: ${dst}`
-  return `existing global AGENTS.md left untouched: ${dst} — to adopt this package version, back it up and copy ${src} over it manually`
+  const detail = notices.join('\n')
+  onProgress?.(detail)
+  return detail
 }
 
 /** Install one plugin into the web profile and run pnpm install. */

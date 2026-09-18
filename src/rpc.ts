@@ -113,8 +113,10 @@ function operationRunner(kind: OperationKind, target: string) {
         : detail
     }
     if (kind === 'deploy-modes') {
-      // The batch deploy also seeds the DSH user-global instruction file
-      // (install-if-absent; an existing file is never overwritten).
+      // The batch deploy also seeds the security-preset instruction file
+      // ($DSH_HOME/AGENTS.security.md, package-owned namespace refreshed on
+      // change) and retires the legacy user-global AGENTS.md this package
+      // used to install, so security context reaches the ten presets only.
       if (target === 'modes') {
         const agentsNotice = deployGlobalAgents(undefined, onProgress)
         const detail = deployModes(undefined, onProgress)

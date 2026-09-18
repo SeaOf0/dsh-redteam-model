@@ -32,6 +32,33 @@ const Config = z.object({
 	wrapDeny: z.array(z.string()).default(["subagent", "subagent_fork", "subagent_claude_code", "subagent_codex", "workflow"])
 });
 
+/** global-agents 门控集合：十模式（九专业 + redteam 主模式 + asset-mapping），
+ *  与 trace-vault / campaign-memory 的 MODE_IDS 同源对齐。 */
+export const GLOBAL_AGENTS_MODES = new Set([
+	"redteam", "pentest", "code-audit", "binary-analysis", "attack-defense",
+	"av-evasion", "incident-response", "cloud-security", "ctf-solver", "asset-mapping"
+]);
+export const GLOBAL_AGENTS_FILE = "AGENTS.security.md";
+
+/** $DSH_HOME 解析（与合集 deploy 同源约定：DSH_HOME 环境变量优先，缺省 ~/.dsh）。 */
+export function dshHomeDir() {
+	const configured = process.env.DSH_HOME?.trim();
+	if (configured) return configured;
+	return path.join(os.homedir(), ".dsh");
+}
+
+/** 读取安全预设全局指令全文；缺失/不可读返回空串（缺文件≠错误：未部署到全局的
+ *  安装形态下，十模式退化为无作战全局语境，信封与其余注入不受影响）。 */
+export function readSecurityAgentsText(homeDir = dshHomeDir()) {
+	try { return fs.readFileSync(path.join(homeDir, GLOBAL_AGENTS_FILE), "utf8").trim(); } catch { return ""; }
+}
+
+/** global-agents 纯渲染：十模式 → AGENTS.security.md 全文；其余预设 → 空文本。 */
+export function buildGlobalAgentsText({ presetId, dshHomeDir: homeDir }) {
+	if (!GLOBAL_AGENTS_MODES.has(String(presetId ?? ""))) return "";
+	return readSecurityAgentsText(homeDir);
+}
+
 /** 收尾相位（八模式报告相位 id 实测集）：report / summary / review。 */
 export const WRAP_PHASE_IDS = new Set(["report", "summary", "review"]);
 export function isWrapPhase(phaseId) {
@@ -382,6 +409,23 @@ async function apply(ctx, config) {
 		} catch { /* 审计失败不阻塞 */ }
 	};
 	const logFile = accountingPath();
+	// ---- global-agents：安全预设全局作战语境的条件注入通道 ----
+	// 宿主的用户全局层（$DSH_HOME/AGENTS.md）对所有会话无差别生效、无按预设挂载点，
+	// 作战支撑规范从该层退役，改由此处注入：十模式会话渲染 AGENTS.security.md 全文
+	// （systemPrompt context 每次 assembly 重渲染、仅文本变化时投递 snapshot，压缩后
+	// 亦会重新锚定），其余预设渲染空文本。门控集合=十模式（与 trace-vault/campaign-memory
+	// 的 MODE_IDS 对齐，含 asset-mapping；本插件 MODES 仅九专业模式，勿复用作门控）。
+	ctx.systemPrompt.context({
+		name: "global-agents",
+		order: 100,
+		text: (assembly) => {
+			const agent = assembly?.agent;
+			if (!agent) return "";
+			let presetId = "";
+			try { presetId = String(ctx.agentPresets.composedPreset(agent.ctx) ?? ""); } catch { return ""; }
+			return buildGlobalAgentsText({ presetId, dshHomeDir: dshHomeDir() });
+		}
+	});
 	ctx.systemPrompt.context({
 		name: "route-boost",
 		order: 500,
