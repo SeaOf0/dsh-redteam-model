@@ -217,29 +217,35 @@ function apply(ctx) {
 		// 双宿主适配：新宿主（0.1.2 起，connection 不再携带组装好的 api 表面）优先走
 		// remote 通道（list 无参、select(sessionId, presetId) 位置参数），桥接回旧调用形态；
 		// 旧宿主回退 connection.api 表面；两代都不可用时透明失活（保留原生选择器，不阻塞 boot）。
+		// 0.1.6-alpha.2 起 remote.agentPresets 是 cordis 的独立 inject 子命名空间，
+		// 不再挂为 remote 实例属性（原生 UI 即声明 "remote.agentPresets" 注入）——
+		// 三方插件动态获取走 scope.get；旧宿主回退属性访问。判定改为惰性解析 + 就绪
+		// 重试窗（每 250ms 一次、最多 10s），拿到表面即激活；重试窗结束后仍不可用才失活。
 		var api = null;
 		var remotePresets = null;
-		try { remotePresets = scope.remote && scope.remote.agentPresets; } catch { /* 属性不存在 */ }
-		if (remotePresets && typeof remotePresets.list === "function" && typeof remotePresets.select === "function") {
-			function wrap(res) {
-				return { result: res && res.ok ? { ok: true, value: res.value } : { ok: false, error: res && res.error || { message: "request failed" } } };
-			}
-			api = {
-				agentPresets: {
-					list: function () { return remotePresets.list().then(wrap); },
-					select: function (q) { return remotePresets.select(q.sessionId, q.agentPreset).then(wrap); }
+		function tryResolve() {
+			api = null; remotePresets = null;
+			try { if (typeof scope.get === "function") remotePresets = scope.get("remote.agentPresets"); } catch { /* 未提供 */ }
+			if (!remotePresets) try { remotePresets = scope.remote && scope.remote.agentPresets; } catch { /* 属性不存在 */ }
+			if (remotePresets && typeof remotePresets.list === "function" && typeof remotePresets.select === "function") {
+				function wrap(res) {
+					return { result: res && res.ok ? { ok: true, value: res.value } : { ok: false, error: res && res.error || { message: "request failed" } } };
 				}
-			};
-		} else {
+				api = {
+					agentPresets: {
+						list: function () { return remotePresets.list().then(wrap); },
+						select: function (q) { return remotePresets.select(q.sessionId, q.agentPreset).then(wrap); }
+					}
+				};
+				return true;
+			}
 			try {
 				var connection = scope.connection !== undefined ? scope.connection : (typeof scope.get === "function" ? scope.get("connection") : undefined);
 				api = connection && connection.api;
 			} catch { /* 旧表面获取失败 */ }
+			return !!(api && api.agentPresets && typeof api.agentPresets.list === "function");
 		}
-		if (!api || !api.agentPresets || typeof api.agentPresets.list !== "function") {
-			console.warn("[dsh-mode-group] 当前宿主未提供预设读写表面（remote.agentPresets 与 connection.api 均不可用）——保留原生模式选择器");
-			return function () { active = false; };
-		}
+		function activate() {
 		var ctl = createController(api, function () {
 			if (!active) return undefined;
 			try {
@@ -276,6 +282,30 @@ function apply(ctx) {
 				try { return make(-2); } catch (e2) { console.warn("[dsh-mode-group] 注册放弃（槽竞争失败），官方选择器保持：", e2 && e2.message); return function () { return null; }; }
 			}
 		});
+		}
+		var activated = false;
+		function run() {
+			if (activated || !active) return;
+			if (!tryResolve()) return;
+			activated = true;
+			activate();
+		}
+		run();
+		if (!activated) {
+			// 就绪重试窗：宿主 remote 子命名空间物化可能晚于插件 apply，最多等 10s
+			var attempts = 0;
+			var timer = setInterval(function () {
+				if (!active) { clearInterval(timer); return; }
+				if (++attempts > 40) {
+					clearInterval(timer);
+					console.warn("[dsh-mode-group] 预设读写表面在重试窗（10s）内未就绪（remote.agentPresets 与 connection.api 均不可用）——保留原生模式选择器");
+					return;
+				}
+				run();
+				if (activated) clearInterval(timer);
+			}, 250);
+			addStop(function () { clearInterval(timer); });
+		}
 		return function () {
 			active = false;
 			stops.forEach(function (f) { try { f(); } catch { /* 已失效静默 */ } });
