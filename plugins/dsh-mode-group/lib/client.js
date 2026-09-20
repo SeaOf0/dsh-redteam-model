@@ -61,7 +61,10 @@ function createController(api, currentSession, onApplied) {
 }
 
 // —— 视口自适应弹层定位 ——
+// 测量阶段会临时清空 maxHeight，若最终值不变则原样写回也会令浏览器重算滚动——
+// 进入时保存 scrollTop、应用完样式后恢复，保证重复定位（resize/子菜单开合）不跳顶。
 function place(el, anchor, side) {
+	var keepScroll = el.scrollTop;
 	el.style.visibility = "hidden";
 	el.style.display = "block";
 	el.style.maxHeight = "";
@@ -80,6 +83,7 @@ function place(el, anchor, side) {
 	el.style.left = x + "px";
 	el.style.top = y + "px";
 	el.style.visibility = "visible";
+	el.scrollTop = keepScroll;
 }
 function h0(el) { var m = el.style.maxHeight; el.style.maxHeight = ""; var h = el.offsetHeight; el.style.maxHeight = m; return h; }
 
@@ -116,7 +120,10 @@ function Chip(props) {
 			closeAll();
 		};
 		var onKey = function (e) { if (e.key === "Escape") closeAll(); };
-		var onResize = function () { if (menuRef.current && btnRef.current) place(menuRef.current, btnRef.current, "root"); };
+		var onResize = function () {
+			if (menuRef.current && btnRef.current) place(menuRef.current, btnRef.current, "root");
+			if (subRef.current && groupRef.current) place(subRef.current, groupRef.current, "sub");
+		};
 		window.addEventListener("mousedown", onDown);
 		window.addEventListener("keydown", onKey);
 		window.addEventListener("resize", onResize);
@@ -124,13 +131,19 @@ function Chip(props) {
 			window.removeEventListener("mousedown", onDown);
 			window.removeEventListener("keydown", onKey);
 			window.removeEventListener("resize", onResize);
+			window.clearTimeout(hoverTimer.current);
+			window.clearTimeout(closeTimer.current);
 		};
 	}, [menuOpen, closeAll]);
 
+	// 定位只在各自开合状态变化时执行：悬停展开子菜单（setSubOpen）不得重定位主菜单——
+	// place() 测量阶段清空 maxHeight 会令浏览器重算滚动，主菜单项多时 hover 即跳顶。
 	useEffect(function () {
 		if (menuOpen && menuRef.current && btnRef.current) place(menuRef.current, btnRef.current, "root");
+	}, [menuOpen]);
+	useEffect(function () {
 		if (subOpen && subRef.current && groupRef.current) place(subRef.current, groupRef.current, "sub");
-	});
+	}, [subOpen]);
 
 	function pick(id) {
 		closeAll();
