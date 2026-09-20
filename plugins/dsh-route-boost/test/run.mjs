@@ -203,7 +203,9 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	ok("investigate keywords hit investigate phase", inferPhase(ir, "排查这个 webshell 和可疑 crontab 后门").id === "investigate");
 	ok("trace keywords hit trace phase", inferPhase(ir, "按日志还原攻击链时间线，找可疑 ip 入口").id === "trace");
 	ok("report keywords hit report phase", inferPhase(ir, "写报告收口").id === "report");
-	ok("ir refs inference hits linux on ld.so.preload", inferRefs(ir, "检查 ld.so.preload 的 so 后门").includes("linux"));
+	ok("ir refs inference hits linux/rootkit on ld.so.preload", inferRefs(ir, "检查 ld.so.preload 的 so 后门").includes("linux/rootkit"));
+	ok("ir refs inference hits windows/logs on evtx", inferRefs(ir, "分析 evtx 事件日志").includes("windows/logs"));
+	ok("ir refs inference hits linux/persistence on cron", inferRefs(ir, "排查 cron 持久化").includes("linux/persistence"));
 	ok("ir refs inference hits windows/webshell on 内存马", inferRefs(ir, "分析这个内存马").includes("windows/webshell"));
 	const env = buildEnvelope({ presetId: "incident-response", mode: ir, phase: ir.phases[0], refsHits: [], gates: GATES });
 	ok("ir envelope renders I1 gate line and boundary", env.includes("I1") && env.includes("证据保全登记") && env.includes("先留证后处置"));
@@ -437,6 +439,29 @@ console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pas
 	} finally {
 		if (ORIGINAL_HOME === undefined) delete process.env.DSH_HOME; else process.env.DSH_HOME = ORIGINAL_HOME;
 	}
+}
+
+// ── refs 快速路由关键词覆盖（未授权/注入/逻辑等高频渗透词必须命中）──
+{
+	const m = MODES.pentest;
+	ok("未授权→zh", inferRefs(m, "帮我测试这个站的未授权访问").includes("zh"));
+	ok("越权→zh", inferRefs(m, "这个系统可能存在水平越权").includes("zh"));
+	ok("注入→web", inferRefs(m, "看看有没有注入点").includes("web"));
+	ok("上传→web", inferRefs(m, "找找文件上传的位置").includes("web"));
+	ok("逻辑/支付→zh", inferRefs(m, "业务逻辑和支付流程可能有漏洞").includes("zh"));
+	ok("信息泄露→zh", inferRefs(m, "检查敏感文件和备份泄露").includes("zh"));
+	ok("登录认证→web", inferRefs(m, "测试登录和密码找回流程").includes("web"));
+	ok("泛指令无命中不误报", inferRefs(m, "测试这个网站的安全性").length === 0);
+	const env = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase: m.phases[0], refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, maxChars: 1200, includeRefs: true, scope: { directed: false, hits: [] } });
+	ok("无命中兜底=本地库优先", env.text.includes("先读 refs/README.md 走快速路由（本地手册优先）"));
+	ok("全流程覆盖面锚在场", env.text.includes("覆盖面：按 playbook 漏洞类全集轮转推进"));
+	const envDir = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase: m.phases[0], refsHits: [], evidence: "unknown", gates: FALLBACK_GATES, maxChars: 1200, includeRefs: true, scope: { directed: true, hits: ["x.com"] } });
+	ok("定向时不带覆盖面锚", !envDir.text.includes("覆盖面：按 playbook"));
+	ok("全负载预算内 refs 行存活", (() => {
+		const op = { goal: "全等级渗透测试并产出报告", met: 3, total: 12, openIds: ["O2"], pending: 4, lastGate: "G3", constraints: ["目标侧零破坏"], openIntents: [] };
+		const e = buildEnvelopeDetailed({ presetId: "pentest", mode: m, phase: m.phases[3], refsHits: [], evidence: "partial", gates: FALLBACK_GATES, maxChars: 1200, includeRefs: true, operation: op, scope: { directed: false, hits: ["x.com"] }, purpose: "全等级渗透测试", tools: { ok: 14, total: 16, missing: ["semgrep"] } });
+		return (e.text.includes("refs:") || e.text.includes("知识:")) && e.dropped.length === 0;
+	})());
 }
 
 process.exit(fail ? 1 : 0);

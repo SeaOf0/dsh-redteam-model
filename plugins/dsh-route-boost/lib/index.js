@@ -250,7 +250,7 @@ export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidenc
 		const mark = presetId === "redteam" ? "台账终态登记" : "redteam_coverage_mark 点亮";
 		const line = scope.directed
 			? `scope: 定向——用户指定优先${scope.hits && scope.hits.length > 0 ? `：${scope.hits.slice(0, 5).join("、")}` : ""}；只执行用户指定项，完成即逐项 ${mark}，未指定项不补测不欠账；转全流程须用户明示`
-			: `scope: 未指定具体项——${presetId === "redteam" ? "按路由手册受理（多任务走台账）" : "按本模式全流程矩阵推进"}`;
+			: `scope: 未指定具体项——${presetId === "redteam" ? "按路由手册受理（多任务走台账）" : `按本模式全流程矩阵推进${mode.coverHint ? `；${mode.coverHint}` : ""}`}`;
 		lines.splice(1, 0, line);
 	}
 	if (TARGET_ANCHOR_MODES.has(presetId)) {
@@ -283,7 +283,7 @@ export function buildEnvelopeDetailed({ presetId, mode, phase, refsHits, evidenc
 		if (refsHits.length > 0) {
 			lines.push(`refs: 读 refs/README.md 快速路由 → ${refsHits.join("、")}`);
 		} else if ((mode.refs ?? []).length > 0) {
-			lines.push("refs: 本轮无命中——需外部知识先 web_search 或读 refs/README.md，勿凭记忆自答");
+			lines.push("refs: 本轮无关键词命中——先读 refs/README.md 走快速路由（本地手册优先），仍无再 web_search，勿凭记忆自答");
 		} else {
 			lines.push("知识: 无 refs 命中——浅做按 router-playbook；深度知识加载对应专业 playbook，勿凭记忆自答");
 		}

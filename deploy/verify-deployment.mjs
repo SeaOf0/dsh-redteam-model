@@ -54,6 +54,24 @@ const SessionProjectionsStub = class extends Service {
 	stateOf() { return undefined; }
 };
 await app.plugin(SessionProjectionsStub, {});
+// 环境适配：宿主 0.1.6-alpha.2 起 preset 行引用的 dsh-tool-workflow / dsh-workflow-ptc /
+// dsh-tool-ralph 分别 inject workflowEngine / ptcRuntime+sandboxPolicy / workflowEngine
+// （真实宿主由宿主自家包提供；离线校验只需服务满足激活期检查——workflow-ptc 的构造器
+// 读 ctx.ptcRuntime.language === "typescript"，桩带该字段即可，工作流不会被离线校验执行。
+// 实测缺桩时十模式 mount 全 FAIL 为误报，真实运行时 roster 全 healthy）。
+const WorkflowEngineStub = class extends Service {
+	constructor(ctx) { super(ctx, "workflowEngine"); }
+};
+const PtcRuntimeStub = class extends Service {
+	language = "typescript";
+	constructor(ctx) { super(ctx, "ptcRuntime"); }
+};
+const SandboxPolicyStub = class extends Service {
+	constructor(ctx) { super(ctx, "sandboxPolicy"); }
+};
+for (const stub of [WorkflowEngineStub, PtcRuntimeStub, SandboxPolicyStub]) {
+	await app.plugin(stub, {});
+}
 await app.plugin(AgentPresets, { default: "pentest" });
 
 let failed = 0;
