@@ -367,7 +367,7 @@ import os from "node:os";
 // ── 模式化拆分（v1.4.0）：DECOMPOSITION 映射 + 三工具 render 注入 ──────────
 {
 	// 映射完整性
-	expect("DECOMPOSITION 九模式齐全", Object.keys(DECOMPOSITION).length === 9 && ["pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver", "redteam"].every((m) => DECOMPOSITION[m]?.theory && DECOMPOSITION[m]?.criteriaGuide));
+	expect("DECOMPOSITION 十模式齐全", Object.keys(DECOMPOSITION).length === 10 && ["pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "incident-response", "cloud-security", "ctf-solver", "asset-mapping", "redteam"].every((m) => DECOMPOSITION[m]?.theory && DECOMPOSITION[m]?.criteriaGuide));
 	expect("每模式五字段完整", Object.values(DECOMPOSITION).every((d) => d.theory && d.criteriaGuide && d.scopeSemantics && d.constraintHints && d.example));
 	// 装配层：operation_goal render 按模式注入理论（fake ctx 捕获工具定义）
 	const registered = [];

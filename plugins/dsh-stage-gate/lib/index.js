@@ -841,6 +841,13 @@ export const DECOMPOSITION = {
 		constraintHints: "flag 真实性=平台回显/不猜不撞/爆破限速最后手段",
 		example: "①全部题目终态三选一（已解/卡点/放弃附因）②flag 全部平台验证"
 	},
+	"asset-mapping": {
+		theory: "五入口（单位名/域名/IP/关键字/CIDR）→多平台引擎查询→子域/DNS 校验→备案归属→指纹识别→清册收口",
+		criteriaGuide: "准则按「每入口一条终态 + 清册字段完整（资产×归属×指纹）」拆",
+		scopeSemantics: "分母=入口清单（单位/域名/IP 段），每行一个测绘入口",
+		constraintHints: "止步测绘与指纹不攻击/引擎配额纪律（画像先行省配额）/key 缺失先问",
+		example: "①集团名入口全平台查询有终态 ②子域清单 DNS 校验全量 ③Excel 清册字段齐备可审计"
+	},
 	redteam: {
 		theory: "任务分类路由→轻重判→任务书（依据锚+模式理论摘要）；总控不设自身准则——消费专业模式 gate-pass 产物",
 		criteriaGuide: "（总控不拆准则——路由到专业模式后由其按自身理论登记）",

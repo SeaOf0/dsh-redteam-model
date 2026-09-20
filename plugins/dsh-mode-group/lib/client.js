@@ -263,7 +263,12 @@ function apply(ctx) {
 			if (!active) return undefined;
 			try {
 				var state = scope.sessions.list.getSnapshot();
-				var s = state.current === undefined ? undefined : state.byId[state.current];
+				// 双宿主形状：旧宿主有 state.current（当前选中会话）；0.1.6 起 store 无 current，
+				// 按原生 UI 同法以 retainedBy.mainView 引用计数定位主视图的 blank 会话——
+				// staged 只作用于 blank 会话，找主视图 blank 即目标（缺 current 会使 staged 永不应用）。
+				var s = state.current !== undefined
+					? state.byId[state.current]
+					: Object.values(state.byId).find(function (x) { return x.blank && ((x.retainedBy && x.retainedBy.mainView) ?? 0) > 0; });
 				return s === undefined ? undefined : { id: s.id, blank: s.blank, agentPreset: s.agentPreset };
 			} catch { return undefined; }
 		}, function (sessionId, agentPreset) {

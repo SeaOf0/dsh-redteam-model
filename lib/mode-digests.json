@@ -10,6 +10,6 @@
     "ctf-solver": "sha256:9cdf152413e960217f7824e9bea9a975da7dc2ae1577bbcc9ac9e8b509304841",
     "incident-response": "sha256:a0b315df665bca9c4a3489fcaa09e365cce92892298caf7d3e5024599ddb16e1",
     "pentest": "sha256:617c062a47c6ede3a78bace0460bc9e435018101faa035f5092de1935b3ba1f5",
-    "redteam": "sha256:f5dd1ca966a44bf4354b403696e2de45eda98e93e3c12029657690d4716b4c5a"
+    "redteam": "sha256:70c2cec11ef6a2f60d73bc0aebca503d9c5ddd6e340b8eac3feb1371443e3c86"
   }
 }
