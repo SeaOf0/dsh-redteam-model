@@ -15,7 +15,7 @@ import {
   effectiveConversationViewSettings,
   registerConversationViewSettings,
 } from './conversationViewSettings.ts'
-import { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, profileWebDir, repairMode, scanModes, scanPlugins, uninstallOne } from './manager.ts'
+import { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, profileWebDir, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallOne } from './manager.ts'
 import { detectEngineFlavor, isPackagedDesktopHost, normalizePresetComposition } from './manager.ts'
 import { ENGINE_PACKAGES, NORMALIZER_VERSION, rewriteCompositionText } from './normalize.ts'
 import { OperationQueue } from './operations.ts'
@@ -23,7 +23,7 @@ import { registerModelRpc } from './rpc.ts'
 import type { HostConnectionHandle } from './types.ts'
 
 export { OperationQueue }
-export { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, repairMode, scanModes, scanPlugins, uninstallOne }
+export { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, profileWebDir, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallOne }
 export { detectEngineFlavor, isPackagedDesktopHost, normalizePresetComposition }
 export { ENGINE_PACKAGES, NORMALIZER_VERSION, rewriteCompositionText }
 export { registerModelRpc }
@@ -47,6 +47,18 @@ export interface HostContext {
 
 export function apply(ctx: HostContext): void {
   registerConversationViewSettings(ctx)
+
+  // The plugin still never deploys modes or sub-plugins at startup, but the
+  // bundle rows of ALREADY installed plugins are its own bookkeeping: heal a
+  // manifest that an older release (or a bundle reconcile reading a stale
+  // `dsh.bundle` declaration) left naming a preset-plane plugin, which would
+  // otherwise report "broken — repair" on this boot and every boot after it.
+  // Never fatal: an unreadable profile must not keep the host from booting.
+  try {
+    reconcileProfileBundles()
+  } catch {
+    /* getStatus reports the profile state to the settings page instead. */
+  }
 
   const queue = new OperationQueue(path.join(profileWebDir(), '.dsh-redteam-model-operations.json'))
 

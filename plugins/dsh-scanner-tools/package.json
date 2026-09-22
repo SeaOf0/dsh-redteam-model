@@ -19,11 +19,6 @@
 	"peerDependencies": {
 		"@deepseek-ai/dsh-tools": "*"
 	},
-	"dsh": {
-		"bundle": {
-			"patch": "./cordis.patch.yml"
-		}
-	},
 	"author": "SeaOf0",
 	"repository": {
 		"type": "git",

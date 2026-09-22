@@ -143,3 +143,56 @@ test('marker replay: an old-normaliser copy is re-deployed even with a matching 
     fixture.cleanup()
   }
 })
+
+test('deployModes rewrites @dsh-external rows from the packaged plugins, not the profile links', () => {
+  // The install path returns before pnpm has created the profile's
+  // @dsh-external links, so a deploy that only read the profile tree left
+  // every row bare — unresolvable on a packaged desktop host. The dependency
+  // row exists by then, and the collection's own plugins/ tree with it.
+  const fixture = createManagerFixture({ modes: ['race-mode'], plugins: ['dsh-scanner-tools'], realPresetsDirectory: true })
+  try {
+    const modeDir = `${fixture.root}/modes/race-mode`
+    writeFileSync(`${modeDir}/agent.cordis.yml`, SAMPLE, 'utf8')
+    mkdirSync(`${fixture.root}/plugins/dsh-scanner-tools/lib`, { recursive: true })
+    writeFileSync(`${fixture.root}/plugins/dsh-scanner-tools/lib/index.js`, 'export default {}\n', 'utf8')
+    const manifest = JSON.parse(readFileSync(fixture.profilePackage, 'utf8'))
+    manifest.dependencies['@dsh-external/dsh-scanner-tools'] = `link:${fixture.root}/plugins/dsh-scanner-tools`
+    writeFileSync(fixture.profilePackage, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+    assert.equal(existsSync(`${fixture.profile}/node_modules/@dsh-external`), false)
+
+    deployModes(fixture.root)
+    const deployed = readFileSync(`${fixture.presets}/race-mode/agent.cordis.yml`, 'utf8')
+    assert.match(deployed, /name: 'file:\/\/.*\/plugins\/dsh-scanner-tools\/lib\/index\.js'/)
+    assert.doesNotMatch(deployed, /name: '@dsh-external\/dsh-scanner-tools'/)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('a copy left with bare rows is re-normalised even when digest and normaliser match', () => {
+  const fixture = createManagerFixture({ modes: ['reheal-mode'], plugins: ['dsh-scanner-tools'], realPresetsDirectory: true })
+  try {
+    const modeDir = `${fixture.root}/modes/reheal-mode`
+    writeFileSync(`${modeDir}/agent.cordis.yml`, SAMPLE, 'utf8')
+    mkdirSync(`${fixture.root}/plugins/dsh-scanner-tools/lib`, { recursive: true })
+    writeFileSync(`${fixture.root}/plugins/dsh-scanner-tools/lib/index.js`, 'export default {}\n', 'utf8')
+    const manifest = JSON.parse(readFileSync(fixture.profilePackage, 'utf8'))
+    manifest.dependencies['@dsh-external/dsh-scanner-tools'] = `link:${fixture.root}/plugins/dsh-scanner-tools`
+    writeFileSync(fixture.profilePackage, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+    deployModes(fixture.root)
+    const markerFile = `${fixture.presets}/.dsh-redteam-model.json`
+    assert.equal(JSON.parse(readFileSync(markerFile, 'utf8')).normalizer, NORMALIZER_VERSION)
+
+    // A copy the digest still matches but the normaliser would change: the row
+    // is bare again (what a pre-link deploy wrote) with the revision current.
+    const healed = readFileSync(`${fixture.presets}/reheal-mode/agent.cordis.yml`, 'utf8')
+    writeFileSync(`${fixture.presets}/reheal-mode/agent.cordis.yml`, SAMPLE, 'utf8')
+    deployModes(fixture.root)
+
+    const redeployed = readFileSync(`${fixture.presets}/reheal-mode/agent.cordis.yml`, 'utf8')
+    assert.equal(redeployed, healed)
+    assert.doesNotMatch(redeployed, /name: '@dsh-external\/dsh-scanner-tools'/)
+  } finally {
+    fixture.cleanup()
+  }
+})

@@ -2,6 +2,11 @@
 # 由 pentest / attack-defense 的 agent.cordis.yml 各持一行。若未来要全模式开放扫描工具，
 # 取消下面 insert 行的注释即可用。）
 #
+# 注意：package.json 里【故意不声明 dsh.bundle】。preset 平面插件一旦声明，
+# 宿主 CLI 的 bundle reconcile 会按声明把它写进 dsh.profile.bundles，
+# 管理台随即把它判成平面错配（异常），"修复"清掉的行下一次 reconcile 又回来。
+# 要改为宿主层挂载时，再把 dsh.bundle.patch 指回本文件并放开下面这行。
+#
 # 注意：本文件必须保持合法的顶层 YAML 数组——仅含注释时解析为 null，
 # 会导致 dsh 启动器报 "must be a top-level YAML array" 而整个 profile 无法启动。
 []

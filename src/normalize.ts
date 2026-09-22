@@ -18,8 +18,16 @@
  * (probing, path resolution, writing) lives in the manager.
  */
 
-/** Bump when the rewrite logic changes in a way deployed copies must replay. */
-export const NORMALIZER_VERSION = 1
+/**
+ * Bump when the rewrite logic changes in a way deployed copies must replay.
+ *
+ * 2: the deployed-entry map is resolved from the collection's own `plugins/`
+ * tree as well as the profile's `@dsh-external` links. A deploy that ran
+ * before pnpm had created those links (the install path returns before it
+ * links them) left bare package-name rows that revision 1 still counted as
+ * current, so every such copy has to be replayed once.
+ */
+export const NORMALIZER_VERSION = 2
 
 export const ENGINE_PACKAGES = {
   ptc: { id: 'workflow-ptc', name: '@deepseek-ai/dsh-workflow-ptc' },
