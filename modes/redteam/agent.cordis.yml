@@ -327,8 +327,8 @@
         enableRunInBackground: false
         maxDepth: provider-managed
 
-    # 0.1.6-alpha 起工作流执行引擎改由 dsh-workflow-ptc 提供；
-    # 旧包 dsh-workflow-worker-thread 已从发行安装中移除，保留旧行会让整个预设加载失败。
+    # 工作流执行引擎行：源树默认按新宿主声明；部署副本由安装器按运行宿主
+    # 实际提供的引擎包改写（新宿主 dsh-workflow-ptc / 旧宿主 dsh-workflow-worker-thread，config 兼容）。
     - id: workflow-ptc
       name: '@deepseek-ai/dsh-workflow-ptc'
       config:

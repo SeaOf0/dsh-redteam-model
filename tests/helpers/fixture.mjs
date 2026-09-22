@@ -49,6 +49,30 @@ process.exit(0)
 `
 }
 
+function fakePnpmSource() {
+  return `#!/usr/bin/env node
+import { appendFileSync, existsSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
+const log = process.env.FAKE_NPX_LOG
+if (log) appendFileSync(log, JSON.stringify(['<pnpm>', ...process.argv.slice(2)]) + '\\n')
+const outcome = process.env.FAKE_NPX_OUTCOME || 'success'
+if (process.env.FAKE_NPX_MUTATE_LOCK === '1') writeFileSync('pnpm-lock.yaml', 'mutated-by-fake\\n')
+if (outcome === 'generic-failure') {
+  writeSync(2, process.env.FAKE_NPX_STDERR || 'generic install failure')
+  process.exit(1)
+}
+if (outcome === 'release-age-failure-then-success') {
+  const countFile = process.env.FAKE_NPX_COUNT
+  const count = countFile && existsSync(countFile) ? Number(readFileSync(countFile, 'utf8')) : 0
+  if (countFile) writeFileSync(countFile, String(count + 1))
+  if (count === 0) {
+    writeSync(2, 'ERR_PNPM_MINIMUM_RELEASE_AGE_VIOLATION locked package')
+    process.exit(1)
+  }
+}
+process.exit(0)
+`
+}
+
 export function createManagerFixture(options = {}) {
   const base = mkdtempSync(path.join(tmpdir(), 'dsh-redteam-manager-test-'))
   const root = path.join(base, 'model')
@@ -98,6 +122,13 @@ export function createManagerFixture(options = {}) {
   writeFileSync(unixNpx, fakeNpxSource(), 'utf8')
   chmodSync(unixNpx, 0o755)
   writeFileSync(path.join(bin, 'npx.cmd'), '@echo off\r\nnode "%~dp0fake-npx.mjs" %*\r\n', 'utf8')
+  // A fake pnpm keeps the resolver off the real machine's pnpm so tests stay
+  // hermetic, and exercises the PATH-pnpm branch ahead of the npx fallback.
+  const unixPnpm = path.join(bin, 'pnpm')
+  writeFileSync(unixPnpm, fakePnpmSource(), 'utf8')
+  chmodSync(unixPnpm, 0o755)
+  writeFileSync(path.join(bin, 'pnpm.cmd'), '@echo off\r\nnode "%~dp0fake-pnpm.mjs" %*\r\n', 'utf8')
+  writeFileSync(path.join(bin, 'fake-pnpm.mjs'), fakePnpmSource(), 'utf8')
 
   process.env.DSH_HOME = home
   process.env.PATH = `${bin}${path.delimiter}${ORIGINAL_PATH ?? ''}`

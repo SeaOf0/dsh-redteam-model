@@ -139,4 +139,59 @@ const gateLib = await import(pathToFileURL(path.join(BUNDLE_DIR, "dsh-stage-gate
 const modes = Object.keys(gateLib.GATES);
 console.log(`OK   stage-gate schemas: ${modes.length} modes, ${modes.reduce((n, m) => n + Object.keys(gateLib.GATES[m]).length, 0)} gates`);
 
+// 4) foreign-base pass: normalised copies must mount from a base that cannot
+//    walk up into the profile tree — the exact resolution face a packaged
+//    desktop host presents. `~/.dsh/profiles` can see the runtime engine
+//    packages but not `@dsh-external/*`, so the engine row staying a package
+//    name and the external rows becoming `file:` is precisely what this pass
+//    proves loadable.
+{
+	const Manager = await import(pathToFileURL(path.join(import.meta.dirname, "..", "lib", "index.js")).href);
+	const MODES_SRC = path.join(import.meta.dirname, "..", "modes");
+	const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "dsh-verify-foreign-"));
+	try {
+		for (const id of ids) {
+			fs.cpSync(path.join(MODES_SRC, id), path.join(tmpRoot, id), { recursive: true });
+			const result = Manager.normalizePresetComposition(path.join(tmpRoot, id));
+			if (!result.changed) console.log(`WARN foreign-copy ${id}: normaliser made no change (engine undetected and no @dsh-external rows?)`);
+		}
+		const rewritten = fs.readFileSync(path.join(tmpRoot, "pentest", "agent.cordis.yml"), "utf8");
+		const externalRows = rewritten.split("\n").filter((line) => /name: '@dsh-external\//.test(line));
+		if (externalRows.length > 0) {
+			failed++;
+			console.log(`FAIL foreign-copy pentest: ${externalRows.length} bare @dsh-external row(s) survived normalisation`);
+		} else {
+			console.log(`OK   foreign-copy pentest: @dsh-external rows rewritten to file: URLs`);
+		}
+		const flavor = Manager.detectEngineFlavor();
+		const engineRow = rewritten.split("\n").find((line) => /- id: workflow-(ptc|worker-thread)/.test(line));
+		console.log(`OK   foreign-copy engine row: ${engineRow?.trim() ?? "(absent)"} (detected flavor: ${flavor ?? "none"})`);
+
+		const app2 = new Context();
+		// Base with the packaged-desktop property: runtime engine packages
+		// visible, profile @dsh-external links unreachable.
+		app2.baseUrl = pathToFileURL(path.join(DSH_HOME, "profiles") + path.sep).href;
+		await app2.plugin(Loader);
+		app2.loader.builtins.group = Group;
+		for (const p of Object.values(providers)) await app2.plugin(p, {});
+		await app2.plugin(ShellEnv, {});
+		await app2.plugin(SessionProjectionsStub, {});
+		for (const stub of [WorkflowEngineStub, PtcRuntimeStub, SandboxPolicyStub]) await app2.plugin(stub, {});
+		await app2.plugin(AgentPresets, {
+			default: "pentest",
+			roots: [{ path: tmpRoot, trust: "user" }],
+			includeShippedRoot: false,
+			includeUserRoot: false,
+		});
+		for (const id of ids) {
+			try {
+				await app2.agentPresets.standingKeyFor(id);
+				console.log(`OK   foreign-base preset ${id}`);
+			} catch (e) { failed++; console.log(`FAIL foreign-base preset ${id}: ${e.message}`); }
+		}
+	} finally {
+		fs.rmSync(tmpRoot, { recursive: true, force: true });
+	}
+}
+
 process.exit(failed ? 1 : 0);

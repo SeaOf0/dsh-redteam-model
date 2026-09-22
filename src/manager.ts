@@ -26,7 +26,13 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
+import {
+  ENGINE_PACKAGES,
+  NORMALIZER_VERSION,
+  rewriteCompositionText,
+  type EngineFlavor,
+} from './normalize.ts'
 import type {
   AdminStatus,
   ModeStatus,
@@ -392,10 +398,13 @@ function modeStatus(mode: ModeDescriptor, root: string): ModeStatus {
 
   try {
     // Whole-directory deployment: ~/.dsh/.agent-presets is a symlink to
-    // <package>/modes and every mode inside it is live.
+    // <package>/modes and every mode inside it is live. A packaged desktop
+    // host cannot resolve the bare preset rows through that link, so there
+    // the link counts as stale until normalised copies are deployed.
     const current = readlinkSync(link)
     linkPath = path.join(link, mode.id)
-    linkState = path.resolve(current) === path.resolve(modesRoot) ? 'ok' : 'stale'
+    const linksToModes = path.resolve(current) === path.resolve(modesRoot)
+    linkState = linksToModes && !isPackagedDesktopHost() ? 'ok' : 'stale'
   } catch {
     if (existsSync(link)) {
       // Existing real directory: DSH's preset discovery skips symlinked
@@ -584,13 +593,70 @@ function spawnCollect(
   })
 }
 
+/**
+ * Pick the pnpm launcher whose behaviour matches the host. The desktop host
+ * ships its own pinned shim; a pnpm already on PATH is the harness-pinned
+ * CLI; the last resort pins the major instead of floating with a bare `npx
+ * -y pnpm`, whose newer majors turn unapproved build scripts into hard
+ * failures the profile layout cannot recover from.
+ */
+function resolvePnpmCommand(): { file: string; prefix: readonly string[]; source: string } {
+  const desktopShim = path.join(dshHome(), '.desktop-bin', IS_WIN ? 'pnpm.cmd' : 'pnpm')
+  if (existsSync(desktopShim)) return { file: desktopShim, prefix: [], source: 'desktop shim' }
+  const separator = IS_WIN ? ';' : ':'
+  for (const dir of (process.env.PATH ?? '').split(separator)) {
+    if (dir === '') continue
+    for (const candidate of IS_WIN ? ['pnpm.cmd', 'pnpm.exe'] : ['pnpm']) {
+      const full = path.join(dir, candidate)
+      if (existsSync(full)) return { file: full, prefix: [], source: 'PATH pnpm' }
+    }
+  }
+  return { file: 'npx', prefix: ['-y', 'pnpm@10'], source: 'pinned npx fallback' }
+}
+
+/**
+ * Repair the profile's `pnpm-workspace.yaml` before an install: pnpm's
+ * failed-install bug can rewrite `allowBuilds` entries as the literal
+ * placeholder "set this to true or false", and every later install then
+ * fails approval. Drop non-boolean entries and pin the two optional native
+ * bindings the delivered plugins ship with to `false` — ssh2's pure-JS path
+ * is fully functional, so no toolchain is needed.
+ */
+function normalizeAllowBuilds(profileWeb: string): boolean {
+  const file = path.join(profileWeb, 'pnpm-workspace.yaml')
+  if (!existsSync(file)) return false
+  const original = readFileSync(file, 'utf8')
+  const lines = original.split('\n')
+  let anchor = lines.findIndex(line => /^allowBuilds:\s*$/.test(line))
+  if (anchor === -1) {
+    lines.push('', 'allowBuilds:', '  ssh2: false', '  cpu-features: false')
+  } else {
+    // Collect the indented entries directly under `allowBuilds:`.
+    let end = anchor + 1
+    while (end < lines.length && /^\s+\S/.test(lines[end])) end += 1
+    const kept = lines.slice(anchor + 1, end).filter(line => /:\s*(true|false)\s*$/.test(line))
+    for (const name of ['ssh2', 'cpu-features']) {
+      if (!kept.some(entry => new RegExp(`^\\s*${name}:`).test(entry))) kept.push(`  ${name}: false`)
+    }
+    lines.splice(anchor + 1, end - anchor - 1, ...kept)
+  }
+  const updated = lines.join('\n')
+  if (updated === original) return false
+  writeFileSync(file, updated, 'utf8')
+  return true
+}
+
 async function runPnpmInstall(cwd: string, onProgress?: ProgressCallback): Promise<void> {
+  if (normalizeAllowBuilds(cwd)) onProgress?.('normalised allowBuilds entries in pnpm-workspace.yaml', 45)
   onProgress?.('running pnpm install', 50)
-  const runArgs = ['-y', 'pnpm', 'install', '--prefer-offline', '--no-frozen-lockfile']
+  const pnpm = resolvePnpmCommand()
+  const runArgs = [...pnpm.prefix, 'install', '--prefer-offline', '--no-frozen-lockfile']
   const hadLockfile = existsSync(path.join(cwd, 'pnpm-lock.yaml'))
-  let result = await spawnCollect('npx', runArgs, cwd, line => {
-    if (line !== '') onProgress?.(line.slice(0, 200))
-  })
+  const runOnce = (extra: readonly string[] = []): Promise<SpawnResult> =>
+    spawnCollect(pnpm.file, [...runArgs, ...extra], cwd, line => {
+      if (line !== '') onProgress?.(line.slice(0, 200))
+    })
+  let result = await runOnce()
   // pnpm 11 can reject every later mutation when an existing lockfile already
   // contains a release inside its minimumReleaseAge window. Match only pnpm's
   // two known error codes, require a pre-existing lock, and retry once.
@@ -598,11 +664,22 @@ async function runPnpmInstall(cwd: string, onProgress?: ProgressCallback): Promi
   const releaseAgeError = /(?:^|[^A-Za-z0-9_])ERR_PNPM_(?:MINIMUM_RELEASE_AGE_VIOLATION|NO_MATURE_MATCHING_VERSION)(?![A-Za-z0-9_])/m
   if (result.code !== 0 && hadLockfile && releaseAgeError.test(output)) {
     onProgress?.('retrying locked profile after release-age verification failure', 55)
-    result = await spawnCollect('npx', [...runArgs, '--config.minimumReleaseAge=0'], cwd, line => {
-      if (line !== '') onProgress?.(line.slice(0, 200))
-    })
+    result = await runOnce(['--config.minimumReleaseAge=0'])
   }
   if (result.code !== 0) {
+    const combined = `${result.stdout}\n${result.stderr}`
+    if (/(?:^|[^A-Za-z0-9_])ERR_PNPM_IGNORED_BUILDS(?![A-Za-z0-9_])/.test(combined)) {
+      // pnpm's own hint ("run pnpm approve-builds") cannot work in the link:
+      // profile layout — point at the file and the values that unblock it.
+      throw new Error([
+        `pnpm install failed: build scripts were not approved (ERR_PNPM_IGNORED_BUILDS; launcher: ${pnpm.source}).`,
+        `Fix: open ${path.join(cwd, 'pnpm-workspace.yaml')} and make sure every allowBuilds entry is a real boolean, e.g.`,
+        '  allowBuilds:',
+        '    ssh2: false',
+        '    cpu-features: false',
+        'The ssh2 native binding is optional — false keeps the pure-JS path and needs no compiler.',
+      ].join('\n'))
+    }
     const tail = result.stderr.trim() || result.stdout.trim() || `exit code ${String(result.code)}`
     throw new Error(`pnpm install failed: ${tail.slice(-1000)}`)
   }
@@ -737,6 +814,16 @@ export function deployModes(root = locateRoot(), onProgress?: ProgressCallback, 
       return deployModesIntoDirectory(link, root, onProgress, ids)
     }
     if (current !== null && path.resolve(current) === path.resolve(target)) {
+      if (isPackagedDesktopHost()) {
+        // A packaged desktop host resolves bare preset rows against a base
+        // inside its app bundle, so a source-tree symlink stays unloadable
+        // there. Move the link aside once and keep normalised copies instead.
+        previousLinkBackup = `${link}.bak-${Date.now()}`
+        renameSync(link, previousLinkBackup)
+        mkdirSync(link, { recursive: true })
+        onProgress?.(`migrated presets link to normalised copies (backup: ${previousLinkBackup})`, 50)
+        return deployModesIntoDirectory(link, root, onProgress, ids)
+      }
       onProgress?.('agent presets link ok', 100)
       return `agent presets link ok: ${link} -> ${target}`
     }
@@ -744,6 +831,14 @@ export function deployModes(root = locateRoot(), onProgress?: ProgressCallback, 
     previousLinkBackup = `${link}.bak-${Date.now()}`
     renameSync(link, previousLinkBackup)
     onProgress?.(`backed up existing agent presets link to ${previousLinkBackup}`, 50)
+  }
+
+  if (isPackagedDesktopHost()) {
+    // Same packaged-host constraint on first deploy: normalised copies, no link.
+    mkdirSync(link, { recursive: true })
+    const detail = deployModesIntoDirectory(link, root, onProgress, ids)
+    onProgress?.('done', 100)
+    return `agent presets deployed as normalised copies: ${detail}`
   }
 
   try {
@@ -777,6 +872,8 @@ interface ModeMarkerEntry {
 interface ModeMarker {
   readonly schemaVersion: 2
   readonly owner: typeof MODE_MARKER_OWNER
+  /** Normaliser revision the deployed copies were last rewritten with. */
+  readonly normalizer?: number
   readonly modes: Record<string, ModeMarkerEntry>
 }
 
@@ -815,7 +912,7 @@ function assertSafeModeMarkerPaths(directory: string): void {
 
 function parseModeMarker(raw: unknown): Omit<ModeMarkerRead, 'recoveredFromBackup'> | null {
   if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null
-  const candidate = raw as { schemaVersion?: unknown; owner?: unknown; modes?: unknown }
+  const candidate = raw as { schemaVersion?: unknown; owner?: unknown; normalizer?: unknown; modes?: unknown }
   if (candidate.schemaVersion === 2) {
     if (candidate.owner !== MODE_MARKER_OWNER || typeof candidate.modes !== 'object' || candidate.modes === null || Array.isArray(candidate.modes)) {
       return null
@@ -827,7 +924,15 @@ function parseModeMarker(raw: unknown): Omit<ModeMarkerRead, 'recoveredFromBacku
       if (typeof entry.digest !== 'string' || !/^sha256:[0-9a-f]{64}$/.test(entry.digest)) return null
       modes[id] = { digest: entry.digest, deployedAt: typeof entry.deployedAt === 'number' ? entry.deployedAt : 0 }
     }
-    return { marker: { schemaVersion: 2, owner: MODE_MARKER_OWNER, modes }, legacyOwned: new Set() }
+    return {
+      marker: {
+        schemaVersion: 2,
+        owner: MODE_MARKER_OWNER,
+        normalizer: typeof candidate.normalizer === 'number' ? candidate.normalizer : undefined,
+        modes,
+      },
+      legacyOwned: new Set(),
+    }
   }
 
   const legacyOwned = new Set<string>()
@@ -906,6 +1011,126 @@ function isOurSymlink(destination: string, source: string): boolean {
   }
 }
 
+/* ------------------------------------------------------------------ */
+/* Deployed-copy normalisation: base-independent preset rows.         */
+/* ------------------------------------------------------------------ */
+
+/** Whether `pkg` is visible from `base` via the same upward node_modules
+ *  walk the harness preset discovery uses. */
+function packageVisible(pkg: string, base: string): boolean {
+  const root = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0]
+  let dir = base
+  for (;;) {
+    if (existsSync(path.join(dir, 'node_modules', root, 'package.json'))) return true
+    const parent = path.dirname(dir)
+    if (parent === dir) return false
+    dir = parent
+  }
+}
+
+/** Detect the engine flavor the running harness ships. Bases are consulted in
+ *  order and the first hit wins, so a base next to the host process (inside a
+ *  packaged app bundle) outranks the profile tree — that keeps a downgraded
+ *  desktop host on worker-thread even when a newer engine also sits in the
+ *  profile runtime. */
+export function detectEngineFlavor(bases?: readonly string[]): EngineFlavor | undefined {
+  const list = bases ?? defaultEngineBases()
+  for (const base of list) {
+    if (base === '') continue
+    for (const flavor of ['ptc', 'worker'] as const) {
+      if (packageVisible(ENGINE_PACKAGES[flavor].name, base)) return flavor
+    }
+  }
+  return undefined
+}
+
+function defaultEngineBases(): string[] {
+  const bases: string[] = []
+  const push = (dir: string): void => {
+    if (dir !== '' && !bases.includes(dir)) bases.push(dir)
+  }
+  push(path.dirname(process.execPath))
+  push(profileWebDir())
+  push(path.dirname(fileURLToPath(import.meta.url)))
+  return bases
+}
+
+/** A desktop host packaged as an app bundle resolves bare specifiers against
+ *  a base the profile tree never sits under; deployed copies for such a host
+ *  must be real directories with normalised rows, not a source-tree symlink. */
+export function isPackagedDesktopHost(): boolean {
+  if (typeof process.versions?.electron === 'string') return true
+  const location = process.execPath.replace(/\\/g, '/')
+  return location.includes('.app/') || location.includes('/resources/app/')
+}
+
+/** Entry file a `file:` row names for one deployed plugin package. Only a
+ *  `main` that resolves inside the package itself is honoured. */
+function pluginEntryFile(packageDir: string): string {
+  const fallback = path.join(packageDir, 'lib', 'index.js')
+  try {
+    const manifestFile = path.join(packageDir, 'package.json')
+    const pkg = JSON.parse(readFileSync(manifestFile, 'utf8')) as { main?: unknown }
+    if (typeof pkg.main !== 'string' || pkg.main === '') return fallback
+    const entry = path.join(packageDir, pkg.main)
+    const packagePrefix = path.resolve(packageDir) + path.sep
+    if (!path.resolve(entry).startsWith(packagePrefix)) return fallback
+    return existsSync(entry) ? entry : fallback
+  } catch {
+    return fallback
+  }
+}
+
+/** Deployed-entry map for every `@dsh-external/*` package visible under the
+ *  profile tree: directory name → `file:` URL of its entry file. */
+export function externalEntryMap(): Record<string, string> {
+  const externalRoot = path.join(profileWebDir(), 'node_modules', '@dsh-external')
+  const entries: Record<string, string> = {}
+  let names: string[] = []
+  try {
+    names = readdirSync(externalRoot).filter(name => /^[a-z0-9-]+$/.test(name))
+  } catch {
+    return entries
+  }
+  for (const name of names) {
+    const packageDir = path.join(externalRoot, name)
+    const entry = pluginEntryFile(packageDir)
+    if (existsSync(entry)) entries[name] = pathToFileURL(entry).href
+  }
+  return entries
+}
+
+export interface NormalizeCompositionOptions {
+  /** Engine flavor to write; omit to auto-detect, 'keep' to leave the row alone. */
+  readonly engine?: EngineFlavor | 'keep'
+  readonly log?: (message: string) => void
+}
+
+export interface NormalizeCompositionResult {
+  readonly changed: boolean
+  readonly notes: readonly string[]
+}
+
+/** Rewrite one deployed mode directory's `agent.cordis.yml` in place so every
+ *  row resolves from any composition base. Never touches the source tree. */
+export function normalizePresetComposition(
+  modeDir: string,
+  options: NormalizeCompositionOptions = {},
+): NormalizeCompositionResult {
+  const file = path.join(modeDir, 'agent.cordis.yml')
+  if (!existsSync(file)) return { changed: false, notes: ['no agent.cordis.yml'] }
+  let engine: { id: string; name: string } | undefined
+  if (options.engine !== 'keep') {
+    const flavor = options.engine ?? detectEngineFlavor()
+    if (flavor !== undefined) engine = ENGINE_PACKAGES[flavor]
+  }
+  const original = readFileSync(file, 'utf8')
+  const result = rewriteCompositionText(original, { engine, entries: externalEntryMap() })
+  if (result.changed) writeFileSync(file, result.text, 'utf8')
+  for (const note of result.notes) options.log?.(note)
+  return { changed: result.changed, notes: result.notes }
+}
+
 function deployModesIntoDirectory(
   directory: string,
   root: string,
@@ -919,6 +1144,7 @@ function deployModesIntoDirectory(
   const marker: ModeMarker = {
     schemaVersion: 2,
     owner: MODE_MARKER_OWNER,
+    normalizer: NORMALIZER_VERSION,
     modes: { ...current.marker.modes },
   }
   const knownModes = new Set(allModes.map(mode => mode.id))
@@ -946,7 +1172,10 @@ function deployModesIntoDirectory(
       }
     }
 
-    if (!legacySymlink && owned && entry?.digest === mode.digest && destinationExists && lstatSync(destination).isDirectory()) {
+    // A copy only counts as current when its digest matches AND it was last
+    // written by this normaliser revision — otherwise replay the rewrite.
+    const normalized = current.marker.normalizer === NORMALIZER_VERSION
+    if (!legacySymlink && owned && entry?.digest === mode.digest && normalized && destinationExists && lstatSync(destination).isDirectory()) {
       unchanged += 1
       continue
     }
@@ -963,6 +1192,10 @@ function deployModesIntoDirectory(
     let markerWriteAttempted = false
     try {
       cpSync(mode.dir, staging, { recursive: true })
+      // Deployed copies must load on every host shape: rewrite base-bound rows
+      // (bare @dsh-external names, the workflow-engine package) right after
+      // the copy lands. The source tree is never touched.
+      normalizePresetComposition(staging)
       if ((owned || legacySymlink) && existsAny(destination)) {
         renameSync(destination, backup)
         backedUp = true

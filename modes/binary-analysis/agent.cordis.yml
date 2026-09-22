@@ -331,8 +331,10 @@
         enableRunInBackground: false
         maxDepth: provider-managed
 
-    - id: workflow-worker-thread
-      name: '@deepseek-ai/dsh-workflow-worker-thread'
+    # 工作流执行引擎行：源树默认按新宿主声明；部署副本由安装器按运行宿主
+    # 实际提供的引擎包改写（新宿主 dsh-workflow-ptc / 旧宿主 dsh-workflow-worker-thread，config 兼容）。
+    - id: workflow-ptc
+      name: '@deepseek-ai/dsh-workflow-ptc'
       config:
         provider: spawn
 
