@@ -633,7 +633,7 @@ function normalizeAllowBuilds(profileWeb: string): boolean {
   } else {
     // Collect the indented entries directly under `allowBuilds:`.
     let end = anchor + 1
-    while (end < lines.length && /^\s+\S/.test(lines[end])) end += 1
+    while (end < lines.length && /^\s+\S/.test(lines[end] ?? '')) end += 1
     const kept = lines.slice(anchor + 1, end).filter(line => /:\s*(true|false)\s*$/.test(line))
     for (const name of ['ssh2', 'cpu-features']) {
       if (!kept.some(entry => new RegExp(`^\\s*${name}:`).test(entry))) kept.push(`  ${name}: false`)
@@ -1018,7 +1018,7 @@ function isOurSymlink(destination: string, source: string): boolean {
 /** Whether `pkg` is visible from `base` via the same upward node_modules
  *  walk the harness preset discovery uses. */
 function packageVisible(pkg: string, base: string): boolean {
-  const root = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : pkg.split('/')[0]
+  const root = pkg.startsWith('@') ? pkg.split('/').slice(0, 2).join('/') : (pkg.split('/')[0] ?? pkg)
   let dir = base
   for (;;) {
     if (existsSync(path.join(dir, 'node_modules', root, 'package.json'))) return true

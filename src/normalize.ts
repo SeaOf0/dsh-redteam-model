@@ -65,20 +65,21 @@ export function rewriteCompositionText(text: string, decisions: RewriteDecisions
   const entries: Readonly<Record<string, string>> = decisions.entries ?? {}
 
   for (let index = 0; index < lines.length; index += 1) {
-    const line = lines[index]
+    const line = lines[index] ?? ''
     const engineMatch = ENGINE_ID_LINE[Symbol.match](line)
     if (engineMatch !== null && decisions.engine !== undefined) {
       const target = decisions.engine
       const current = engineMatch[2] === 'ptc' ? ENGINE_PACKAGES.ptc : ENGINE_PACKAGES.worker
+      const engineIndent = engineMatch[1] ?? ''
       const nameLine = NAME_LINE[Symbol.match](lines[index + 1] ?? '')
       if (nameLine === null || nameLine[2] !== current.name) continue
       // Replace the contiguous comment block sitting directly above the row.
       let first = index
-      while (first > 0 && lines[first - 1].trimStart().startsWith('#')) first -= 1
+      while (first > 0 && (lines[first - 1] ?? '').trimStart().startsWith('#')) first -= 1
       const replacement = [
-        ...ENGINE_COMMENT.map(comment => `${engineMatch[1]}${comment}`),
-        `${engineMatch[1]}- id: ${target.id}`,
-        `${nameLine[1]}name: '${target.name}'`,
+        ...ENGINE_COMMENT.map(comment => `${engineIndent}${comment}`),
+        `${engineIndent}- id: ${target.id}`,
+        `${nameLine[1] ?? ''}name: '${target.name}'`,
       ]
       lines.splice(first, index + 2 - first, ...replacement)
       index = first + replacement.length - 1
@@ -88,15 +89,17 @@ export function rewriteCompositionText(text: string, decisions: RewriteDecisions
 
     const externalMatch = NAME_LINE[Symbol.match](line)
     if (externalMatch === null) continue
-    const external = EXTERNAL_NAME[Symbol.match](externalMatch[2])
+    const external = EXTERNAL_NAME[Symbol.match](externalMatch[2] ?? '')
     if (external === null) continue
-    const url = entries[external[1]]
+    const dirName = external[1] ?? ''
+    if (dirName === '') continue
+    const url = entries[dirName]
     if (url === undefined) {
-      notes.push(`@dsh-external/${external[1]} not present under the profile; row left as authored`)
+      notes.push(`@dsh-external/${dirName} not present under the profile; row left as authored`)
       continue
     }
-    lines[index] = `${externalMatch[1]}name: '${url}'`
-    notes.push(`@dsh-external/${external[1]} rewritten to file: row`)
+    lines[index] = `${externalMatch[1] ?? ''}name: '${url}'`
+    notes.push(`@dsh-external/${dirName} rewritten to file: row`)
   }
 
   const updated = lines.join('\n')
