@@ -94,3 +94,20 @@ test('mcp-json: lineToArgs quoting inverse', () => {
   assert.deepEqual(lineToArgs('-y pkg "two words"'), ['-y', 'pkg', 'two words'])
   assert.deepEqual(lineToArgs(''), [])
 })
+
+test('mcp-json: toolCallTimeoutMs honored with clamping', () => {
+  const result = parseMcpJson(JSON.stringify({
+    mcpServers: {
+      kali: { type: 'http', url: 'http://kali:8765/mcp', toolCallTimeoutMs: 900000 },
+      fast: { command: 'npx', args: ['-y', 'x'], toolCallTimeoutMs: 500 },
+      junk: { command: 'npx', args: ['-y', 'x'], toolCallTimeoutMs: 'later' },
+      plain: { command: 'npx', args: ['-y', 'x'] },
+    },
+  }))
+  assert.ok(!('error' in result))
+  const byName = new Map(result.servers.map((server) => [server.name, server]))
+  assert.equal(byName.get('kali')!.toolCallTimeoutMs, 900000, 'explicit timeout passes through')
+  assert.equal(byName.get('fast')!.toolCallTimeoutMs, 1_000, 'below-min clamps up to 1s')
+  assert.equal(byName.get('junk')!.toolCallTimeoutMs, 60_000, 'non-numeric falls back to default')
+  assert.equal(byName.get('plain')!.toolCallTimeoutMs, 60_000, 'absent field falls back to default')
+})

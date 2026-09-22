@@ -1,7 +1,7 @@
 /** Host plugin: owns the `mcp-studio` settings namespace, mounts one mcp-client per enabled row (hot-swap on edit, dispose on remove), and serves live status aggregated from the tool registry over the plugin's loopback channel. */
 import type { Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
+import * as dshSettings from '@deepseek-ai/dsh-settings'
 import * as mcpClient from '@deepseek-ai/dsh-mcp-client'
 import {
   Config,
@@ -25,7 +25,30 @@ export const name = 'dsh-mcp-studio'
 export const inject = ['tools']
 
 /** Settings namespace owned by this plugin (client and Host spell the same value). */
-export const STUDIO_SETTINGS_NAMESPACE = settingsNamespace('mcp-studio')
+export const STUDIO_SETTINGS_NAMESPACE: string =
+  typeof (dshSettings as { settingsNamespace?: unknown }).settingsNamespace === 'function'
+    ? (dshSettings as { settingsNamespace: (ns: string) => string }).settingsNamespace('mcp-studio')
+    : 'mcp-studio'
+
+/** Settings-section install hooks handed to the settings seam. */
+interface SectionHooks {
+  setSource: (source: () => StudioSection) => void
+  onChange: () => void
+  validate: (section: unknown) => string[]
+}
+
+// 具名 import 在导出被宿主移除时会链接期崩溃，这里按宿主版本选择注册路径：
+// 旧宿主提供顶层 installSettingsSection/settingsNamespace；新宿主将其收纳为
+// settings 服务的 installSection 方法（namespace 校验糖不再单独导出）。
+function installSettingsSection(ctx: Context, ns: string, schema: unknown, entry: unknown, hooks: SectionHooks): void {
+  if (typeof (dshSettings as { installSettingsSection?: unknown }).installSettingsSection === 'function') {
+    ;(dshSettings as { installSettingsSection: (ctx: Context, ns: string, schema: unknown, entry: unknown, hooks: unknown) => void }).installSettingsSection(ctx, ns, schema, entry, hooks)
+    return
+  }
+  ctx.inject(['settings'], (sctx: { settings: { installSection: (ctx: Context, ns: string, schema: unknown, entry: unknown, hooks: unknown) => void } }) => {
+    sctx.settings.installSection(ctx, ns, schema, entry, hooks)
+  })
+}
 
 /** One mounted mcp-client fiber plus the config signature it was built from. */
 interface Mount {
@@ -106,7 +129,7 @@ export function apply(ctx: Context, config: StudioSection): void {
   }, 'mcp-studio: lifecycle')
 
   installSettingsSection(ctx, STUDIO_SETTINGS_NAMESPACE, Config as z<StudioSection>, config, {
-    setSource: (source) => {
+    setSource: (source: () => StudioSection) => {
       current = source
     },
     onChange: () => {

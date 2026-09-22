@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { parseSemgrepJson, buildArgs, findRefsDir, appendReconcile, runSemgrep, RULE_LAYERS } from "../lib/index.js";
+import { parseSemgrepJson, buildArgs, findRefsDir, appendReconcile, runSemgrep, runProcess, machinePressure, machineGate, RULE_LAYERS } from "../lib/index.js";
 
 let pass = 0, fail = 0;
 const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); } else { fail++; console.log(`FAIL ${label}`); } };
@@ -80,6 +80,18 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	const r4 = await runSemgrep({ workspace: ws, target, layer: "builtin-java", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: [refs], hasBinFn: () => false });
 	ok("运行：缺装拒绝走三级兜底提示（检测制）", r4.ok === false && r4.error.includes("绝不自动装"));
 	fs.rmSync(ws, { recursive: true, force: true });
+}
+
+// 6. 异步执行器 + 机器负载闸门（同 scanner-tools 语义；osMod 注入离线验证）
+{
+	const hb = await runProcess(process.execPath, ["-e", "setTimeout(() => process.stdout.write('done'), 3000)"], { timeoutMs: 20_000, inspectEveryMs: 1000 });
+	ok("异步执行：静默超窗记巡检心跳行且不误杀", hb.status === 0 && hb.stdout.includes("done") && /巡检.*已静默/.test(hb.stderr));
+	const osOk = { cpus: () => [1, 2, 3, 4], loadavg: () => [1, 0, 0], freemem: () => 8 * 1024 * 1024 * 1024 };
+	const osCrit = { cpus: () => [1, 2, 3, 4], loadavg: () => [20, 0, 0], freemem: () => 8 * 1024 * 1024 * 1024 };
+	const osLowMem = { cpus: () => [1, 2, 3, 4], loadavg: () => [0.1, 0, 0], freemem: () => 100 * 1024 * 1024 };
+	ok("机器闸门：正常放行 / 过载与低内存按 critical 拒绝", machinePressure(osOk).level === "ok" && machinePressure(osCrit).level === "critical" && machinePressure(osLowMem).level === "critical" && (await machineGate({ pollMs: 1, waitMs: 5, osMod: osOk })).ok && !(await machineGate({ pollMs: 1, waitMs: 5, osMod: osCrit })).ok);
+	const gCrit = await machineGate({ pollMs: 1, waitMs: 5, osMod: osCrit });
+	ok("机器闸门：拒绝文案含机器状态与三级兜底出口", gCrit.note.includes("机器压力未回落") && gCrit.note.includes("三级兜底"));
 }
 
 console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pass} passed`);

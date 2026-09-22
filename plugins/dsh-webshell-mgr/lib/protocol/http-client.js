@@ -40,7 +40,8 @@ export function httpRequest({ url, method = "POST", headers = {}, body = null, t
 		const opts = {
 			method,
 			headers: { ...headers },
-			timeout: Math.min(Math.max(Number(timeoutMs) || 20000, 1000), 180000),
+			// 上限 600s：大文件分块传输/数据库导出等长往返是合法工况，180s 会腰斩；下限 1s 防手滑传 0
+			timeout: Math.min(Math.max(Number(timeoutMs) || 20000, 1000), 600000),
 			// 一次性连接（Connection: close）：规避 keep-alive 复用与部分目标容器
 			// （如 php -S 单线程）的响应边界错乱——偶发 404/500 假拒绝
 			agent: false

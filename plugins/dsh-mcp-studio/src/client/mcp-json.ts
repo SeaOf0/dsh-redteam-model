@@ -7,6 +7,15 @@ export interface McpJsonParseResult {
 }
 
 const DEFAULT_TIMEOUT_MS = 60_000
+const MIN_TIMEOUT_MS = 1_000
+const MAX_TIMEOUT_MS = 3_600_000
+
+/** Parse an optional per-server tool-call timeout; invalid values fall back to the default. */
+function parseTimeoutMs(value: unknown): number {
+  const n = typeof value === 'number' ? value : Number(value)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_TIMEOUT_MS
+  return Math.min(Math.max(Math.round(n), MIN_TIMEOUT_MS), MAX_TIMEOUT_MS)
+}
 
 function quoteArg(token: string): string {
   if (token === '') return '""'
@@ -52,7 +61,7 @@ function parseServerEntry(name: string, raw: unknown): ServerDraft | undefined {
     cwd: isHttp ? '' : str(entry.cwd),
     url: isHttp ? url : '',
     headers: isHttp ? toPairs(entry.headers) : [],
-    toolCallTimeoutMs: DEFAULT_TIMEOUT_MS,
+    toolCallTimeoutMs: parseTimeoutMs(entry.toolCallTimeoutMs),
     failOnStartupError: false,
   }
 }

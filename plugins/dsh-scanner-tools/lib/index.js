@@ -14,6 +14,7 @@
 // 挂载：preset 平面（pentest / attack-defense / cloud-security / ctf-solver 各自 agent.cordis.yml 一行）。
 
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
 import { defineTool } from "@deepseek-ai/dsh-tools";
@@ -47,8 +48,10 @@ function killTree(child) {
 
 /** 异步执行子进程（不阻塞事件循环）。返回形状对齐 spawnSync 结果 {status, stdout, stderr, error}，
  *  error.code=ETIMEDOUT（超时）/ENOENT（缺装）——调用面的 proc.error / proc.status 判断无需改动。
- *  输出超限也不再像 spawnSync 那样整体报错丢结果：截到 maxBuffer 后继续排空管道（不排空子进程会卡在写管道）并记账。 */
-export function runProcess(bin, args, { timeoutMs = 300_000, maxBuffer = 32 * 1024 * 1024, onOutput } = {}) {
+ *  输出超限也不再像 spawnSync 那样整体报错丢结果：截到 maxBuffer 后继续排空管道（不排空子进程会卡在写管道）并记账。
+ *  执行中巡检（inspectEveryMs）：静默超窗在 stderr 记一条心跳行——只记账不杀进程，
+ *  nmap 扫黑洞端口/sqlmap 盲注的合法静默可达数分钟，无输出 ≠ 挂死，终止判断仍由 timeoutMs 兜底。 */
+export function runProcess(bin, args, { timeoutMs = 300_000, maxBuffer = 32 * 1024 * 1024, onOutput, inspectEveryMs = 60_000 } = {}) {
 	return new Promise((resolve) => {
 		let child;
 		try {
@@ -58,15 +61,18 @@ export function runProcess(bin, args, { timeoutMs = 300_000, maxBuffer = 32 * 10
 			return;
 		}
 		let stdout = "", stderr = "", dropped = 0, settled = false, timedOut = false, timer = null, killTimer = null;
+		let lastActivity = Date.now(), beats = 0, watch = null;
 		const finish = (result) => {
 			if (settled) return;
 			settled = true;
 			if (timer !== null) clearTimeout(timer);
 			if (killTimer !== null) clearTimeout(killTimer);
+			if (watch !== null) clearInterval(watch);
 			resolve(result);
 		};
 		const take = (chunk, into) => {
 			const text = chunk.toString();
+			lastActivity = Date.now();
 			onOutput?.(text, into);
 			const room = maxBuffer - (into === "out" ? stdout.length : stderr.length);
 			if (room <= 0) { dropped += text.length; return; }
@@ -92,6 +98,19 @@ export function runProcess(bin, args, { timeoutMs = 300_000, maxBuffer = 32 * 10
 				killTimer.unref?.();
 			}, timeoutMs);
 		}
+		if (inspectEveryMs > 0) {
+			// 执行中巡检：定期回来看执行情况——子进程存活但静默超窗则记一条心跳行（最多 5 条防刷屏），
+			// 让调用方在长静默工况下也能区分「还在跑」与「早就死了」。
+			watch = setInterval(() => {
+				if (settled) return;
+				const idleMs = Date.now() - lastActivity;
+				if (idleMs >= inspectEveryMs && beats < 5 && stderr.length < maxBuffer) {
+					beats += 1;
+					stderr += `\n[巡检 ${new Date().toISOString().slice(11, 19)}：子进程存活，已静默 ${Math.round(idleMs / 1000)}s（超时兜底 ${Math.round(timeoutMs / 1000)}s）]`;
+				}
+			}, inspectEveryMs);
+			watch.unref?.();
+		}
 	});
 }
 
@@ -108,6 +127,35 @@ function serialized(fn) {
 	const next = scanChain.then(fn, fn);
 	scanChain = next.then(() => {}, () => {});
 	return next;
+}
+
+//#endregion
+
+//#region 机器负载闸门：执行真实扫描器前看机器状态，防止把本机打死
+
+/** 机器压力探测（osMod 可注入供测试）：load 相对核数 + 空闲内存。
+ *  Windows 无 loadavg（恒 0）→ 负载项自然放行，只查内存兜底。 */
+export function machinePressure(osMod = os) {
+	const cores = osMod.cpus().length || 1;
+	const load1 = osMod.loadavg()[0] ?? 0;
+	const freeMb = osMod.freemem() / (1024 * 1024);
+	if (freeMb < 512) return { level: "critical", detail: `空闲内存 ${Math.round(freeMb)}MB < 512MB` };
+	if (load1 >= cores * 4) return { level: "critical", detail: `load1 ${load1.toFixed(1)} ≥ ${cores} 核 ×4` };
+	if (load1 >= cores * 2) return { level: "high", detail: `load1 ${load1.toFixed(1)} ≥ ${cores} 核 ×2` };
+	return { level: "ok", detail: "" };
+}
+
+/** 负载感知闸门：高载时轮询等待回落（至多 waitMs），critical / 窗口耗尽则拒绝执行——
+ *  尺度随机器现状调整而不是一下子堆上去；拒绝文案指明阶梯下级出口。 */
+export async function machineGate({ waitMs = 120_000, pollMs = 5_000, osMod = os } = {}) {
+	for (let i = 0; ; i += 1) {
+		const p = machinePressure(osMod);
+		if (p.level === "ok") return { ok: true, note: i === 0 ? "" : `机器高载已等待 ${Math.round((i * pollMs) / 1000)}s 回落后放行` };
+		if (p.level === "critical" || (i + 1) * pollMs >= waitMs) {
+			return { ok: false, note: `机器压力未回落（${p.detail}${i > 0 ? `，已等待 ${Math.round((i * pollMs) / 1000)}s` : ""}）——防过载拒执行：稍后重试，或改走工具调用阶梯下级通道（MCP/替代/脚本），或在 DSH 会话外错峰执行` };
+		}
+		await new Promise((r) => setTimeout(r, pollMs));
+	}
 }
 
 //#endregion
@@ -229,6 +277,8 @@ export async function runScan({ bin, args, workspace, tool, rate, defaultRate, a
 	else full.push(...(tool === "ffuf" ? ["-rate", String(defaultRate)] : ["-rl", String(defaultRate)]));
 	const cmdStr = `${bin} ${full.join(" ")}`;
 	const timeoutMs = bin === "nuclei" ? 900_000 : 300_000;
+	const gate = await machineGate();
+	if (!gate.ok) return { ok: false, error: `机器过载拒绝执行：${gate.note}`, bin };
 	const proc = await serialized(() => runProcess(bin, full, { timeoutMs, maxBuffer: 64 * 1024 * 1024 }));
 	if (proc.error) { breakerRecord(tool, false); return { ok: false, error: `执行失败：${proc.error.message}${proc.error.code === "ETIMEDOUT" ? `（超时 ${timeoutMs / 1000}s${bin === "nuclei" ? "——模板库缺失时首次会尝试拉取导致超时" : ""}）` : ""}`, bin }; }
 	breakerRecord(tool, proc.status === 0);
@@ -263,6 +313,8 @@ export async function runGoverned({ def, params, workspace, fsMod = fs }) {
 	let built;
 	try { built = buildArgs(def, params); } catch (e) { return { ok: false, error: `参数拒绝：${e.message}` }; }
 	const cmdStr = `${bin} ${built.argv.join(" ")}`;
+	const gate = await machineGate();
+	if (!gate.ok) return { ok: false, error: `机器过载拒绝执行：${gate.note}\n${tiersLine(def)}`, tiers: tiersLine(def) };
 	const proc = await serialized(() => runProcess(bin, built.argv, { timeoutMs: def.limits.timeoutMs, maxBuffer: 32 * 1024 * 1024 }));
 	if (proc.error) {
 		breakerRecord(def.id, false);

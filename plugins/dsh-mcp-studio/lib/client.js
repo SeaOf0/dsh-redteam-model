@@ -105,6 +105,13 @@ var import_react2 = require("react");
 
 // src/client/mcp-json.ts
 var DEFAULT_TIMEOUT_MS = 6e4;
+var MIN_TIMEOUT_MS = 1e3;
+var MAX_TIMEOUT_MS = 36e5;
+function parseTimeoutMs(value) {
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_TIMEOUT_MS;
+  return Math.min(Math.max(Math.round(n), MIN_TIMEOUT_MS), MAX_TIMEOUT_MS);
+}
 function quoteArg(token) {
   if (token === "") return '""';
   if (!/[\s"']/.test(token)) return token;
@@ -140,7 +147,7 @@ function parseServerEntry(name2, raw) {
     cwd: isHttp ? "" : str(entry.cwd),
     url: isHttp ? url : "",
     headers: isHttp ? toPairs(entry.headers) : [],
-    toolCallTimeoutMs: DEFAULT_TIMEOUT_MS,
+    toolCallTimeoutMs: parseTimeoutMs(entry.toolCallTimeoutMs),
     failOnStartupError: false
   };
 }
@@ -620,8 +627,8 @@ var SERVER_PRESETS = [
   {
     id: "kali",
     label: "Kali MCP",
-    description: "\u8FDC\u7A0B Kali \u6B66\u5668\u5E93\uFF08nmap/nuclei/sqlmap/netexec/impacket/msf \u7B49 100+ \u5DE5\u5177\uFF09\u3002\u9ED8\u8BA4\u5173\u95ED\uFF1A\u5148\u628A <kali-ip> \u6362\u6210 Kali \u673A\u5730\u5740\uFF08\u670D\u52A1\u7AEF\u4EE5 streamable-http \u8FD0\u884C\u5728 8765\uFF09\uFF0C\u518D\u5F00\u542F\uFF1B\u957F\u626B\u63CF\u5DE5\u5177\u5EFA\u8BAE\u8C03\u5927\u5355\u6B21\u8C03\u7528\u8D85\u65F6",
-    json: '{\n  "mcpServers": {\n    "kali": {\n      "type": "http",\n      "url": "http://<kali-ip>:8765/mcp",\n      "disabled": true\n    }\n  }\n}'
+    description: "\u8FDC\u7A0B Kali \u6B66\u5668\u5E93\uFF08nmap/nuclei/sqlmap/netexec/impacket/msf \u7B49 100+ \u5DE5\u5177\uFF09\u3002\u9ED8\u8BA4\u5173\u95ED\uFF1A\u5148\u628A <kali-ip> \u6362\u6210 Kali \u673A\u5730\u5740\uFF08\u670D\u52A1\u7AEF\u4EE5 streamable-http \u8FD0\u884C\u5728 8765\uFF09\uFF0C\u518D\u5F00\u542F\uFF1B\u5DF2\u9884\u7F6E 15 \u5206\u949F\u5355\u6B21\u8C03\u7528\u8D85\u65F6\uFF08\u957F\u626B\u63CF\u5DE5\u5177\u7684\u5408\u7406\u5C3A\u5EA6\uFF0C\u53EF\u5728\u8BBE\u7F6E\u9875\u6309\u9700\u8C03\u6574\uFF09",
+    json: '{\n  "mcpServers": {\n    "kali": {\n      "type": "http",\n      "url": "http://<kali-ip>:8765/mcp",\n      "toolCallTimeoutMs": 900000,\n      "disabled": true\n    }\n  }\n}'
   },
   {
     id: "webshell",

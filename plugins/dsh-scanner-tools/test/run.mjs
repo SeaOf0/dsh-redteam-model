@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
-import { checkRegistered, hasBin, RATE_DEFAULTS, runScan, governPreview, spillOutput, breakerCheck, breakerRecord, runGoverned, runProcess } from "../lib/index.js";
+import { checkRegistered, hasBin, RATE_DEFAULTS, runScan, governPreview, spillOutput, breakerCheck, breakerRecord, runGoverned, runProcess, machinePressure, machineGate } from "../lib/index.js";
 import { TOOL_DEFS, buildArgs, tiersLine } from "../lib/registry.js";
 
 const F = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "fixture");
@@ -138,6 +138,26 @@ expect("impacket 防盲打：未登记目标拒绝", !g6.ok && g6.error.includes
 	expect("异步执行：超时杀进程树并报 ETIMEDOUT", t.error?.code === "ETIMEDOUT" && Date.now() - t0b < 20_000, `elapsed=${Date.now() - t0b} status=${t.status}`);
 	const o = await runProcess(process.execPath, ["-e", "process.stdout.write('x'.repeat(200000))"], { timeoutMs: 20_000, maxBuffer: 1000 });
 	expect("异步执行：输出超限截断+记账（不丢结果、不卡管道）", o.status === 0 && o.stdout.length === 1000 && o.stderr.includes("输出超限"));
+	// 心跳巡检：长静默子进程在 stderr 记巡检行（不误杀，进程照常跑完）
+	const hb = await runProcess(process.execPath, ["-e", "setTimeout(() => process.stdout.write('done'), 3000)"], { timeoutMs: 20_000, inspectEveryMs: 1000 });
+	expect("执行中巡检：静默超窗记心跳行且不误杀", hb.status === 0 && hb.stdout.includes("done") && /巡检.*已静默/.test(hb.stderr), `stderr=${JSON.stringify(hb.stderr.slice(0, 160))}`);
+}
+
+// ── 机器负载闸门：尺度随机器现状调整（osMod 注入离线验证三档判定与等待/拒绝）──
+{
+	const osOk = { cpus: () => [1, 2, 3, 4], loadavg: () => [1, 0, 0], freemem: () => 8 * 1024 * 1024 * 1024 };
+	const osHigh = { cpus: () => [1, 2, 3, 4], loadavg: () => [9, 0, 0], freemem: () => 8 * 1024 * 1024 * 1024 };
+	const osCrit = { cpus: () => [1, 2, 3, 4], loadavg: () => [20, 0, 0], freemem: () => 8 * 1024 * 1024 * 1024 };
+	const osLowMem = { cpus: () => [1, 2, 3, 4], loadavg: () => [0.1, 0, 0], freemem: () => 100 * 1024 * 1024 };
+	expect("机器闸门：正常负载放行不等待", machinePressure(osOk).level === "ok" && (await machineGate({ pollMs: 1, waitMs: 10, osMod: osOk })).ok);
+	expect("机器闸门：高载判定 high / 严重过载判定 critical", machinePressure(osHigh).level === "high" && machinePressure(osCrit).level === "critical");
+	expect("机器闸门：低内存按 critical 拒绝", machinePressure(osLowMem).level === "critical");
+	expect("机器闸门：严重过载立即拒绝并给阶梯出口", !(await machineGate({ pollMs: 1, waitMs: 10, osMod: osCrit })).ok);
+	const gCrit = await machineGate({ pollMs: 1, waitMs: 10, osMod: osCrit });
+	expect("机器闸门：拒绝文案含机器状态与下级通道提示", gCrit.note.includes("机器压力未回落") && gCrit.note.includes("MCP"));
+	const t0g = Date.now();
+	const gHigh = await machineGate({ pollMs: 5, waitMs: 12, osMod: osHigh });
+	expect("机器闸门：高载轮询等待，窗口耗尽转拒绝", !gHigh.ok && Date.now() - t0g >= 10 && gHigh.note.includes("已等待"));
 }
 
 process.exit(failed ? 1 : 0);

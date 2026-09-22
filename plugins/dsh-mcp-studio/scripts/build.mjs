@@ -1,41 +1,48 @@
-import { rm, readFile, writeFile } from 'node:fs/promises'
+import { rm, readFile, writeFile, copyFile, mkdir } from 'node:fs/promises'
 import { build } from 'esbuild'
 import ts from 'typescript'
 
 const PACKAGE_ID = '@dsh-external/dsh-mcp-studio'
 
 await rm('lib', { recursive: true, force: true })
+await mkdir('lib', { recursive: true })
+// sse-bridge.mjs 是静态桥接脚本（非 tsc/esbuild 产物），源头在 src/，构建时原样带出
+await copyFile('src/sse-bridge.mjs', 'lib/sse-bridge.mjs')
 
 const rootNames = ts.sys.readDirectory('src', ['.ts', '.tsx'])
-const program = ts.createProgram({
-  rootNames,
-  options: {
-    target: ts.ScriptTarget.ES2023,
-    module: ts.ModuleKind.ESNext,
-    moduleResolution: ts.ModuleResolutionKind.Bundler,
-    allowImportingTsExtensions: true,
-    lib: ['lib.es2023.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'],
-    jsx: ts.JsxEmit.ReactJSX,
-    strict: true,
-    noUncheckedIndexedAccess: true,
-    skipLibCheck: true,
-    verbatimModuleSyntax: true,
-    declaration: true,
-    emitDeclarationOnly: true,
-    outDir: 'lib/types',
-    rootDir: 'src',
-  },
-})
-const emit = program.emit()
-const diagnostics = ts.getPreEmitDiagnostics(program).concat(emit.diagnostics)
-if (diagnostics.length > 0) {
-  const host = {
-    getCanonicalFileName: (file) => file,
-    getCurrentDirectory: () => process.cwd(),
-    getNewLine: () => '\n',
+// bundle-only 构建：SKIP_TSC=1 跳过类型全检（上游 @deepseek-ai 包的类型面随宿主版本漂移，
+// 与本地解析到的版本组合可能无法全绿；两个 esbuild bundle 与 sse-bridge 复制不受影响）。
+if (!process.env.SKIP_TSC) {
+  const program = ts.createProgram({
+    rootNames,
+    options: {
+      target: ts.ScriptTarget.ES2023,
+      module: ts.ModuleKind.ESNext,
+      moduleResolution: ts.ModuleResolutionKind.Bundler,
+      allowImportingTsExtensions: true,
+      lib: ['lib.es2023.d.ts', 'lib.dom.d.ts', 'lib.dom.iterable.d.ts'],
+      jsx: ts.JsxEmit.ReactJSX,
+      strict: true,
+      noUncheckedIndexedAccess: true,
+      skipLibCheck: true,
+      verbatimModuleSyntax: true,
+      declaration: true,
+      emitDeclarationOnly: true,
+      outDir: 'lib/types',
+      rootDir: 'src',
+    },
+  })
+  const emit = program.emit()
+  const diagnostics = ts.getPreEmitDiagnostics(program).concat(emit.diagnostics)
+  if (diagnostics.length > 0) {
+    const host = {
+      getCanonicalFileName: (file) => file,
+      getCurrentDirectory: () => process.cwd(),
+      getNewLine: () => '\n',
+    }
+    process.stderr.write(ts.formatDiagnosticsWithColorAndContext(diagnostics, host))
+    process.exit(1)
   }
-  process.stderr.write(ts.formatDiagnosticsWithColorAndContext(diagnostics, host))
-  process.exit(1)
 }
 
 // Host bundle: every @deepseek-ai package stays external.
