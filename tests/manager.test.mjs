@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { deployModes, dshHome, getStatus, installOne, repairMode, scanModes, scanPlugins, uninstallOne } from '../lib/index.js'
+import { deployModes, dshHome, getStatus, installOne, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallOne } from '../lib/index.js'
 import { createManagerFixture } from './helpers/fixture.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -200,6 +200,32 @@ test('preset-plane bundle pollution is broken and repair removes every occurrenc
     assert.equal(getStatus([], fixture.root).plugins[0]?.installState, 'broken')
     await installOne('dsh-scanner-tools', {}, fixture.root)
     assert.equal(fixture.bundles().includes(pkg), false)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('reconcileProfileBundles clears preset-plane pollution without an install', () => {
+  const fixture = createManagerFixture({ plugins: ['dsh-scanner-tools', 'dsh-sec-enforce'] })
+  try {
+    const presetPkg = '@dsh-external/dsh-scanner-tools'
+    const hostPkg = '@dsh-external/dsh-sec-enforce'
+    const manifest = JSON.parse(readFileSync(fixture.profilePackage, 'utf8'))
+    manifest.dependencies[presetPkg] = `link:${path.join(fixture.root, 'plugins', 'dsh-scanner-tools')}`
+    manifest.dependencies[hostPkg] = `link:${path.join(fixture.root, 'plugins', 'dsh-sec-enforce')}`
+    // The CLI's bundle reconcile added the preset-plane plugin (a package that
+    // declared `dsh.bundle`) and dropped the host-plane row.
+    manifest.dsh.profile.bundles.push(presetPkg)
+    writeFileSync(fixture.profilePackage, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8')
+
+    assert.match(reconcileProfileBundles(fixture.root) ?? '', /reconciled profile bundles/)
+    const bundles = fixture.bundles()
+    assert.equal(bundles.includes(presetPkg), false)
+    assert.equal(bundles.filter(name => name === hostPkg).length, 1)
+    // Idempotent: a clean manifest is left untouched, and rewrites nothing.
+    const before = readFileSync(fixture.profilePackage, 'utf8')
+    assert.equal(reconcileProfileBundles(fixture.root), null)
+    assert.equal(readFileSync(fixture.profilePackage, 'utf8'), before)
   } finally {
     fixture.cleanup()
   }

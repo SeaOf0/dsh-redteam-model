@@ -32,6 +32,7 @@ import {
   NORMALIZER_VERSION,
   rewriteCompositionText,
   type EngineFlavor,
+  type RewriteDecisions,
 } from './normalize.ts'
 import type {
   AdminStatus,
@@ -358,6 +359,45 @@ function normalizeBundle(profile: ProfilePackage, plugin: PluginDescriptor): voi
 
 function pluginDependencyName(plugin: PluginDescriptor): string {
   return `@dsh-external/${plugin.name}`
+}
+
+/**
+ * Keep `dsh.profile.bundles` matching every installed plugin's mount plane.
+ *
+ * A preset-plane plugin is loaded by the preset rows, never as a profile
+ * layer, so a bundle row naming it is pollution. The harness CLI reconciles
+ * bundles from a package's `dsh.bundle` declaration, which is how a plugin
+ * that shipped one (an empty patch, because it mounts on the preset plane)
+ * kept reappearing there: `pluginStatus` then reported it broken on every
+ * boot, and the repair that would clear the row runs `pnpm install`, so any
+ * install failure rolled the row right back. Reconcile from the manifest the
+ * manager owns instead, so the state converges without a reinstall.
+ * @param root - collection root the plugin planes are read from.
+ * @returns a note when the manifest changed, else null.
+ */
+export function reconcileProfileBundles(root = locateRoot()): string | null {
+  const profile = readProfile()
+  const bundles = profile?.dsh?.profile?.bundles
+  if (profile === null || !Array.isArray(bundles)) return null
+  const dependencies = profile.dependencies ?? {}
+  let next = [...bundles]
+  let changed = false
+  for (const plugin of scanPlugins(root)) {
+    const pkg = pluginDependencyName(plugin)
+    if (dependencies[pkg] === undefined) continue
+    const present = next.filter(candidate => candidate === pkg).length
+    const wanted = plugin.mountPlane === 'host' ? 1 : 0
+    if (present === wanted) continue
+    next = next.filter(candidate => candidate !== pkg)
+    if (wanted === 1) next.push(pkg)
+    changed = true
+  }
+  if (!changed) return null
+  profile.dsh ??= {}
+  profile.dsh.profile ??= {}
+  profile.dsh.profile.bundles = next
+  writeProfileWithBackup(profile)
+  return 'reconciled profile bundles: preset-plane rows removed, host-plane rows restored'
 }
 
 function readInstalledVersion(plugin: PluginDescriptor): string | undefined {
@@ -1081,11 +1121,27 @@ function pluginEntryFile(packageDir: string): string {
   }
 }
 
-/** Deployed-entry map for every `@dsh-external/*` package visible under the
- *  profile tree: directory name → `file:` URL of its entry file. */
-export function externalEntryMap(): Record<string, string> {
-  const externalRoot = path.join(profileWebDir(), 'node_modules', '@dsh-external')
+/** Deployed-entry map for every `@dsh-external/*` package this profile has
+ *  installed: directory name → `file:` URL of its entry file.
+ *
+ *  A plugin the profile lists as a dependency is resolved from the collection's
+ *  own `plugins/` tree, because that tree exists the moment the dependency is
+ *  written. A deploy that runs right after an install otherwise resolves
+ *  nothing: the profile's `@dsh-external` links are created by pnpm after the
+ *  install command returns, so a map built from the profile alone is empty and
+ *  every row stays a bare package name a packaged desktop host cannot resolve.
+ *  A plugin the profile does not depend on stays absent — uninstalling one
+ *  still takes it out of the presets. A link under the profile wins when it
+ *  exists, so a developer's own checkout stays the target. */
+export function externalEntryMap(root = locateRoot()): Record<string, string> {
   const entries: Record<string, string> = {}
+  const dependencies = readProfile()?.dependencies ?? {}
+  for (const plugin of scanPlugins(root)) {
+    if (dependencies[`@dsh-external/${plugin.name}`] === undefined) continue
+    const entry = pluginEntryFile(plugin.dir)
+    if (existsSync(entry)) entries[plugin.name] = pathToFileURL(entry).href
+  }
+  const externalRoot = path.join(profileWebDir(), 'node_modules', '@dsh-external')
   let names: string[] = []
   try {
     names = readdirSync(externalRoot).filter(name => /^[a-z0-9-]+$/.test(name))
@@ -1103,6 +1159,8 @@ export function externalEntryMap(): Record<string, string> {
 export interface NormalizeCompositionOptions {
   /** Engine flavor to write; omit to auto-detect, 'keep' to leave the row alone. */
   readonly engine?: EngineFlavor | 'keep'
+  /** Entry map to rewrite with; resolved from the collection when omitted. */
+  readonly entries?: Readonly<Record<string, string>>
   readonly log?: (message: string) => void
 }
 
@@ -1125,10 +1183,39 @@ export function normalizePresetComposition(
     if (flavor !== undefined) engine = ENGINE_PACKAGES[flavor]
   }
   const original = readFileSync(file, 'utf8')
-  const result = rewriteCompositionText(original, { engine, entries: externalEntryMap() })
+  const result = rewriteCompositionText(original, { engine, entries: options.entries ?? externalEntryMap() })
   if (result.changed) writeFileSync(file, result.text, 'utf8')
   for (const note of result.notes) options.log?.(note)
   return { changed: result.changed, notes: result.notes }
+}
+
+/** Rewrite decisions for one deploy: the engine the running host ships plus
+ *  the entry map every deployed copy resolves its `@dsh-external` rows from.
+ *  Resolved once per deploy so the freshness test and the rewrite agree. */
+function deployRewriteDecisions(root: string): { decisions: RewriteDecisions; engine: EngineFlavor | 'keep' } {
+  const flavor = detectEngineFlavor()
+  return {
+    decisions: {
+      ...(flavor === undefined ? {} : { engine: ENGINE_PACKAGES[flavor] }),
+      entries: externalEntryMap(root),
+    },
+    engine: flavor ?? 'keep',
+  }
+}
+
+/** Whether a deployed copy still carries a row this normaliser would rewrite.
+ *  A copy can be stale in ways its source digest cannot see: the rewrite also
+ *  depends on the installed plugin tree, so a copy deployed before that tree
+ *  was linked (or by an older normaliser revision) keeps rows the digest still
+ *  matches. A mode that ships no composition has nothing to rewrite, and a
+ *  copy that cannot be read at all replays so the deploy rebuilds it. */
+function needsDeployRewrite(file: string, decisions: RewriteDecisions): boolean {
+  if (!existsSync(file)) return false
+  try {
+    return rewriteCompositionText(readFileSync(file, 'utf8'), decisions).changed
+  } catch {
+    return true
+  }
 }
 
 function deployModesIntoDirectory(
@@ -1156,6 +1243,7 @@ function deployModesIntoDirectory(
   let copied = 0
   let unchanged = 0
   const skipped: string[] = []
+  const { decisions, engine } = deployRewriteDecisions(root)
 
   for (const mode of modes) {
     if (mode.digest === undefined) throw new Error(`mode digest missing: ${mode.id}`)
@@ -1172,10 +1260,13 @@ function deployModesIntoDirectory(
       }
     }
 
-    // A copy only counts as current when its digest matches AND it was last
-    // written by this normaliser revision — otherwise replay the rewrite.
+    // A copy only counts as current when its digest matches, it was written by
+    // this normaliser revision, AND it carries no row this revision would still
+    // rewrite — otherwise replay the rewrite.
     const normalized = current.marker.normalizer === NORMALIZER_VERSION
-    if (!legacySymlink && owned && entry?.digest === mode.digest && normalized && destinationExists && lstatSync(destination).isDirectory()) {
+    if (!legacySymlink && owned && entry?.digest === mode.digest && normalized && destinationExists
+      && lstatSync(destination).isDirectory()
+      && !needsDeployRewrite(path.join(destination, 'agent.cordis.yml'), decisions)) {
       unchanged += 1
       continue
     }
@@ -1195,7 +1286,7 @@ function deployModesIntoDirectory(
       // Deployed copies must load on every host shape: rewrite base-bound rows
       // (bare @dsh-external names, the workflow-engine package) right after
       // the copy lands. The source tree is never touched.
-      normalizePresetComposition(staging)
+      normalizePresetComposition(staging, { engine, entries: decisions.entries })
       if ((owned || legacySymlink) && existsAny(destination)) {
         renameSync(destination, backup)
         backedUp = true
