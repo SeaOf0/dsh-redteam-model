@@ -58,7 +58,7 @@ export interface PluginStatus {
   mountPlane: PluginMountPlane
 }
 
-export type OperationKind = 'deploy-modes' | 'install' | 'update' | 'uninstall' | 'repair'
+export type OperationKind = 'deploy-modes' | 'remove-modes' | 'install' | 'update' | 'uninstall' | 'repair'
 
 export type OperationState = 'queued' | 'running' | 'done' | 'warned' | 'failed' | 'cancelled'
 

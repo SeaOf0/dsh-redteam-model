@@ -42,8 +42,10 @@ const en = {
   statRunning: 'Running',
 
   batchInstallMissing: 'Install missing',
+  batchDeployModesAll: 'Deploy all modes',
   batchUpdateAll: 'Update all',
   batchUninstallAll: 'Uninstall all',
+  batchUninstallModesAll: 'Uninstall all modes',
   busyHint: 'An operation is running. Other actions are disabled.',
   restartHint: 'Host-plane plugins and manager updates take effect after restarting dsh web; refresh the page to update copied-mode status.',
 
@@ -102,11 +104,14 @@ const en = {
   opKindInstall: 'Install',
   opKindUpdate: 'Update',
   opKindUninstall: 'Uninstall',
+  opKindRemoveModes: 'Uninstall modes',
   opKindRepair: 'Repair',
 
   confirmUninstallTitle: 'Uninstall plugin',
   confirmUninstallAllTitle: 'Uninstall plugins',
   confirmUninstallDesc: 'This removes the plugin from the current profile after confirmation. Its tools and UI will be unavailable after restart; plugin data is kept.',
+  confirmUninstallModesTitle: 'Uninstall modes',
+  confirmUninstallModesDesc: 'This removes the security modes this manager deployed from the DSH_HOME-wide .agent-presets after confirmation. Only entries it owns or links are removed; presets it does not own and the packaged source tree are untouched.',
   confirmTargets: 'Targets',
   confirmCancel: 'Cancel',
   confirmConfirm: 'Confirm',
@@ -154,8 +159,10 @@ export const zh: Record<LocaleKey, string> = {
   statRunning: '运行中',
 
   batchInstallMissing: '安装缺失',
+  batchDeployModesAll: '部署全部模式',
   batchUpdateAll: '全部更新',
   batchUninstallAll: '全部卸载',
+  batchUninstallModesAll: '卸载全部模式',
   busyHint: '有操作正在运行，其他操作已禁用。',
   restartHint: '宿主平面插件及管理器自身更新需要重启 dsh web 后生效；模式复制状态刷新页面即可更新。',
 
@@ -214,11 +221,14 @@ export const zh: Record<LocaleKey, string> = {
   opKindInstall: '安装',
   opKindUpdate: '更新',
   opKindUninstall: '卸载',
+  opKindRemoveModes: '卸载模式',
   opKindRepair: '修复',
 
   confirmUninstallTitle: '卸载插件',
   confirmUninstallAllTitle: '卸载插件',
   confirmUninstallDesc: '确认后会从当前 profile 移除该插件；重启后其工具和界面将不可用，插件数据会保留。',
+  confirmUninstallModesTitle: '卸载模式',
+  confirmUninstallModesDesc: '确认后会从当前 DSH_HOME 的全局 .agent-presets 移除本管理台部署的安全模式：只移除管理台持有或整体链接的条目，不属于该管理台的预设与源码树不受影响。',
   confirmTargets: '目标',
   confirmCancel: '取消',
   confirmConfirm: '确认',

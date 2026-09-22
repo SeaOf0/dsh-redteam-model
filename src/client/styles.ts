@@ -145,7 +145,6 @@ const CSS_TEXT = String.raw`
 
 /* ---- confirm dialog ---- */
 .dsh-rtm-confirm-list{margin:0;padding-left:18px;color:var(--dsw-alias-label-primary,#1f2329);font-size:12px;line-height:20px}
-.dsh-rtm-confirm-note{margin:12px 0 0;color:var(--dsw-alias-label-secondary,#57606a);font-size:11.5px;line-height:17px}
 
 /* ---- danger button (primitives have no danger variant) ---- */
 .dsh-rtm-btn--danger{border-color:color-mix(in srgb,var(--dsw-alias-state-error-primary,#d92d20) 45%,var(--dsw-alias-border-l2,#e5e6eb));color:var(--dsw-alias-state-error-primary,#d92d20)}

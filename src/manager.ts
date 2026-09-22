@@ -23,6 +23,7 @@ import {
   symlinkSync,
   unlinkSync,
   writeFileSync,
+  type Stats,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import path from 'node:path'
@@ -1322,6 +1323,143 @@ function deployModesIntoDirectory(
   }
   const suffix = skipped.length > 0 ? `; skipped existing entries: ${skipped.join(', ')}` : ''
   const detail = `copied ${copied} modes into existing agent presets directory; ${unchanged} already current${suffix}`
+  onProgress?.(detail, 100)
+  return detail
+}
+
+/**
+ * Remove every deployed mode (or the named ones) from `.agent-presets`.
+ *
+ * Ownership decides every removal, because `.agent-presets` is user-global and
+ * may hold presets this collection never wrote:
+ *
+ * - A `.agent-presets` symlink is unlinked only when it resolves to this
+ *   collection's own `modes/` tree — the whole-directory deployment
+ *   `deployModes` creates. A link pointing anywhere else is reported and kept.
+ * - In a real `.agent-presets` directory only marker-owned copies (or the
+ *   legacy per-mode symlink into `modes/`) are removed, and the marker itself
+ *   is dropped once the last owned entry is gone. Foreign entries — the
+ *   user's own presets — are reported and kept.
+ *
+ * One link covers every mode, so a subset request is refused while that link
+ * is the deployment instead of silently removing more than asked. The packaged
+ * source tree is never touched.
+ * @param root - collection root the mode descriptors come from.
+ * @param onProgress - progress callback shared with the operation queue.
+ * @param ids - mode ids to remove; omit to remove every packaged mode.
+ * @returns a human-readable detail line for the operation record.
+ */
+export function uninstallModes(root = locateRoot(), onProgress?: ProgressCallback, ids?: readonly string[]): string {
+  const link = presetsLinkPath()
+  const modesRoot = path.join(root, 'modes')
+  const allModes = scanModes(root)
+  const requested = ids === undefined ? undefined : new Set(ids)
+  const modes = allModes.filter(mode => requested === undefined || requested.has(mode.id))
+  // An explicit id that no packaged mode matches is a caller error; a batch
+  // request over an unreadable mode tree still cleans up what this manager owns.
+  if (requested !== undefined && modes.length === 0) {
+    throw new Error(`unknown mode for removal: ${[...requested].join(', ')}`)
+  }
+  if (!existsAny(link)) {
+    onProgress?.('no agent presets deployment found', 100)
+    return `no agent presets deployment found: nothing to remove at ${link}`
+  }
+
+  let current: string | null = null
+  try {
+    current = readlinkSync(link)
+  } catch {
+    current = null
+  }
+
+  if (current === null) return uninstallModesFromDirectory(link, modes, onProgress)
+
+  if (path.resolve(current) !== path.resolve(modesRoot)) {
+    onProgress?.('skipped foreign agent presets link', 100)
+    return `skipped foreign agent presets link: ${link} -> ${current}; nothing removed`
+  }
+  if (requested !== undefined
+    && (requested.size !== allModes.length || !allModes.every(mode => requested.has(mode.id)))) {
+    throw new Error(`agent presets is a whole-directory link (${link} -> ${modesRoot}): remove every mode at once`)
+  }
+  onProgress?.('removing agent presets link', 50)
+  unlinkSync(link)
+  onProgress?.('done', 100)
+  return `removed agent presets link: ${link} -> ${modesRoot}`
+}
+
+/** Remove the marker-owned mode copies from a real `.agent-presets` directory. */
+function uninstallModesFromDirectory(
+  directory: string,
+  modes: readonly ModeDescriptor[],
+  onProgress?: ProgressCallback,
+): string {
+  let info: Stats | null = null
+  try {
+    info = lstatSync(directory)
+  } catch {
+    info = null
+  }
+  if (info === null || !info.isDirectory()) {
+    onProgress?.('skipped non-directory agent presets entry', 100)
+    return `skipped non-directory agent presets entry: ${directory}; nothing removed`
+  }
+
+  const current = readModeMarker(directory)
+  const owned = new Set([...Object.keys(current.marker.modes), ...current.legacyOwned])
+  const marker: ModeMarker = {
+    schemaVersion: 2,
+    owner: MODE_MARKER_OWNER,
+    normalizer: NORMALIZER_VERSION,
+    modes: {},
+  }
+  let removed = 0
+  const absent: string[] = []
+  const skipped: string[] = []
+  for (const mode of modes) {
+    const destination = path.join(directory, mode.id)
+    let stat: Stats | null = null
+    try {
+      stat = lstatSync(destination)
+    } catch {
+      stat = null
+    }
+    if (stat === null) {
+      absent.push(mode.id)
+      continue
+    }
+    // Owned means the marker recorded the copy, or the entry is the legacy
+    // per-mode symlink into this collection's tree. A real directory the marker
+    // does not own is somebody else's preset and is never removed.
+    const ourSymlink = stat.isSymbolicLink() && isOurSymlink(destination, mode.dir)
+    if ((!ourSymlink && !owned.has(mode.id)) || (!ourSymlink && !stat.isDirectory())) {
+      skipped.push(mode.id)
+      continue
+    }
+    onProgress?.(`removing deployed mode copy: ${mode.id}`)
+    rmSync(destination, { recursive: true, force: true })
+    owned.delete(mode.id)
+    removed += 1
+  }
+
+  // Keep owning what is still deployed: rows the marker already carried, plus
+  // legacy-owned entries migrated to a stale digest so the next deploy replays
+  // them, exactly like the copy path does.
+  const remaining = [...owned].filter(id => existsAny(path.join(directory, id)))
+  for (const id of remaining) {
+    marker.modes[id] = current.marker.modes[id] ?? { digest: LEGACY_STALE_DIGEST, deployedAt: 0 }
+  }
+  if (remaining.length === 0) {
+    // Nothing of ours is left here: drop the marker and its backup, which a
+    // later read would otherwise recover as live ownership state.
+    rmSync(modeMarkerFile(directory), { force: true })
+    rmSync(modeMarkerBackupFile(directory), { force: true })
+  } else {
+    writeModeMarker(directory, marker)
+  }
+
+  const skippedNote = skipped.length > 0 ? `; skipped foreign entries: ${skipped.join(', ')}` : ''
+  const detail = `removed ${removed} mode copies from existing agent presets directory; ${absent.length} not deployed${skippedNote}`
   onProgress?.(detail, 100)
   return detail
 }

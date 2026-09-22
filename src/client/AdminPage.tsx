@@ -29,13 +29,18 @@ function hasActiveOperations(status: AdminStatus | null): boolean {
   return status !== null && (status.summary.busy || status.operations.some(op => op.state === 'queued' || op.state === 'running'))
 }
 
+/** One pending destructive confirmation: plugin removal or mode removal. */
+type UninstallRequest =
+  | { readonly kind: 'uninstall'; readonly names: readonly string[] }
+  | { readonly kind: 'remove-modes'; readonly names: readonly string[] }
+
 export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: ConversationViewSettingsScope): () => ReactElement {
   return function AdminPage(): ReactElement {
     const [activePage, setActivePage] = useState<ManagerPage>('overview')
     const [status, setStatus] = useState<AdminStatus | null>(null)
     const [error, setError] = useState<string | null>(null)
     const [pending, setPending] = useState(false)
-    const [uninstallTargets, setUninstallTargets] = useState<PluginStatus[] | null>(null)
+    const [uninstallRequest, setUninstallRequest] = useState<UninstallRequest | null>(null)
     const [visibilitySnapshot, setVisibilitySnapshot] = useState(() => visibilityScope.getSnapshot())
     const [visibilityPending, setVisibilityPending] = useState<ConversationViewField | null>(null)
 
@@ -146,24 +151,30 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
     }, [face, refresh])
 
     const confirmUninstall = useCallback(async () => {
-      if (uninstallTargets === null) return
-      const names = uninstallTargets.map(plugin => plugin.name)
+      if (uninstallRequest === null) return
       setPending(true)
       setError(null)
       try {
-        await face.start({
-          kind: 'uninstall',
-          target: names.length === 1 ? names[0] ?? '' : 'installed',
-          targets: names.length === 1 ? undefined : names,
-        })
-        setUninstallTargets(null)
+        if (uninstallRequest.kind === 'remove-modes') {
+          // One link covers every mode, so the whole plane is one operation;
+          // the handler decides what it may remove from what it owns.
+          await face.start({ kind: 'remove-modes', target: 'modes' })
+        } else {
+          const names = uninstallRequest.names
+          await face.start({
+            kind: 'uninstall',
+            target: names.length === 1 ? names[0] ?? '' : 'installed',
+            targets: names.length === 1 ? undefined : [...names],
+          })
+        }
+        setUninstallRequest(null)
         await refresh()
       } catch (cause) {
         setError(errorMessage(cause))
       } finally {
         setPending(false)
       }
-    }, [face, refresh, uninstallTargets])
+    }, [face, refresh, uninstallRequest])
 
     const busy = hasActiveOperations(status)
     const runningCount = status?.operations.filter(op => op.state === 'queued' || op.state === 'running').length ?? 0
@@ -171,6 +182,10 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
     const missingPlugins = status?.plugins.filter(plugin => plugin.installState === 'not-installed') ?? []
     const updatablePlugins = status?.plugins.filter(plugin => plugin.installState === 'update-available') ?? []
     const installedPlugins = status?.plugins.filter(plugin => plugin.installState !== 'not-installed') ?? []
+    // Deployed means a live link or a copy the manager still owns ('stale');
+    // a foreign or absent entry is neither removable nor deployable as ours.
+    const deployed = status?.modes.filter(mode => mode.linkState === 'ok' || mode.linkState === 'stale') ?? []
+    const notReady = status?.modes.filter(mode => mode.linkState !== 'ok') ?? []
 
     if (status === null) {
       return (
@@ -190,8 +205,13 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
     }
 
     const batchDisabled = busy || pending
-    const confirmOpen = uninstallTargets !== null
-    const confirmTargets = uninstallTargets?.map(plugin => plugin.name) ?? []
+    const confirmOpen = uninstallRequest !== null
+    const confirmTargets = uninstallRequest === null ? [] : [...uninstallRequest.names]
+    const confirmModes = uninstallRequest?.kind === 'remove-modes'
+    const confirmTitle = confirmModes
+      ? t('confirmUninstallModesTitle')
+      : confirmTargets.length > 1 ? t('confirmUninstallAllTitle') : t('confirmUninstallTitle')
+    const confirmDescription = confirmModes ? t('confirmUninstallModesDesc') : t('confirmUninstallDesc')
     const activePageButtonId = `dsh-rtm-page-${activePage}`
 
     return (
@@ -253,14 +273,37 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
           )}
 
           {activePage === 'modes' && (
-            <ModeSection
-              modes={status.modes}
-              t={t}
-              busy={busy}
-              pending={pending}
-              onDeploy={mode => void runStart({ kind: 'deploy-modes', target: mode.id })}
-              onRepair={mode => void runStart({ kind: 'repair', target: mode.id })}
-            />
+            <>
+              <div className="dsh-rtm-batchbar">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={batchDisabled || notReady.length === 0}
+                  onClick={() => void runStart({ kind: 'deploy-modes', target: 'modes' })}
+                >
+                  {t('batchDeployModesAll')} ({notReady.length})
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="dsh-rtm-btn--danger"
+                  disabled={batchDisabled || deployed.length === 0}
+                  onClick={() => setUninstallRequest({ kind: 'remove-modes', names: deployed.map(mode => mode.id) })}
+                >
+                  {t('batchUninstallModesAll')} ({deployed.length})
+                </Button>
+                {busy && <span className="dsh-rtm-batchbar-hint">{t('busyHint')}</span>}
+              </div>
+
+              <ModeSection
+                modes={status.modes}
+                t={t}
+                busy={busy}
+                pending={pending}
+                onDeploy={mode => void runStart({ kind: 'deploy-modes', target: mode.id })}
+                onRepair={mode => void runStart({ kind: 'repair', target: mode.id })}
+              />
+            </>
           )}
 
           {activePage === 'plugins' && (
@@ -295,7 +338,7 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
                   variant="ghost"
                   className="dsh-rtm-btn--danger"
                   disabled={batchDisabled || installedPlugins.length === 0}
-                  onClick={() => setUninstallTargets(installedPlugins)}
+                  onClick={() => setUninstallRequest({ kind: 'uninstall', names: installedPlugins.map(plugin => plugin.name) })}
                 >
                   {t('batchUninstallAll')} ({installedPlugins.length})
                 </Button>
@@ -315,7 +358,7 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
                     void runStart({ kind: 'install', target: plugin.name })
                     return
                   }
-                  setUninstallTargets([plugin])
+                  setUninstallRequest({ kind: 'uninstall', names: [plugin.name] })
                 }}
                 onSetViewVisible={(field, visible) => void setViewVisible(field, visible)}
                 onUpdate={plugin => void runStart({ kind: 'update', target: plugin.name })}
@@ -336,17 +379,17 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
           )}
         </div>
 
-        {confirmOpen && uninstallTargets !== null && (
+        {confirmOpen && uninstallRequest !== null && (
           <ConfirmDialog
             open
             targets={confirmTargets}
-            title={uninstallTargets.length > 1 ? t('confirmUninstallAllTitle') : t('confirmUninstallTitle')}
-            description={t('confirmUninstallDesc')}
+            title={confirmTitle}
+            description={confirmDescription}
             confirmLabel={t('confirmConfirm')}
             cancelLabel={t('confirmCancel')}
             busy={pending}
             t={t}
-            onClose={() => setUninstallTargets(null)}
+            onClose={() => setUninstallRequest(null)}
             onConfirm={() => void confirmUninstall()}
           />
         )}

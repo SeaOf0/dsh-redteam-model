@@ -20,8 +20,9 @@ function opLabelKey(state: OperationState): 'opQueued' | 'opRunning' | 'opDone' 
   return 'opFailed'
 }
 
-function kindLabelKey(kind: OperationKind): 'opKindDeployModes' | 'opKindInstall' | 'opKindUpdate' | 'opKindUninstall' | 'opKindRepair' {
+function kindLabelKey(kind: OperationKind): 'opKindDeployModes' | 'opKindRemoveModes' | 'opKindInstall' | 'opKindUpdate' | 'opKindUninstall' | 'opKindRepair' {
   if (kind === 'deploy-modes') return 'opKindDeployModes'
+  if (kind === 'remove-modes') return 'opKindRemoveModes'
   if (kind === 'install') return 'opKindInstall'
   if (kind === 'update') return 'opKindUpdate'
   if (kind === 'uninstall') return 'opKindUninstall'

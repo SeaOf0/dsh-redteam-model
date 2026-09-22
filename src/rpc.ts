@@ -15,6 +15,7 @@ import {
   requirePlugin,
   scanModes,
   scanPlugins,
+  uninstallModes,
   uninstallOne,
   updateOne,
 } from './manager.ts'
@@ -28,7 +29,7 @@ import {
 } from './types.ts'
 
 const ENDPOINTS = new Set(['status', 'operation/start', 'operation/cancel', 'operations/clear'])
-const OPERATION_KINDS = new Set<OperationKind>(['deploy-modes', 'install', 'update', 'uninstall', 'repair'])
+const OPERATION_KINDS = new Set<OperationKind>(['deploy-modes', 'remove-modes', 'install', 'update', 'uninstall', 'repair'])
 /** Upper bound for one batch; must cover a full first-run install of every delivered plugin. */
 const MAX_TARGETS = 32
 /**
@@ -44,6 +45,8 @@ const BATCH_TARGETS: Record<'install' | 'update' | 'uninstall', string> = {
   update: 'updates',
   uninstall: 'installed',
 }
+/** Sentinel `target` naming the whole mode plane for deploy and removal. */
+const MODES_BATCH_TARGET = 'modes'
 
 function ok(value: unknown): RpcResult {
   return { ok: true, value }
@@ -65,10 +68,10 @@ function knownModeNames(): string[] {
 }
 
 function validateTargets(kind: OperationKind, target: string, targets: readonly unknown[] | undefined): string[] {
-  if (kind === 'deploy-modes') {
-    const allowed = new Set([...knownModeNames(), 'modes'])
-    if (!allowed.has(target)) throw new Error(`unknown deploy-modes target: ${target}`)
-    if (targets !== undefined && targets.length > 0) throw new Error('deploy-modes does not accept targets')
+  if (kind === 'deploy-modes' || kind === 'remove-modes') {
+    const allowed = new Set([...knownModeNames(), MODES_BATCH_TARGET])
+    if (!allowed.has(target)) throw new Error(`unknown ${kind} target: ${target}`)
+    if (targets !== undefined && targets.length > 0) throw new Error(`${kind} does not accept targets`)
     return [target]
   }
   if (kind === 'repair') {
@@ -108,7 +111,7 @@ function operationRunner(kind: OperationKind, target: string) {
       update({ detail: phase, ...(percent === undefined ? {} : { percent }) })
     }
     const modeResult = (detail: string): string | OperationOutcome => {
-      return detail.includes('skipped existing entries:')
+      return detail.includes('skipped existing entries:') || detail.includes('skipped foreign entries:')
         ? { state: 'warned', detail }
         : detail
     }
@@ -117,12 +120,15 @@ function operationRunner(kind: OperationKind, target: string) {
       // ($DSH_HOME/AGENTS.security.md, package-owned namespace refreshed on
       // change) and retires the legacy user-global AGENTS.md this package
       // used to install, so security context reaches the ten presets only.
-      if (target === 'modes') {
+      if (target === MODES_BATCH_TARGET) {
         const agentsNotice = deployGlobalAgents(undefined, onProgress)
         const detail = deployModes(undefined, onProgress)
         return modeResult(`${agentsNotice}\n${detail}`)
       }
       return modeResult(repairMode(target, undefined, onProgress))
+    }
+    if (kind === 'remove-modes') {
+      return modeResult(uninstallModes(undefined, onProgress, target === MODES_BATCH_TARGET ? undefined : [target]))
     }
     if (kind === 'repair') {
       if (knownModeNames().includes(target)) return modeResult(repairMode(target, undefined, onProgress))
@@ -139,7 +145,7 @@ function operationRunner(kind: OperationKind, target: string) {
 function handleStart(payload: Record<string, unknown>, queue: OperationQueue): RpcResult {
   const kind = payload.kind
   if (typeof kind !== 'string' || !OPERATION_KINDS.has(kind as OperationKind)) {
-    throw new Error('kind must be one of deploy-modes|install|update|uninstall|repair')
+    throw new Error('kind must be one of deploy-modes|remove-modes|install|update|uninstall|repair')
   }
   const target = payload.target
   if (typeof target !== 'string' || target === '') throw new Error('target must be a non-empty string')
@@ -150,6 +156,7 @@ function handleStart(payload: Record<string, unknown>, queue: OperationQueue): R
   for (const name of names) {
     // validateTargets already checked allowlists; require* re-checks cheaply.
     if (kind === 'install' || kind === 'update' || kind === 'uninstall') requirePlugin(name)
+    if (kind === 'remove-modes' && name !== MODES_BATCH_TARGET) requireMode(name)
     if (kind === 'repair') {
       if (knownModeNames().includes(name)) requireMode(name)
       else requirePlugin(name)

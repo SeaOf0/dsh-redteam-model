@@ -45,7 +45,6 @@ export function ConfirmDialog({
       <ul className="dsh-rtm-confirm-list">
         {targets.map(target => <li key={target}>{target}</li>)}
       </ul>
-      <p className="dsh-rtm-confirm-note">{t('confirmUninstallDesc')}</p>
     </Modal>
   )
 }

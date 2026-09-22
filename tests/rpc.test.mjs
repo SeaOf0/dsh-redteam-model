@@ -155,6 +155,30 @@ test('mode row repair copies one missing mode into a real presets directory', as
   }
 })
 
+test('remove-modes takes the whole deployment back through the queue', async () => {
+  const fixture = rpcFixture()
+  try {
+    const presets = path.join(fixture.home, '.agent-presets')
+    assert.equal((await fixture.call('operation/start', { kind: 'deploy-modes', target: 'modes' })).ok, true)
+    await fixture.queue.whenIdle()
+    assert.equal(existsSync(presets), true)
+
+    assert.equal((await fixture.call('operation/start', { kind: 'remove-modes', target: 'nope' })).ok, false)
+    assert.equal((await fixture.call('operation/start', { kind: 'remove-modes', target: 'modes', targets: ['redteam'] })).ok, false)
+
+    const result = await fixture.call('operation/start', { kind: 'remove-modes', target: 'modes' })
+    assert.equal(result.ok, true)
+    await fixture.queue.whenIdle()
+    const record = fixture.queue.list().find(op => op.kind === 'remove-modes')
+    assert.equal(record?.state, 'done')
+    assert.match(record?.detail ?? '', /removed agent presets link/)
+    assert.equal(existsSync(presets), false)
+    assert.equal((await fixture.call('status', {})).value.summary.modesReady, 0)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
 test('RPC rejects an over-capacity operation before enqueueing any records', async () => {
   const fixture = rpcFixture()
   let releaseFirst
