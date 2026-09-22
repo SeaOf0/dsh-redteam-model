@@ -30,7 +30,7 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 // 2. 参数构造：规则层→--config 路径；custom 用 rulesPath
 {
 	const { args, configs } = buildArgs("builtin-java", "/repo", undefined, "/refs");
-	ok("args：java 层 config 指 refs 子目录 + json/metrics/quiet", args.includes("--config") && configs[0].endsWith("lang/java-audit/semgrep-rules") && args.includes("--metrics=off") && args.includes("--json") && args[args.length - 1] === "/repo");
+	ok("args：java 层 config 指 refs 子目录 + json/metrics/quiet", args.includes("--config") && configs[0].split(path.sep).join("/").endsWith("lang/java-audit/semgrep-rules") && args.includes("--metrics=off") && args.includes("--json") && args[args.length - 1] === "/repo");
 	const c = buildArgs("custom", "/repo", "/my/rules.yml", "");
 	ok("args：custom 层用 rulesPath", c.configs[0] === "/my/rules.yml");
 	ok("RULE_LAYERS 三内置层齐", Object.keys(RULE_LAYERS).join() === "builtin-java,builtin-php,oss");
@@ -66,18 +66,18 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	fs.mkdirSync(target, { recursive: true });
 	fs.mkdirSync(path.join(refs, "lang", "java-audit", "semgrep-rules"), { recursive: true });
 	const semgrepOut = JSON.stringify({ results: [{ check_id: "r.a", path: "A.java", start: { line: 1 }, extra: { severity: "ERROR", message: "m" } }], errors: [] });
-	const r = runSemgrep({
+	const r = await runSemgrep({
 		workspace: ws, target, layer: "builtin-java",
 		spawnFn: (bin, args) => ({ status: 0, stdout: semgrepOut, args }),
 		fsMod: fs, refsCandidates: [refs], hasBinFn: () => true
 	});
 	ok("运行：产物 JSON 落盘 + 证据行 + 对账双写", r.ok && r.total === 1 && r.reconciled === 1 && fs.existsSync(path.join(ws, "artifacts", "scans")) && fs.readFileSync(path.join(ws, "evidence-index.md"), "utf8").includes("semgrep scan --json"));
 	ok("运行：证据编号自增格式", /^E\d+$/.test(r.evidenceId));
-	const r2 = runSemgrep({ workspace: ws, target, layer: "custom", rulesPath: "/no/such.yml", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: [refs], hasBinFn: () => true });
+	const r2 = await runSemgrep({ workspace: ws, target, layer: "custom", rulesPath: "/no/such.yml", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: [refs], hasBinFn: () => true });
 	ok("运行：custom 规则路径不存在拒绝", r2.ok === false && r2.error.includes("规则路径不存在"));
-	const r3 = runSemgrep({ workspace: ws, target, layer: "builtin-java", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: ["/none"], hasBinFn: () => true });
+	const r3 = await runSemgrep({ workspace: ws, target, layer: "builtin-java", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: ["/none"], hasBinFn: () => true });
 	ok("运行：refs 未定位拒绝并提示 custom 兜底", r3.ok === false && r3.error.includes("layer=custom"));
-	const r4 = runSemgrep({ workspace: ws, target, layer: "builtin-java", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: [refs], hasBinFn: () => false });
+	const r4 = await runSemgrep({ workspace: ws, target, layer: "builtin-java", spawnFn: () => ({ status: 0, stdout: "{}" }), fsMod: fs, refsCandidates: [refs], hasBinFn: () => false });
 	ok("运行：缺装拒绝走三级兜底提示（检测制）", r4.ok === false && r4.error.includes("绝不自动装"));
 	fs.rmSync(ws, { recursive: true, force: true });
 }

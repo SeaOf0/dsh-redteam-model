@@ -3,7 +3,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import url from "node:url";
-import { checkRegistered, hasBin, RATE_DEFAULTS, runScan, governPreview, spillOutput, breakerCheck, breakerRecord, runGoverned } from "../lib/index.js";
+import { checkRegistered, hasBin, RATE_DEFAULTS, runScan, governPreview, spillOutput, breakerCheck, breakerRecord, runGoverned, runProcess } from "../lib/index.js";
 import { TOOL_DEFS, buildArgs, tiersLine } from "../lib/registry.js";
 
 const F = path.resolve(path.dirname(url.fileURLToPath(import.meta.url)), "fixture");
@@ -22,7 +22,7 @@ expect("无 assets.md 拒绝并提示先过 Gate P1", !r.ok && r.hint.includes("
 expect("保守默认值齐备", RATE_DEFAULTS.nuclei === 15 && RATE_DEFAULTS.httpx === 25 && RATE_DEFAULTS.ffuf === 50);
 
 // 缺字典拒绝（execute 层逻辑经由直接调用 runScan 不可达——此处验证 runScan 的未登记拦截独立于字典）
-r = runScan({ bin: "definitely-missing-bin-xyz", args: [], workspace: F, tool: "nuclei", rate: undefined, defaultRate: 15, active: false, target: "x" });
+r = await runScan({ bin: "definitely-missing-bin-xyz", args: [], workspace: F, tool: "nuclei", rate: undefined, defaultRate: 15, active: false, target: "x" });
 expect("缺二进制走三级兜底提示", !r.ok && r.error.includes("三级兜底"));
 
 // ── 注册表参数模型 ──
@@ -59,7 +59,7 @@ const long = governPreview("y".repeat(12000));
 expect("长输出封顶（头尾+省略量+总字节）", long.truncated && long.preview.includes("中间省略") && long.bytes === 12000 && long.preview.length < 7000);
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "scan-gov-"));
 const rel = spillOutput(fs, tmp, "nmap", "hello");
-expect("全文落盘+相对路径回读指针", fs.readFileSync(path.join(tmp, rel), "utf8") === "hello" && rel.startsWith("artifacts/tool-output/"));
+expect("全文落盘+相对路径回读指针", fs.readFileSync(path.join(tmp, rel), "utf8") === "hello" && rel.split(path.sep).join("/").startsWith("artifacts/tool-output/"));
 
 // ── 熔断 ──
 const t0 = 1_000_000;
@@ -73,9 +73,9 @@ breakerRecord("bt", true, t0 + 4);
 expect("成功清零计数", breakerCheck("bt", t0 + 5) === 0);
 
 // ── runGoverned 守卫与阶梯（不触真实二进制）──
-const g = runGoverned({ def: TOOL_DEFS.nmap, params: { target: "10.99.99.99", workspace: F }, workspace: F });
+const g = await runGoverned({ def: TOOL_DEFS.nmap, params: { target: "10.99.99.99", workspace: F }, workspace: F });
 expect("nmap 防盲打：未登记目标拒绝（spawn 前）", !g.ok && g.error.includes("防盲打"));
-const g2 = runGoverned({ def: { ...TOOL_DEFS.nmap, bin: "definitely-missing-bin-xyz" }, params: { target: "127.0.0.1", workspace: F }, workspace: F });
+const g2 = await runGoverned({ def: { ...TOOL_DEFS.nmap, bin: "definitely-missing-bin-xyz" }, params: { target: "127.0.0.1", workspace: F }, workspace: F });
 expect("缺二进制返回六节点阶梯提示（绝不自动安装）", !g2.ok && g2.error.includes("绝不自动安装") && g2.error.includes("脚本"));
 
 // ── 扩面七工具：默认参/护栏/开关/守卫 ──
@@ -99,9 +99,9 @@ b = buildArgs(TOOL_DEFS.dirsearch, { url: "http://a" });
 expect("dirsearch -t 10 默认 + -u 入参", b.argv.join(" ").includes("-t 10") && b.argv.includes("-u"));
 const guardIds = Object.values(TOOL_DEFS).filter((d) => d.guard.active).map((d) => d.id);
 expect("主动扫描六件套防盲打；被动三件免登记", ["nmap", "masscan", "dirsearch", "sqlmap", "nikto", "hydra"].every((k) => guardIds.includes(k)) && !guardIds.includes("subfinder") && !guardIds.includes("gau") && !guardIds.includes("wafw00f"));
-const g3 = runGoverned({ def: TOOL_DEFS.dirsearch, params: { url: "http://10.99.99.99", workspace: F }, workspace: F });
+const g3 = await runGoverned({ def: TOOL_DEFS.dirsearch, params: { url: "http://10.99.99.99", workspace: F }, workspace: F });
 expect("dirsearch targetParam=url 防盲打拒绝", !g3.ok && g3.error.includes("防盲打"));
-const g4 = runGoverned({ def: TOOL_DEFS.sqlmap, params: { url: "http://10.99.99.99/?id=1", workspace: F }, workspace: F });
+const g4 = await runGoverned({ def: TOOL_DEFS.sqlmap, params: { url: "http://10.99.99.99/?id=1", workspace: F }, workspace: F });
 expect("sqlmap targetParam=url 防盲打拒绝", !g4.ok && g4.error.includes("防盲打"));
 
 // ── 攻防三件套：impacket / netexec / crackmapexec ──
@@ -120,9 +120,24 @@ b = buildArgs(TOOL_DEFS.impacket, { module: "secretsdump", target: "DOM/a@10.0.0
 expect("impacket 模块参数+hashes 入参", b.argv.includes("-hashes") && b.argv[b.argv.length - 1] === "DOM/a@10.0.0.5" && !b.argv.includes("secretsdump"));
 const guardIds2 = Object.values(TOOL_DEFS).filter((d) => d.guard.active).map((d) => d.id);
 expect("攻防三件套全部防盲打须登记", ["impacket", "netexec", "crackmapexec"].every((k) => guardIds2.includes(k)));
-const g5 = runGoverned({ def: TOOL_DEFS.netexec, params: { protocol: "smb", target: "10.99.99.0/24", workspace: F }, workspace: F });
+const g5 = await runGoverned({ def: TOOL_DEFS.netexec, params: { protocol: "smb", target: "10.99.99.0/24", workspace: F }, workspace: F });
 expect("netexec 防盲打：未登记网段拒绝（spawn 前）", !g5.ok && g5.error.includes("防盲打"));
-const g6 = runGoverned({ def: TOOL_DEFS.impacket, params: { module: "secretsdump", target: "x@10.99.99.99", workspace: F }, workspace: F });
+const g6 = await runGoverned({ def: TOOL_DEFS.impacket, params: { module: "secretsdump", target: "x@10.99.99.99", workspace: F }, workspace: F });
 expect("impacket 防盲打：未登记目标拒绝", !g6.ok && g6.error.includes("防盲打"));
+
+// ── 异步执行器回归：子进程运行期间事件循环不被阻塞 ──
+// spawnSync 时代这里 ticks 恒为 0——nmap/semgrep 一跑整个 DSH 进程就冻住（本组即该缺陷的回归网）。
+{
+	let ticks = 0;
+	const iv = setInterval(() => { ticks += 1; }, 20);
+	const p = await runProcess(process.execPath, ["-e", "setTimeout(() => {}, 400)"], { timeoutMs: 20_000 });
+	clearInterval(iv);
+	expect("异步执行：子进程运行期间事件循环可调度（ticks>1）", p.status === 0 && ticks > 1, `ticks=${ticks}`);
+	const t0b = Date.now();
+	const t = await runProcess(process.execPath, ["-e", "setTimeout(() => {}, 60000)"], { timeoutMs: 500 });
+	expect("异步执行：超时杀进程树并报 ETIMEDOUT", t.error?.code === "ETIMEDOUT" && Date.now() - t0b < 20_000, `elapsed=${Date.now() - t0b} status=${t.status}`);
+	const o = await runProcess(process.execPath, ["-e", "process.stdout.write('x'.repeat(200000))"], { timeoutMs: 20_000, maxBuffer: 1000 });
+	expect("异步执行：输出超限截断+记账（不丢结果、不卡管道）", o.status === 0 && o.stdout.length === 1000 && o.stderr.includes("输出超限"));
+}
 
 process.exit(failed ? 1 : 0);

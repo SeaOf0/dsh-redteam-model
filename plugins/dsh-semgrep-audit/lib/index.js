@@ -12,7 +12,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 
 const BIN_HINT = "本机未装 semgrep——三级兜底：①已连接 MCP（如 kali MCP 的 semgrep_scan，只替引擎不替规则集，命中面收窄如实标注）；②征得用户批准后安装（pip install semgrep——安装请求制，本工具绝不自动装）；③规则降级章通用模式+脚本。";
@@ -22,6 +22,85 @@ export function hasBin(bin) {
 	const probe = process.platform === "win32" ? spawnSync("where", [bin]) : spawnSync("/usr/bin/which", [bin]);
 	return probe.status === 0;
 }
+
+//#region 异步执行器：替代 spawnSync 的同步阻塞（同 dsh-scanner-tools 的 runProcess——
+// 跨包不能 import，故各持一份）。spawnSync 会占住 Node 事件循环直到子进程退出/超时：
+// semgrep 大仓扫描 600s 期间整个 DSH 进程无响应。异步化后事件循环全程可调度。
+
+const KILL_GRACE_MS = 5_000;
+
+/** 杀子进程树：Windows 下 child.kill 只杀壳进程，孙进程会残留 → taskkill /T /F。 */
+function killTree(child) {
+	if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+	if (process.platform === "win32") {
+		try { spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }); return; } catch { /* 退到 child.kill */ }
+	}
+	try { child.kill("SIGTERM"); } catch { /* 已退出 */ }
+	setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* 已退出 */ } }, KILL_GRACE_MS).unref?.();
+}
+
+/** 异步执行子进程。返回形状对齐 spawnSync 结果 {status, stdout, stderr, error}（error.code=ETIMEDOUT/ENOENT）。 */
+export function runProcess(bin, args, { timeoutMs = 600_000, maxBuffer = 64 * 1024 * 1024, onOutput } = {}) {
+	return new Promise((resolve) => {
+		let child;
+		try {
+			child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+		} catch (e) {
+			resolve({ status: null, stdout: "", stderr: "", error: Object.assign(new Error(e.message), { code: "SPAWN-FAILED" }) });
+			return;
+		}
+		let stdout = "", stderr = "", dropped = 0, settled = false, timedOut = false, timer = null, killTimer = null;
+		const finish = (result) => {
+			if (settled) return;
+			settled = true;
+			if (timer !== null) clearTimeout(timer);
+			if (killTimer !== null) clearTimeout(killTimer);
+			resolve(result);
+		};
+		const take = (chunk, into) => {
+			const text = chunk.toString();
+			onOutput?.(text, into);
+			const room = maxBuffer - (into === "out" ? stdout.length : stderr.length);
+			if (room <= 0) { dropped += text.length; return; }
+			const kept = text.length > room ? text.slice(0, room) : text;
+			dropped += text.length - kept.length;
+			if (into === "out") stdout += kept; else stderr += kept;
+		};
+		child.stdout?.on("data", (c) => take(c, "out"));
+		child.stderr?.on("data", (c) => take(c, "err"));
+		child.on("error", (e) => finish({ status: null, stdout, stderr, error: e }));
+		child.on("close", (status) => finish({
+			status,
+			stdout,
+			stderr: dropped > 0 ? `${stderr}\n[输出超限：maxBuffer ${maxBuffer} 字节，另丢弃 ${dropped} 字节——需全文时让 semgrep 自带 --output 落盘]` : stderr,
+			error: timedOut ? Object.assign(new Error(`执行超时 ${Math.round(timeoutMs / 1000)}s`), { code: "ETIMEDOUT", killed: true }) : undefined
+		}));
+		if (timeoutMs > 0) {
+			timer = setTimeout(() => {
+				timedOut = true;
+				killTree(child);
+				killTimer = setTimeout(() => finish({ status: null, stdout, stderr, error: Object.assign(new Error(`执行超时 ${Math.round(timeoutMs / 1000)}s（子进程未退，放弃等待）`), { code: "ETIMEDOUT", killed: true }) }), KILL_GRACE_MS + 3_000);
+				killTimer.unref?.();
+			}, timeoutMs);
+		}
+	});
+}
+
+/** 异步 which 探测（热路径用）。hasBin 保留同步版：单次 where/which 毫秒量级，不是卡死源。 */
+export function hasBinAsync(bin) {
+	const probe = process.platform === "win32" ? "where" : "/usr/bin/which";
+	return runProcess(probe, [bin], { timeoutMs: 10_000, maxBuffer: 64 * 1024 }).then((p) => p.status === 0);
+}
+
+/** 串行闸门：spawnSync 时代扫描天然串行；异步化后显式保留串行，速率纪律不松动。 */
+let scanChain = Promise.resolve();
+function serialized(fn) {
+	const next = scanChain.then(fn, fn);
+	scanChain = next.then(() => {}, () => {});
+	return next;
+}
+
+//#endregion
 
 /** 定位 code-audit refs/（三层规则集随预设分发）。候选按序探测，供测试注入。 */
 export function findRefsDir(candidates) {
@@ -126,9 +205,10 @@ export function appendReconcile(fsMod, workspace, rows) {
 }
 
 /** 运行核心（spawn/fs/二进制检测均可注入供测试）。 */
-export function runSemgrep({ workspace, target, layer = "builtin-java", rulesPath, extraArgs, spawnFn, fsMod, refsCandidates, cap, hasBinFn }) {
+export async function runSemgrep({ workspace, target, layer = "builtin-java", rulesPath, extraArgs, spawnFn, fsMod, refsCandidates, cap, hasBinFn }) {
 	const fsx = fsMod ?? fs;
-	if (!(hasBinFn ?? hasBin)("semgrep")) return { ok: false, error: BIN_HINT };
+	const probe = hasBinFn ?? hasBin;
+	if (!(await probe("semgrep"))) return { ok: false, error: BIN_HINT };
 	const refsDir = findRefsDir(refsCandidates);
 	if (layer !== "custom" && !refsDir) return { ok: false, error: "未定位到 code-audit refs/（三层规则集随预设分发）——请用 layer=custom + rules_path 指定规则路径，或检查预设部署布局" };
 	if (layer === "custom" && !rulesPath) return { ok: false, error: "layer=custom 必填 rules_path（规则文件或目录）" };
@@ -140,7 +220,8 @@ export function runSemgrep({ workspace, target, layer = "builtin-java", rulesPat
 	ensureDirs(workspace);
 	const ts = new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14);
 	const outFile = path.join(workspace, "artifacts", "scans", `semgrep-${ts}.json`);
-	const proc = (spawnFn ?? ((bin, a) => spawnSync(bin, a, { timeout: 600_000, maxBuffer: 64 * 1024 * 1024 })))("semgrep", full);
+	const exec = spawnFn ?? ((bin, a) => runProcess(bin, a, { timeoutMs: 600_000, maxBuffer: 64 * 1024 * 1024 }));
+	const proc = await serialized(() => exec("semgrep", full));
 	if (proc.error) return { ok: false, error: `执行失败：${proc.error.message}` };
 	const parsed = parseSemgrepJson(proc.stdout ? proc.stdout.toString() : "", cap);
 	if (!parsed.ok) return { ok: false, error: parsed.error };

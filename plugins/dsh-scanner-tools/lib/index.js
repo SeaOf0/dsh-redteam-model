@@ -15,7 +15,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { TOOL_DEFS, buildArgs, tiersLine } from "./registry.js";
 
@@ -27,6 +27,90 @@ export function hasBin(bin) {
 	const probe = process.platform === "win32" ? spawnSync("where", [bin]) : spawnSync("/usr/bin/which", [bin]);
 	return probe.status === 0;
 }
+
+//#region 异步执行器：替代 spawnSync 的同步阻塞
+// spawnSync 会占住 Node 单线程事件循环直到子进程退出或超时——nmap 300s、masscan/sqlmap/nikto/hydra/
+// impacket 600-900s 期间整个 DSH 进程（Web GUI、其它会话、定时器）全部无响应，看起来就是「卡死」。
+// 改为异步 spawn + 流式收集：事件循环全程可调度，回传语义（封顶预览 + 全文落盘）不变。
+
+const KILL_GRACE_MS = 5_000;
+
+/** 杀子进程树：Windows 下 child.kill 只杀壳进程，nmap 这类孙进程会残留 → taskkill /T /F。 */
+function killTree(child) {
+	if (child.pid === undefined || child.exitCode !== null || child.signalCode !== null) return;
+	if (process.platform === "win32") {
+		try { spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { stdio: "ignore", windowsHide: true }); return; } catch { /* 退到 child.kill */ }
+	}
+	try { child.kill("SIGTERM"); } catch { /* 已退出 */ }
+	setTimeout(() => { try { child.kill("SIGKILL"); } catch { /* 已退出 */ } }, KILL_GRACE_MS).unref?.();
+}
+
+/** 异步执行子进程（不阻塞事件循环）。返回形状对齐 spawnSync 结果 {status, stdout, stderr, error}，
+ *  error.code=ETIMEDOUT（超时）/ENOENT（缺装）——调用面的 proc.error / proc.status 判断无需改动。
+ *  输出超限也不再像 spawnSync 那样整体报错丢结果：截到 maxBuffer 后继续排空管道（不排空子进程会卡在写管道）并记账。 */
+export function runProcess(bin, args, { timeoutMs = 300_000, maxBuffer = 32 * 1024 * 1024, onOutput } = {}) {
+	return new Promise((resolve) => {
+		let child;
+		try {
+			child = spawn(bin, args, { stdio: ["ignore", "pipe", "pipe"], windowsHide: true });
+		} catch (e) {
+			resolve({ status: null, stdout: "", stderr: "", error: Object.assign(new Error(e.message), { code: "SPAWN-FAILED" }) });
+			return;
+		}
+		let stdout = "", stderr = "", dropped = 0, settled = false, timedOut = false, timer = null, killTimer = null;
+		const finish = (result) => {
+			if (settled) return;
+			settled = true;
+			if (timer !== null) clearTimeout(timer);
+			if (killTimer !== null) clearTimeout(killTimer);
+			resolve(result);
+		};
+		const take = (chunk, into) => {
+			const text = chunk.toString();
+			onOutput?.(text, into);
+			const room = maxBuffer - (into === "out" ? stdout.length : stderr.length);
+			if (room <= 0) { dropped += text.length; return; }
+			const kept = text.length > room ? text.slice(0, room) : text;
+			dropped += text.length - kept.length;
+			if (into === "out") stdout += kept; else stderr += kept;
+		};
+		child.stdout?.on("data", (c) => take(c, "out"));
+		child.stderr?.on("data", (c) => take(c, "err"));
+		child.on("error", (e) => finish({ status: null, stdout, stderr, error: e }));
+		child.on("close", (status) => finish({
+			status,
+			stdout,
+			stderr: dropped > 0 ? `${stderr}\n[输出超限：maxBuffer ${maxBuffer} 字节，另丢弃 ${dropped} 字节——需全文时让工具自带 -o 落盘]` : stderr,
+			error: timedOut ? Object.assign(new Error(`执行超时 ${Math.round(timeoutMs / 1000)}s`), { code: "ETIMEDOUT", killed: true }) : undefined
+		}));
+		if (timeoutMs > 0) {
+			timer = setTimeout(() => {
+				timedOut = true;
+				killTree(child);
+				// 兜底：子进程树赖着不退也在宽限期后结算，避免工具调用永久挂起
+				killTimer = setTimeout(() => finish({ status: null, stdout, stderr, error: Object.assign(new Error(`执行超时 ${Math.round(timeoutMs / 1000)}s（子进程未退，放弃等待）`), { code: "ETIMEDOUT", killed: true }) }), KILL_GRACE_MS + 3_000);
+				killTimer.unref?.();
+			}, timeoutMs);
+		}
+	});
+}
+
+/** 异步 which 探测（热路径用）。hasBin 保留为同步版：单次 where/which 是毫秒量级，不是卡死源。 */
+export function hasBinAsync(bin) {
+	const probe = process.platform === "win32" ? "where" : "/usr/bin/which";
+	return runProcess(probe, [bin], { timeoutMs: 10_000, maxBuffer: 64 * 1024 }).then((p) => p.status === 0);
+}
+
+/** 串行闸门：spawnSync 时代扫描天然串行（阻塞整个进程）；异步化后显式保留串行，
+ *  防止并发扫描叠加打满目标/本机——速率纪律不因异步化而松动。 */
+let scanChain = Promise.resolve();
+function serialized(fn) {
+	const next = scanChain.then(fn, fn);
+	scanChain = next.then(() => {}, () => {});
+	return next;
+}
+
+//#endregion
 
 /** target host must appear in the baseline file (active scans only). Returns {ok, hint, baseline}.
  *  基线文件按预设双候选探测：assets.md（pentest/攻防）或 cloud-assets.md（cloud-security C1）——
@@ -121,10 +205,10 @@ function nextEvidenceId(workspace) {
 }
 
 /** Run one scanner with rate discipline + evidence + reconcile. Pure-ish core (fs injectable in tests). */
-export function runScan({ bin, args, workspace, tool, rate, defaultRate, active, target, parse, outFile: outFileOverride }) {
+export async function runScan({ bin, args, workspace, tool, rate, defaultRate, active, target, parse, outFile: outFileOverride }) {
 	const cooldown = breakerCheck(tool);
 	if (cooldown > 0) return { ok: false, error: `熔断中：${tool} 连续失败 3 次进入 60s 冷却（剩 ${cooldown}s）——改走工具调用阶梯下级通道（MCP/替代/脚本）或稍后重试`, bin };
-	if (!hasBin(bin)) return { ok: false, error: BIN_HINT, bin };
+	if (!(await hasBinAsync(bin))) return { ok: false, error: BIN_HINT, bin };
 	if (active) {
 		const reg = checkRegistered(fs, workspace, target);
 		if (!reg.ok) return { ok: false, error: reg.hint, bin };
@@ -145,7 +229,7 @@ export function runScan({ bin, args, workspace, tool, rate, defaultRate, active,
 	else full.push(...(tool === "ffuf" ? ["-rate", String(defaultRate)] : ["-rl", String(defaultRate)]));
 	const cmdStr = `${bin} ${full.join(" ")}`;
 	const timeoutMs = bin === "nuclei" ? 900_000 : 300_000;
-	const proc = spawnSync(bin, full, { timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024 });
+	const proc = await serialized(() => runProcess(bin, full, { timeoutMs, maxBuffer: 64 * 1024 * 1024 }));
 	if (proc.error) { breakerRecord(tool, false); return { ok: false, error: `执行失败：${proc.error.message}${proc.error.code === "ETIMEDOUT" ? `（超时 ${timeoutMs / 1000}s${bin === "nuclei" ? "——模板库缺失时首次会尝试拉取导致超时" : ""}）` : ""}`, bin }; }
 	breakerRecord(tool, proc.status === 0);
 
@@ -162,7 +246,7 @@ export function runScan({ bin, args, workspace, tool, rate, defaultRate, active,
 //#region 注册表工具执行器：声明式 def → 构参 → 治理执行（预览封顶 + 全文落盘 + 熔断 + 阶梯提示）
 
 /** 按注册表 def 执行一个工具。输出治理：全文永落盘（证据原件 + 回读指针），返回模型的是封顶预览。 */
-export function runGoverned({ def, params, workspace, fsMod = fs }) {
+export async function runGoverned({ def, params, workspace, fsMod = fs }) {
 	const ws = path.resolve(workspace);
 	const cooldown = breakerCheck(def.id);
 	if (cooldown > 0) return { ok: false, error: `熔断中：${def.id} 连续失败 3 次进入 60s 冷却（剩 ${cooldown}s）——改走工具调用阶梯下级通道（MCP/替代/脚本）或稍后重试` };
@@ -174,12 +258,12 @@ export function runGoverned({ def, params, workspace, fsMod = fs }) {
 	// 二进制候选解析：def.bins 按序探测（支持 {module} 占位——impacket 的 impacket-<m>/<m>.py 双安装名）
 	const binCandidates = (def.bins ?? [def.bin]).map((c) => c.replace("{module}", String(params.module ?? def.bin)));
 	let bin = null;
-	for (const cand of binCandidates) if (hasBin(cand)) { bin = cand; break; }
+	for (const cand of binCandidates) if (await hasBinAsync(cand)) { bin = cand; break; }
 	if (!bin) return { ok: false, error: `${BIN_HINT}\n${tiersLine(def)}`, bin: def.bin, tiers: tiersLine(def) };
 	let built;
 	try { built = buildArgs(def, params); } catch (e) { return { ok: false, error: `参数拒绝：${e.message}` }; }
 	const cmdStr = `${bin} ${built.argv.join(" ")}`;
-	const proc = spawnSync(bin, built.argv, { timeout: def.limits.timeoutMs, maxBuffer: 32 * 1024 * 1024 });
+	const proc = await serialized(() => runProcess(bin, built.argv, { timeoutMs: def.limits.timeoutMs, maxBuffer: 32 * 1024 * 1024 }));
 	if (proc.error) {
 		breakerRecord(def.id, false);
 		return { ok: false, error: `执行失败：${proc.error.message}${proc.error.code === "ETIMEDOUT" ? `（超时 ${def.limits.timeoutMs / 1000}s）` : ""}\n${tiersLine(def)}`, tiers: tiersLine(def) };
