@@ -92,7 +92,7 @@ function loadClientBundle() {
   })
 }
 
-async function renderManager(initialSnapshot) {
+async function renderManager(initialSnapshot, status = STATUS) {
   const client = loadClientBundle()
   let snapshot = initialSnapshot
   let pageComponent
@@ -100,6 +100,7 @@ async function renderManager(initialSnapshot) {
   const listeners = new Set()
   const setCalls = []
   const rpcCalls = []
+  const startCalls = []
 
   const ctx = {
     effect(factory, label) {
@@ -107,10 +108,14 @@ async function renderManager(initialSnapshot) {
     },
     connection: {
       rpc: {
-        async call(_channel, endpoint) {
+        async call(_channel, endpoint, payload) {
           rpcCalls.push(endpoint)
+          if (endpoint === 'operation/start') {
+            startCalls.push(payload)
+            return { ok: true, value: { id: 'op-0001' } }
+          }
           assert.equal(endpoint, 'status')
-          return { ok: true, value: STATUS }
+          return { ok: true, value: status }
         },
       },
     },
@@ -167,11 +172,19 @@ async function renderManager(initialSnapshot) {
     act(() => button.props.onClick())
   }
 
+  const openModes = () => {
+    const button = renderer.root.findAllByType('button').find(node => node.children.includes('Modes'))
+    assert.ok(button, 'Modes page button must render')
+    act(() => button.props.onClick())
+  }
+
   return {
     renderer,
     rpcCalls,
     setCalls,
+    startCalls,
     openPlugins,
+    openModes,
     setSnapshot(next) {
       snapshot = next
       for (const listener of listeners) listener()
@@ -237,5 +250,109 @@ test('Manager reports a resolved settings write that did not persist', async () 
     assert.equal(manager.rpcCalls.includes('operation/start'), false)
   } finally {
     await manager.cleanup()
+  }
+})
+
+const READY_SNAPSHOT = { status: 'ready', value: { ...DEFAULT_VISIBILITY }, writable: true, mode: 'host' }
+
+function modeFixture(linkState, id) {
+  return {
+    id,
+    name: id,
+    summary: `${id} fixture`,
+    linkState,
+    ...(linkState === 'missing' ? {} : { linkPath: `/home/.dsh/.agent-presets/${id}` }),
+    ready: linkState === 'ok',
+  }
+}
+
+test('Manager removes every deployed mode behind one confirmation', async () => {
+  const manager = await renderManager(READY_SNAPSHOT, {
+    ...STATUS,
+    summary: { ...STATUS.summary, modesTotal: 3, modesReady: 1 },
+    modes: [
+      modeFixture('ok', 'redteam'),
+      modeFixture('stale', 'pentest'),
+      modeFixture('missing', 'code-audit'),
+    ],
+  })
+  try {
+    manager.openModes()
+    const batchButton = (label) => {
+      const button = manager.renderer.root.findAllByType('button')
+        .find(node => String(node.children.join('')).startsWith(label))
+      assert.ok(button, `modes page must render the ${label} button`)
+      return button
+    }
+    // A live link and an owned stale copy both count; a foreign or absent entry does not.
+    assert.equal(batchButton('Uninstall all modes').children.join(''), 'Uninstall all modes (2)')
+    assert.equal(batchButton('Uninstall all modes').props.disabled, false)
+    assert.equal(batchButton('Deploy all modes').children.join(''), 'Deploy all modes (2)')
+    assert.equal(batchButton('Deploy all modes').props.disabled, false)
+
+    // Payload objects cross the vm realm, so compare the fields, not identity.
+    const started = () => manager.startCalls.map(call => `${call.kind}:${call.target}`)
+    await act(async () => {
+      batchButton('Deploy all modes').props.onClick()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+    assert.deepEqual(started(), ['deploy-modes:modes'])
+
+    act(() => batchButton('Uninstall all modes').props.onClick())
+    const dialog = manager.renderer.root.findByProps({ role: 'dialog' })
+    assert.equal(dialog.props['aria-label'], 'Uninstall modes')
+    assert.deepEqual(dialog.findAllByType('li').map(node => node.children.join('')), ['redteam', 'pentest'])
+    // The modal carries the mode-specific description exactly once.
+    const notes = dialog.findAllByType('p').map(node => node.children.join(''))
+    assert.equal(notes.length, 1)
+    assert.match(notes[0], /packaged source tree are untouched/)
+
+    const confirm = dialog.findAllByType('button').find(node => node.children.includes('Confirm'))
+    await act(async () => {
+      confirm.props.onClick()
+      await Promise.resolve()
+      await Promise.resolve()
+    })
+
+    assert.deepEqual(started(), ['deploy-modes:modes', 'remove-modes:modes'])
+    assert.equal(manager.renderer.root.findAllByProps({ role: 'dialog' }).length, 0)
+  } finally {
+    await manager.cleanup()
+  }
+})
+
+test('Mode batch buttons gate on their own counts', async () => {
+  const batchButton = (manager, label) => manager.renderer.root.findAllByType('button')
+    .find(node => String(node.children.join('')).startsWith(label))
+
+  const fullyDeployed = await renderManager(READY_SNAPSHOT, {
+    ...STATUS,
+    summary: { ...STATUS.summary, modesTotal: 1, modesReady: 1 },
+    modes: [modeFixture('ok', 'redteam')],
+  })
+  try {
+    fullyDeployed.openModes()
+    assert.equal(batchButton(fullyDeployed, 'Deploy all modes').children.join(''), 'Deploy all modes (0)')
+    assert.equal(batchButton(fullyDeployed, 'Deploy all modes').props.disabled, true)
+    assert.equal(batchButton(fullyDeployed, 'Uninstall all modes').props.disabled, false)
+    assert.deepEqual(fullyDeployed.startCalls, [])
+  } finally {
+    await fullyDeployed.cleanup()
+  }
+
+  const untouched = await renderManager(READY_SNAPSHOT, {
+    ...STATUS,
+    summary: { ...STATUS.summary, modesTotal: 1 },
+    modes: [modeFixture('missing', 'redteam')],
+  })
+  try {
+    untouched.openModes()
+    assert.equal(batchButton(untouched, 'Uninstall all modes').children.join(''), 'Uninstall all modes (0)')
+    assert.equal(batchButton(untouched, 'Uninstall all modes').props.disabled, true)
+    assert.equal(batchButton(untouched, 'Deploy all modes').props.disabled, false)
+    assert.deepEqual(untouched.startCalls, [])
+  } finally {
+    await untouched.cleanup()
   }
 })

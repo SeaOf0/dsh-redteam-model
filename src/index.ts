@@ -15,7 +15,7 @@ import {
   effectiveConversationViewSettings,
   registerConversationViewSettings,
 } from './conversationViewSettings.ts'
-import { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, profileWebDir, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallOne } from './manager.ts'
+import { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, profileWebDir, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallModes, uninstallOne } from './manager.ts'
 import { detectEngineFlavor, isPackagedDesktopHost, normalizePresetComposition } from './manager.ts'
 import { ENGINE_PACKAGES, NORMALIZER_VERSION, rewriteCompositionText } from './normalize.ts'
 import { OperationQueue } from './operations.ts'
@@ -23,7 +23,7 @@ import { registerModelRpc } from './rpc.ts'
 import type { HostConnectionHandle } from './types.ts'
 
 export { OperationQueue }
-export { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, profileWebDir, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallOne }
+export { deployGlobalAgents, deployModes, dshHome, getStatus, installOne, profileWebDir, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallModes, uninstallOne }
 export { detectEngineFlavor, isPackagedDesktopHost, normalizePresetComposition }
 export { ENGINE_PACKAGES, NORMALIZER_VERSION, rewriteCompositionText }
 export { registerModelRpc }

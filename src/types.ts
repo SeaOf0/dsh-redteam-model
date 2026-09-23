@@ -7,7 +7,7 @@
 
 export const RPC_CHANNEL = '/dsh-redteam-model'
 
-export type OperationKind = 'deploy-modes' | 'install' | 'update' | 'uninstall' | 'repair'
+export type OperationKind = 'deploy-modes' | 'remove-modes' | 'install' | 'update' | 'uninstall' | 'repair'
 export type OperationState = 'queued' | 'running' | 'done' | 'warned' | 'failed' | 'cancelled'
 
 export type ModeLinkState = 'ok' | 'missing' | 'stale' | 'error'

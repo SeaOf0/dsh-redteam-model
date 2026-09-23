@@ -18,7 +18,7 @@ export interface OperationOutcome {
 }
 export type OperationRunner = (update: (patch: OperationUpdate) => void) => Promise<string | OperationOutcome>
 
-const OPERATION_KINDS = new Set<OperationKind>(['deploy-modes', 'install', 'update', 'uninstall', 'repair'])
+const OPERATION_KINDS = new Set<OperationKind>(['deploy-modes', 'remove-modes', 'install', 'update', 'uninstall', 'repair'])
 const OPERATION_STATES = new Set<OperationState>(['queued', 'running', 'done', 'warned', 'failed', 'cancelled'])
 const INTERRUPTED_DETAIL = 'interrupted by previous dsh web restart'
 

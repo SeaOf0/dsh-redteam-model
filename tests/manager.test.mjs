@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { deployModes, dshHome, getStatus, installOne, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallOne } from '../lib/index.js'
+import { deployModes, dshHome, getStatus, installOne, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallModes, uninstallOne } from '../lib/index.js'
 import { createManagerFixture } from './helpers/fixture.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -552,6 +552,112 @@ test('targeted repair preserves ownership of other legacy-managed modes', () => 
     repairMode('pentest', fixture.root)
     status = getStatus([], fixture.root)
     assert.equal(status.modes.every(mode => mode.linkState === 'ok'), true)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('uninstallModes removes the whole-directory link without touching the source tree', () => {
+  const fixture = createManagerFixture({ modes: ['redteam', 'pentest'] })
+  try {
+    assert.match(deployModes(fixture.root), /agent presets link ready/)
+    const detail = uninstallModes(fixture.root)
+    assert.match(detail, /removed agent presets link/)
+    assert.equal(existsSync(fixture.presets), false)
+    assert.equal(existsSync(path.join(fixture.root, 'modes', 'redteam', 'preset.yml')), true)
+
+    const status = getStatus([], fixture.root)
+    assert.equal(status.summary.modesReady, 0)
+    assert.equal(status.modes.every(mode => mode.linkState === 'missing'), true)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('a subset removal over the whole-directory link is refused and changes nothing', () => {
+  const fixture = createManagerFixture({ modes: ['redteam', 'pentest'] })
+  try {
+    deployModes(fixture.root)
+    assert.throws(() => uninstallModes(fixture.root, undefined, ['redteam']), /remove every mode at once/)
+    assert.equal(lstatSync(fixture.presets).isSymbolicLink(), true)
+    assert.equal(getStatus([], fixture.root).summary.modesReady, 2)
+    assert.throws(() => uninstallModes(fixture.root, undefined, ['ghost-mode']), /unknown mode for removal: ghost-mode/)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('uninstallModes still takes the link back when the packaged mode tree is gone', () => {
+  const fixture = createManagerFixture({ modes: ['redteam'] })
+  try {
+    deployModes(fixture.root)
+    rmSync(path.join(fixture.root, 'modes'), { recursive: true, force: true })
+    assert.match(uninstallModes(fixture.root), /removed agent presets link/)
+    assert.equal(existsSync(fixture.presets), false)
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('uninstallModes keeps a foreign preset directory it never deployed', () => {
+  const fixture = createManagerFixture({ modes: ['redteam', 'pentest'], realPresetsDirectory: true })
+  try {
+    const foreign = path.join(fixture.presets, 'redteam')
+    mkdirSync(foreign)
+    writeFileSync(path.join(foreign, 'mine.txt'), 'keep\n', 'utf8')
+    assert.match(deployModes(fixture.root), /skipped existing entries: redteam/)
+
+    const detail = uninstallModes(fixture.root)
+    assert.match(detail, /removed 1 mode copies/)
+    assert.match(detail, /skipped foreign entries: redteam/)
+    assert.equal(existsSync(path.join(foreign, 'mine.txt')), true)
+    assert.equal(existsSync(path.join(fixture.presets, 'pentest')), false)
+    // The foreign directory is never recorded, so the last owned copy takes
+    // the marker with it: nothing there is ours any more.
+    assert.equal(existsSync(path.join(fixture.presets, '.dsh-redteam-model.json')), false)
+
+    const status = getStatus([], fixture.root)
+    assert.equal(status.modes.find(mode => mode.id === 'redteam')?.linkState, 'error')
+    assert.equal(status.modes.find(mode => mode.id === 'pentest')?.linkState, 'missing')
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('a partial mode removal keeps the rest owned, current and marker-recorded', () => {
+  const fixture = createManagerFixture({ modes: ['redteam', 'pentest'], realPresetsDirectory: true })
+  try {
+    deployModes(fixture.root)
+    assert.match(uninstallModes(fixture.root, undefined, ['redteam']), /removed 1 mode copies/)
+
+    assert.equal(existsSync(path.join(fixture.presets, 'redteam')), false)
+    const marker = JSON.parse(readFileSync(path.join(fixture.presets, '.dsh-redteam-model.json'), 'utf8'))
+    assert.deepEqual(Object.keys(marker.modes), ['pentest'])
+    const status = getStatus([], fixture.root)
+    assert.equal(status.modes.find(mode => mode.id === 'redteam')?.linkState, 'missing')
+    assert.equal(status.modes.find(mode => mode.id === 'pentest')?.linkState, 'ok')
+
+    // The last owned copy takes the marker with it.
+    uninstallModes(fixture.root)
+    assert.equal(existsSync(path.join(fixture.presets, '.dsh-redteam-model.json')), false)
+    assert.equal(existsSync(path.join(fixture.presets, '.dsh-redteam-model.backup.json')), false)
+    assert.deepEqual(readdirSync(fixture.presets), [])
+  } finally {
+    fixture.cleanup()
+  }
+})
+
+test('a foreign .agent-presets symlink is reported and never removed', { skip: process.platform === 'win32' }, () => {
+  const fixture = createManagerFixture({ modes: ['redteam'] })
+  try {
+    const other = path.join(fixture.base, 'other-presets')
+    mkdirSync(other)
+    symlinkSync(other, fixture.presets, 'dir')
+
+    const detail = uninstallModes(fixture.root)
+    assert.match(detail, /skipped foreign agent presets link/)
+    assert.equal(lstatSync(fixture.presets).isSymbolicLink(), true)
+    assert.equal(existsSync(other), true)
   } finally {
     fixture.cleanup()
   }
