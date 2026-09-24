@@ -267,6 +267,50 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 	st.close();
 }
 
+// 14. 旧库迁移回归：旧结构库（无 workspace_key 列、无 archive 表）开库不抛 no such column——
+//     列迁移必须先于引用该列的索引创建（曾因顺序颠倒致 openStore 恒失败，重试无效）
+{
+	const LEGACY_TABLES = [
+		// 第一代：两列皆无（workspace 引入前）
+		`CREATE TABLE memories (id TEXT PRIMARY KEY, mode TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL,
+			tags TEXT NOT NULL DEFAULT '', target_kind TEXT NOT NULL DEFAULT '', usage_count INTEGER NOT NULL DEFAULT 0,
+			last_used_at TEXT DEFAULT '', source_session TEXT NOT NULL DEFAULT '', expires_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+		// 第二代：有 workspace 无 workspace_key（本次实际遇到的存量结构，与 ~/.dsh 旧库 dump 一致）
+		`CREATE TABLE memories (id TEXT PRIMARY KEY, mode TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, content TEXT NOT NULL,
+			tags TEXT NOT NULL DEFAULT '', target_kind TEXT NOT NULL DEFAULT '', usage_count INTEGER NOT NULL DEFAULT 0,
+			last_used_at TEXT DEFAULT '', source_session TEXT NOT NULL DEFAULT '', expires_at TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+			workspace TEXT NOT NULL DEFAULT '')`,
+	];
+	const { DatabaseSync } = await import("node:sqlite");
+	for (let gen = 0; gen < LEGACY_TABLES.length; gen++) {
+		const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cm-legacy-"));
+		const dbFile = path.join(dir, "legacy.db");
+		const raw = new DatabaseSync(dbFile);
+		raw.exec(LEGACY_TABLES[gen]);
+		raw.prepare("INSERT INTO memories (id, mode, kind, title, content, created_at, updated_at) VALUES ('legacy-1', 'pentest', 'tactic', '旧库打法', '旧库存量数据', '2026-08-28 00:00:00', '2026-08-28 00:00:00')").run();
+		raw.close();
+		let st, opened = true;
+		try { st = openStore(dbFile); } catch { opened = false; }
+		ok(`第 ${gen + 1} 代旧库开库不抛 no such column（迁移先于新列索引）`, opened === true);
+		if (!opened) continue;
+		const cols = st.db.prepare("PRAGMA table_info(memories)").all().map((c) => c.name);
+		ok(`第 ${gen + 1} 代旧库补齐 workspace/workspace_key 列`, cols.includes("workspace") && cols.includes("workspace_key"));
+		ok(`第 ${gen + 1} 代旧库建好新列索引与 archive 表`,
+			!!st.db.prepare("SELECT name FROM sqlite_master WHERE type='index' AND name='memories_ws'").get() &&
+			!!st.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='memories_archive'").get());
+		ok(`第 ${gen + 1} 代旧库存量数据保留且无键行语义注入可命中`,
+			listMemories(st, { mode: "pentest" }).some((r) => r.id === "legacy-1") &&
+			topForInjection(st, "pentest", "", 3).some((r) => r.id === "legacy-1"));
+		const w = writeMemory(st, { mode: "pentest", kind: "tactic", title: "迁移后写入", content: "x", workspace: "ws", workspace_key: "ws@abcd1234" });
+		ok(`第 ${gen + 1} 代旧库迁移后写入走全键位`, w.refreshed === false && w.id !== "legacy-1");
+		st.close();
+		const st2 = openStore(dbFile); // 二次开库幂等（列已补齐，ALTER 抛 duplicate column 被吞）
+		ok(`第 ${gen + 1} 代旧库二次开库幂等`, !!st2);
+		st2?.close();
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+}
+
 	ok("CSRF 头校验：匹配放行/缺失或错值拒",
 		checkCsrf({ headers: { "x-dsh-csrf": "T" } }, "T") === true &&
 		checkCsrf({ headers: { "x-dsh-csrf": "X" } }, "T") === false &&

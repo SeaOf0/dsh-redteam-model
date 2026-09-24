@@ -1,6 +1,9 @@
 // Offline deployment verification for the ten-preset bundle (nine modes + redteam controller).
 // Boots a minimal cordis host (same seam set as the real one), then:
-//   1. mounts all ten presets via agentPresets.standingKeyFor (composition files load);
+//   1. mounts all ten presets — composition file readable + row structure valid
+//      (registry.entryListProblem) + every plugin row through the REAL loader path,
+//      the same per-row strength a standing mount performs (host 0.1.7 adaptation:
+//      dsh-agent-presets split into preset + registry; see mountComposition below);
 //   2. loads every deployed plugin's bundle row through the REAL loader path
 //      (loader.create with the profile's baseUrl — bare specifiers resolve exactly as at boot);
 //   3. reads each preset's preset.yml metadata (roster display parses).
@@ -38,7 +41,24 @@ for (const p of ["dsh-system-prompt", "dsh-tools", "dsh-skill", "dsh-commands", 
 	providers[p] = mod.default ?? mod;
 }
 const ShellEnv = await import(pathToFileURL(path.join(RUNTIME, "@deepseek-ai", "dsh-shell-env", "lib", "index.js")).href);
-const AgentPresets = (await load("dsh-agent-presets")).default;
+// 0.1.7 适配：dsh-agent-presets（提供 standingKeyFor 离线挂载）在 0.1.7 拆分为
+// dsh-agent-preset + dsh-agent-preset-registry，挂载模型改为 agent scope 运行时解析——
+// 离线桩无法复刻完整 session 链。等价验证面（强度与 standingKeyFor 一致）：
+// 组合文件可读（= compositionStamp 前置）+ 行结构合法（registry.entryListProblem）+
+// 每个插件行经真实 loader.create 加载（standingKeyFor 挂载时同样逐行走 loader）。
+const Yaml = await import(pathToFileURL(path.join(RUNTIME, "yaml", "dist", "index.js")).href);
+const { entryListProblem } = await load("dsh-agent-preset-registry");
+
+async function mountComposition(app, dir) {
+	const raw = fs.readFileSync(path.join(dir, "agent.cordis.yml"), "utf8");
+	const rows = Yaml.parse(raw);
+	const problem = entryListProblem(rows);
+	if (problem) throw new Error(problem);
+	const flat = [];
+	const walk = (rs) => { for (const r of rs ?? []) r?.group === true ? walk(r.config) : flat.push(r); };
+	walk(rows);
+	for (const row of flat) await app.loader.create({ name: row.name, config: row.config ?? {} });
+}
 
 const app = new Context();
 app.baseUrl = pathToFileURL(PROFILE_WEB + path.sep).href;
@@ -46,8 +66,8 @@ await app.plugin(Loader);
 app.loader.builtins.group = Group;
 for (const p of Object.values(providers)) await app.plugin(p, {});
 await app.plugin(ShellEnv, {});
-// 环境适配：dsh-agent-presets ≥0.1.5 inject sessionProjections（真实宿主由会话插件提供，
-// 离线校验只走到 register()——no-op 桩即可让 standingKeyFor 可用，不影响真实宿主路径）。
+// 环境适配：preset 体系 inject sessionProjections（真实宿主由会话插件提供，
+// 离线校验只需服务满足激活期检查——no-op 桩即可，不影响真实宿主路径）。
 const SessionProjectionsStub = class extends Service {
 	constructor(ctx) { super(ctx, "sessionProjections"); }
 	register() {}
@@ -72,7 +92,6 @@ const SandboxPolicyStub = class extends Service {
 for (const stub of [WorkflowEngineStub, PtcRuntimeStub, SandboxPolicyStub]) {
 	await app.plugin(stub, {});
 }
-await app.plugin(AgentPresets, { default: "pentest" });
 
 let failed = 0;
 
@@ -80,15 +99,14 @@ let failed = 0;
 const ids = ["pentest", "code-audit", "binary-analysis", "attack-defense", "av-evasion", "redteam", "incident-response", "cloud-security", "ctf-solver", "asset-mapping"];
 for (const id of ids) {
 	try {
-		await app.agentPresets.standingKeyFor(id);
-		const meta = await import(at("dsh-agent-presets")).then((m) =>
-			m.readPresetMetadata(path.join(DSH_HOME, ".agent-presets", id)));
+		const dir = path.join(DSH_HOME, ".agent-presets", id);
+		await mountComposition(app, dir);
+		const meta = Yaml.parse(fs.readFileSync(path.join(dir, "preset.yml"), "utf8")) ?? {};
 		console.log(`OK   preset ${id}（${meta.name}）`);
 	} catch (e) { failed++; console.log(`FAIL preset ${id}: ${e.message}`); }
 }
 
 // 2) deployed plugin rows load through the real loader path (with each row's real patch config)
-const Yaml = await import(pathToFileURL(path.join(RUNTIME, "yaml", "dist", "index.js")).href);
 const pj = JSON.parse(fs.readFileSync(path.join(PROFILE_WEB, "package.json"), "utf8"));
 const bundles = pj.dsh?.profile?.bundles ?? [];
 // 本机 profile 可能还挂着用户自装的非交付插件（automation/easm/sidechain 等）——它们不在
@@ -120,16 +138,21 @@ for (const name of bundles) {
 	} catch (e) { failed++; console.log(`FAIL plugin ${name}: ${e.message}`); }
 }
 
-// preset 平面交付件不进 web bundles（由预设行挂载）——按依赖 link + dsh.bundle 声明校验，
-// 保证任何环境（含全新安装）九个交付插件都被覆盖到。
+// preset 平面交付件不进 web bundles（由预设 agent.cordis.yml 的挂载行加载）——按依赖
+// link + 预设挂载行校验。注意：这类插件【故意不声明】dsh.bundle——一旦声明，宿主 CLI 的
+// bundle reconcile 会把它写进 dsh.profile.bundles，管理台随即判平面错配（cordis.patch.yml
+// 头注释有完整说明）。挂载行存在（至少一个模式的 agent.cordis.yml 引用）才是它的生效证明。
+const MODES_DIR = path.join(path.resolve(import.meta.dirname, ".."), "modes");
 for (const dir of DELIVERED) {
 	const name = `@dsh-external/${dir}`;
 	if (bundles.includes(name)) continue;
 	const link = pj.dependencies?.[name];
 	try {
 		if (!link?.startsWith("link:") || !fs.existsSync(link.slice(5))) throw new Error("依赖 link 缺失或失效");
-		const pkg = JSON.parse(fs.readFileSync(path.join(BUNDLE_DIR, dir, "package.json"), "utf8"));
-		if (!pkg.dsh?.bundle) throw new Error("package.json 缺 dsh.bundle 声明");
+		const mounted = fs.readdirSync(MODES_DIR).some((m) => {
+			try { return fs.readFileSync(path.join(MODES_DIR, m, "agent.cordis.yml"), "utf8").includes(name); } catch { return false; }
+		});
+		if (!mounted) throw new Error("无任何模式的 agent.cordis.yml 挂载行引用");
 		console.log(`OK   plugin ${name}（preset 平面）`);
 	} catch (e) { failed++; console.log(`FAIL plugin ${name}: ${e.message}`); }
 }
@@ -177,15 +200,9 @@ console.log(`OK   stage-gate schemas: ${modes.length} modes, ${modes.reduce((n, 
 		await app2.plugin(ShellEnv, {});
 		await app2.plugin(SessionProjectionsStub, {});
 		for (const stub of [WorkflowEngineStub, PtcRuntimeStub, SandboxPolicyStub]) await app2.plugin(stub, {});
-		await app2.plugin(AgentPresets, {
-			default: "pentest",
-			roots: [{ path: tmpRoot, trust: "user" }],
-			includeShippedRoot: false,
-			includeUserRoot: false,
-		});
 		for (const id of ids) {
 			try {
-				await app2.agentPresets.standingKeyFor(id);
+				await mountComposition(app2, path.join(tmpRoot, id));
 				console.log(`OK   foreign-base preset ${id}`);
 			} catch (e) { failed++; console.log(`FAIL foreign-base preset ${id}: ${e.message}`); }
 		}

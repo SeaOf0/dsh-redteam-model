@@ -30,7 +30,7 @@ const HALF_LIFE_DAYS = 30;
 export const MAX_ROWS_PER_WORKSPACE = 400;
 const COLD_ORDER = `ORDER BY (usage_count + 1.0) * pow(0.5, (julianday('now') - julianday(COALESCE(NULLIF(last_used_at, ''), created_at))) / ${HALF_LIFE_DAYS}.0) ASC, updated_at ASC, created_at ASC`;
 
-const SCHEMA = `
+const TABLES_DDL = `
 CREATE TABLE IF NOT EXISTS memories (
 	id           TEXT PRIMARY KEY,
 	mode         TEXT NOT NULL,
@@ -48,8 +48,6 @@ CREATE TABLE IF NOT EXISTS memories (
 	created_at   TEXT NOT NULL,
 	updated_at   TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS memories_mode ON memories(mode);
-CREATE INDEX IF NOT EXISTS memories_ws ON memories(mode, workspace_key);
 CREATE TABLE IF NOT EXISTS memories_archive (
 	id           TEXT PRIMARY KEY,
 	mode         TEXT NOT NULL,
@@ -68,7 +66,11 @@ CREATE TABLE IF NOT EXISTS memories_archive (
 	updated_at   TEXT NOT NULL,
 	archived_at  TEXT NOT NULL
 );
+CREATE INDEX IF NOT EXISTS memories_mode ON memories(mode);
 `;
+/** 引用 workspace_key 列的索引须在列迁移（ensureColumns）之后创建——旧库表已存在时
+ *  CREATE TABLE IF NOT EXISTS 不补列，先建此索引会直接 no such column 砸开库。 */
+const WS_INDEX_DDL = "CREATE INDEX IF NOT EXISTS memories_ws ON memories(mode, workspace_key);";
 
 /** FTS5 trigram 外容表 + 触发器同步；PRAGMA user_version 标记索引代际——旧库（无标记）开库
  *  全量重建一次并置标记（外容表的 COUNT(*)/integrity-check 都探不出「内容有行、索引为空」，
@@ -100,14 +102,25 @@ function clean(s, max) {
 	return String(s ?? "").trim().slice(0, max);
 }
 
+/** 旧库列迁移：表已存在时 CREATE TABLE IF NOT EXISTS 不会补列，须 ALTER 逐列补齐
+ *  （workspace/workspace_key 分两批引入——最老的库两列皆无）。必须在 WS_INDEX_DDL
+ *  之前执行；列已存在时 ALTER 抛 duplicate column，吞掉即幂等。 */
+function ensureColumns(db) {
+	for (const tbl of ["memories", "memories_archive"]) {
+		for (const col of ["workspace", "workspace_key"]) {
+			try { db.exec(`ALTER TABLE ${tbl} ADD COLUMN ${col} TEXT NOT NULL DEFAULT ''`); } catch { /* 列已存在 */ }
+		}
+	}
+}
+
 export function openStore(dbPath) {
 	if (dbPath !== ":memory:") fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 	const db = new DatabaseSync(dbPath);
 	db.exec("PRAGMA journal_mode = WAL");
 	db.exec("PRAGMA busy_timeout = 5000"); // 多进程（两个 dsh 实例）并发写不直接抛 SQLITE_BUSY
-	db.exec(SCHEMA);
-	try { db.exec("ALTER TABLE memories ADD COLUMN workspace TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移 */ }
-	try { db.exec("ALTER TABLE memories ADD COLUMN workspace_key TEXT NOT NULL DEFAULT ''"); } catch { /* 旧库已迁移 */ }
+	db.exec(TABLES_DDL);
+	ensureColumns(db);
+	db.exec(WS_INDEX_DDL);
 	let fts = false;
 	try { fts = setupFts(db); } catch { /* 构建缺 FTS5：检索回落 LIKE */ }
 	purgeExpired({ db }); // 开库即清过期：免杀指纹等时效记忆不滞留
