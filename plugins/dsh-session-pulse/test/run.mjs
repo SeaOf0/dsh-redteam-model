@@ -4,7 +4,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import zlib from "node:zlib";
-import { PULSE_MODES, MODE_LABELS, modeOk, progressOf, groupSubagents, SUB_STATUS_LABELS, promptEntries, textOf, clip, titleLine, parseTranscript } from "../lib/pulse.js";
+import { PULSE_MODES, MODE_LABELS, modeOk, progressOf, groupSubagents, catalogForSession, SUB_STATUS_LABELS, promptEntries, textOf, clip, titleLine, parseTranscript } from "../lib/pulse.js";
 import { dispatch, isTrustedRequest, subagentTranscript, ROUTE_PATH, checkCsrf } from "../lib/index.js";
 
 let pass = 0;
@@ -35,6 +35,24 @@ ok("progressOf：null/空清单返回 null", progressOf(null) === null && progre
 	ok("已结束状态语义（one-shot=已完成 / continuable=已结束）", g.finished[0].status === "completed" && g.finished[1].status === "ended" && SUB_STATUS_LABELS.completed === "已完成");
 	ok("目录缺失/空目录返回空组", groupSubagents(null).running.length === 0 && groupSubagents({ entries: [] }).finished.length === 0);
 	ok("坏行（无 id）跳过", groupSubagents({ entries: [null, { label: "x" }, { id: "ok", activity: "running" }] }).running.length === 1);
+}
+
+// 3b. 目录跨代取数：0.2 前 subagentsByParent 直读；0.2 起从 projectionsBySession 推导 activity
+{
+	const legacyCatalog = { entries: [{ id: "a", mode: "one-shot", activity: "running" }] };
+	ok("catalogForSession：旧代直读（引用原样返回）", catalogForSession({ subagentsByParent: { s1: legacyCatalog } }, "s1") === legacyCatalog);
+	const modern = catalogForSession({
+		byId: { "c1": { running: true }, "c2": { running: false } },
+		projectionsBySession: { "s1": { values: { subagentCatalog: [
+			{ id: "c1", mode: "continuable", label: "x" }, { id: "c2", mode: "one-shot", label: "y" }
+		] } } }
+	}, "s1");
+	ok("catalogForSession：0.2 代目录行 + activity 推导", modern && modern.entries.length === 2
+		&& modern.entries[0].activity === "running" && modern.entries[1].activity === "inactive");
+	ok("catalogForSession：与 groupSubagents 串联可用", groupSubagents(modern).running.length === 1 && groupSubagents(modern).finished[0].id === "c2");
+	ok("catalogForSession：无目录/空目录/缺参返回 null", catalogForSession({}, "s1") === null
+		&& catalogForSession({ projectionsBySession: { s1: { values: {} } } }, "s1") === null
+		&& catalogForSession({ byId: {} }, "") === null);
 }
 
 // 4. 提示词提取：chat 快照（order + nodes）→ user 节点清单

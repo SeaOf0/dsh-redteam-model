@@ -1,6 +1,7 @@
 /** Redteam Manager settings section: overview, modes, plugins, and logs. */
 import { useCallback, useEffect, useState, type ReactElement } from 'react'
-import { Button, IconRefreshOutline16 } from '@deepseek-ai/dsh-client-ui-primitives'
+import { Button } from '@deepseek-ai/dsh-client-ui-primitives'
+import { IconRefresh } from './iconCompat.js'
 import { type AdminOperationStart, type AdminStatus, type PluginStatus, type Translate } from './contracts.js'
 import {
   conversationViewWriteApplied,
@@ -226,7 +227,7 @@ export function createAdminPage(face: AdminFace, t: Translate, visibilityScope: 
             <Button
               size="sm"
               variant="outline"
-              icon={<IconRefreshOutline16 size={14} />}
+              icon={<IconRefresh size={14} />}
               disabled={pending}
               onClick={() => void refresh()}
             >

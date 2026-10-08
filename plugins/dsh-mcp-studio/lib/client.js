@@ -140,7 +140,7 @@ function parseServerEntry(name2, raw) {
     id: "",
     enabled: entry.disabled !== true,
     name: name2,
-    transport: isHttp ? (declared === "sse" ? "sse" : "streamable-http") : "stdio",
+    transport: isHttp ? "streamable-http" : "stdio",
     command: isHttp ? "" : command,
     argsLine: isHttp ? "" : argsToLine(args),
     env: isHttp ? [] : toPairs(entry.env),
@@ -221,7 +221,7 @@ function serversToMcpJson(servers) {
       ...Object.keys(pairsToRecord(server.env)).length === 0 ? {} : { env: pairsToRecord(server.env) },
       ...server.cwd.trim() === "" ? {} : { cwd: server.cwd }
     } : {
-      type: server.transport === "sse" ? "sse" : "http",
+      type: "http",
       url: server.url,
       ...Object.keys(pairsToRecord(server.headers)).length === 0 ? {} : { headers: pairsToRecord(server.headers) }
     };
@@ -247,7 +247,7 @@ function parseMcpJson(text, existing = []) {
       if (rawName === "_meta" || rawName === "inputs" || rawName.startsWith("$")) continue;
       const draft = parseServerEntry(rawName, rawEntry);
       if (draft === void 0) {
-        warnings.push(`skipped "${rawName}": no command (stdio) or url (http/sse)`);
+        warnings.push(`skipped "${rawName}": no command (stdio) or url (http)`);
         continue;
       }
       servers2.push(draft);
@@ -299,14 +299,13 @@ function parseMcpJson(text, existing = []) {
 // src/client/ServerCard.tsx
 var import_jsx_runtime2 = require("react/jsx-runtime");
 function transportDisplay(value) {
-  return value === "stdio" ? "stdio" : value === "sse" ? "sse" : "http";
+  return value === "stdio" ? "stdio" : "http";
 }
 function parseTransportInput(text) {
   const normalized = text.trim().toLowerCase().replace(/[\s_-]/g, "");
   if (normalized === "") return void 0;
   if (normalized === "stdio") return "stdio";
-  if (normalized === "sse") return "sse";
-  if (normalized === "http" || normalized === "streamablehttp") return "streamable-http";
+  if (normalized === "http" || normalized === "sse" || normalized === "streamablehttp") return "streamable-http";
   return void 0;
 }
 var stateLabel = {
@@ -474,7 +473,7 @@ function ServerCard(props) {
         children: [
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `dsh-mcs-dot ${stateClass[state]}` }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dsh-mcs-name", children: server.name === "" ? t("unnamedServer") : server.name }),
-          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: server.transport === "stdio" ? "dsh-mcs-chip" : "dsh-mcs-chip dsh-mcs-chip--http", children: server.transport === "stdio" ? "stdio" : server.transport === "sse" ? "sse" : "http" }),
+          /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: server.transport === "stdio" ? "dsh-mcs-chip" : "dsh-mcs-chip dsh-mcs-chip--http", children: server.transport === "stdio" ? "stdio" : "http" }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: "dsh-mcs-cmd", children: /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("code", { children: summary }) }),
           /* @__PURE__ */ (0, import_jsx_runtime2.jsx)("span", { className: `dsh-mcs-state ${stateTextClass[state]}`, children: t(stateLabel[state]) }),
           state === "connected" && /* @__PURE__ */ (0, import_jsx_runtime2.jsxs)(
@@ -525,7 +524,7 @@ function ServerCard(props) {
           {
             value: transportText,
             spellCheck: false,
-            placeholder: "stdio | http | sse",
+            placeholder: "stdio | http",
             onChange: (event) => {
               const text = event.target.value;
               setTransportText(text);
@@ -1417,36 +1416,7 @@ var StudioScope = class {
   }
 };
 function createStudioScope(connection) {
-  // Modern Hosts serve the channel from /api Fetch routes; legacy Hosts keep
-  // the bare channel. The /api spelling nests below the reserved channel
-  // grammar, so fetch it directly and fall back to rpc.call once.
-  const apiChannel = "/api" + STUDIO_CHANNEL;
-  let modern = true;
-  let legacyTried = false;
-  let rpcId = 0;
-  const callApi = (endpoint, payload) => fetch(`${apiChannel}/${endpoint}`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ type: "client-request", rpcId: "studio-" + ++rpcId, method: endpoint, payload }),
-  }).then((response) => {
-    if (!response.ok) throw new Error(`transport failure for ${apiChannel}/${endpoint}: HTTP ${response.status}`);
-    return response.json();
-  }).then((envelope) => {
-    if (envelope?.type !== "server-response" || envelope.result === void 0) throw new Error("malformed envelope");
-    return envelope.result;
-  });
-  return new StudioScope((endpoint, payload) => {
-    if (modern) {
-      return callApi(endpoint, payload).catch(() => {
-        if (legacyTried) throw new Error(`mcp-studio: ${endpoint} failed: modern /api channel unavailable`);
-        legacyTried = true;
-        modern = false;
-        return connection.rpc.call(STUDIO_CHANNEL, endpoint, payload);
-      });
-    }
-    return connection.rpc.call(STUDIO_CHANNEL, endpoint, payload);
-  });
+  return new StudioScope((endpoint, payload) => connection.rpc.call(STUDIO_CHANNEL, endpoint, payload));
 }
 
 // src/client/locales.ts
@@ -1519,8 +1489,8 @@ var en = {
   filter_connected: "Connected",
   filter_down: "Not connected",
   filter_disabled: "Disabled",
-  transportHint: "Type stdio, http or sse.",
-  transportInvalid: "Enter stdio, http or sse.",
+  transportHint: "Type stdio or http.",
+  transportInvalid: "Enter stdio or http.",
   compact: "Compact",
   comfortable: "Comfortable",
   execTitle: "Recent tool calls",
@@ -1609,8 +1579,8 @@ var zh = {
   filter_connected: "\u5DF2\u8FDE\u63A5",
   filter_down: "\u672A\u8FDE\u63A5",
   filter_disabled: "\u5DF2\u7981\u7528",
-  transportHint: "\u8F93\u5165 stdio\u3001http \u6216 sse\u3002",
-  transportInvalid: "\u8BF7\u8F93\u5165 stdio\u3001http \u6216 sse\u3002",
+  transportHint: "\u8F93\u5165 stdio \u6216 http\u3002",
+  transportInvalid: "\u8BF7\u8F93\u5165 stdio \u6216 http\u3002",
   compact: "\u7D27\u51D1",
   comfortable: "\u8212\u9002",
   execTitle: "\u6700\u8FD1\u5DE5\u5177\u8C03\u7528",

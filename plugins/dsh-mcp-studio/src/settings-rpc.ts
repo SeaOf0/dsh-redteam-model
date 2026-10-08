@@ -25,6 +25,8 @@ export interface StudioSettingsDescriptor {
 
 export interface HostSettingsService {
   readonly writable: boolean
+  /** Profile patch path shown by the native configuration editor (may throw on hosts without one). */
+  readonly documentPath?: string
   describe(options?: { redactSecrets?: boolean }): Array<{
     ns: string
     value: unknown
@@ -43,6 +45,15 @@ export interface HostSettingsService {
 export interface HostConnectionHandle {
   rpc: {
     handle(channel: string, handler: (endpoint: string, payload: unknown) => Promise<RpcResult>, options: { authority: 'trusted-host' | 'loopback' }): unknown
+  }
+  /** 0.1.2+ 的精确 Fetch 路由面；旧宿主缺失时回退 rpc.handle 裸通道。 */
+  fetch?: {
+    register(route: {
+      path: string
+      methods: readonly string[]
+      requestBody: 'buffered'
+      fetch: (request: Request) => Promise<Response>
+    }): unknown
   }
 }
 
@@ -70,9 +81,31 @@ function asObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
-function descriptor(settings: HostSettingsService, ns: string): StudioSettingsDescriptor {
+/** Local revision counter for the document-fallback path (see below). */
+const LOCAL_REVISION = { value: 0 }
+
+type LiveSection = () => { servers: unknown[] }
+
+/**
+ * Fallback view when the host settings store has no namespace for this row:
+ * value comes from the live row config; writes go through the profile
+ * document (mutateDocumentFallback), so the page stays readable and writable.
+ */
+function localDescriptor(live: LiveSection): StudioSettingsDescriptor {
+  return {
+    status: 'ready',
+    value: live() as unknown as StudioSettingsDescriptor['value'],
+    base: { servers: [] } as unknown as StudioSettingsDescriptor['value'],
+    user: {},
+    revision: LOCAL_REVISION.value,
+    writable: true,
+    mode: 'host',
+  }
+}
+
+function descriptor(settings: HostSettingsService, ns: string, live: LiveSection): StudioSettingsDescriptor {
   const view = settings.describe({ redactSecrets: true }).find(candidate => candidate.ns === ns)
-  if (view === undefined) throw new Error(`settings namespace "${ns}" is unavailable`)
+  if (view === undefined) return localDescriptor(live)
   return {
     status: 'ready',
     value: view.value,
@@ -83,6 +116,52 @@ function descriptor(settings: HostSettingsService, ns: string): StudioSettingsDe
     mode: 'host',
     ...(view.applies === undefined ? {} : { applies: view.applies }),
   }
+}
+
+/** One settings edit, normalized (mirrors the wire op shape). */
+interface NormalizedOp { op: 'set' | 'unset'; path: [string] }
+
+/**
+ * Hosts since the settings-registry refactor do not enumerate third-party
+ * bundle rows in the configuration editor, so the namespace never registers.
+ * Fallback write path: edit this row's config in the profile document (the
+ * same file the native "open configuration file" button targets); the host's
+ * profile watcher hot-reloads the row, remounting MCP servers as needed.
+ */
+async function mutateDocumentFallback(settings: HostSettingsService, ns: string, ops: readonly NormalizedOp[], live: LiveSection): Promise<void> {
+  // Indirect specifiers keep the browser client bundle free of node builtins;
+  // the fallback only ever runs on the Host side.
+  const fsSpecifier = 'node:fs/promises'
+  const yamlSpecifier = 'yaml'
+  const { readFile, writeFile } = await import(fsSpecifier)
+  const Yaml = await import(yamlSpecifier)
+  let docPath: string | undefined
+  try {
+    docPath = typeof settings.documentPath === 'string' ? settings.documentPath : undefined
+  } catch {
+    docPath = undefined
+  }
+  if (docPath === undefined) throw new Error('settings namespace unavailable and no profile document to edit')
+  const doc = Yaml.parseDocument(await readFile(docPath, 'utf8'))
+  const rows = doc.toJS() ?? []
+  if (!Array.isArray(rows)) throw new Error('profile document is not a patch list')
+  let row = rows.find(entry => entry !== null && typeof entry === 'object' && (entry as { id?: string }).id === ns) as { id?: string; name?: string; config?: { servers?: unknown[] } } | undefined
+  if (row === undefined) {
+    row = { id: ns, name: '@dsh-external/dsh-mcp-studio', config: { servers: [] } }
+    rows.push(row)
+    doc.contents = rows as never
+  }
+  let config = row.config && typeof row.config === 'object' ? row.config : { servers: [] }
+  config = { ...config, servers: JSON.parse(JSON.stringify(live().servers ?? [])) }
+  for (const op of ops) {
+    if (op.path[0] !== 'servers') continue
+    if (op.op === 'set') config.servers = Array.isArray(op.value) ? op.value : []
+    else delete config.servers
+  }
+  const rowNode = (doc.contents as unknown as { items?: Array<{ get?: (k: string) => unknown; set?: (k: string, v: unknown) => void }> }).items?.find(item => item.get?.('id') === ns)
+  if (rowNode && rowNode.set) rowNode.set('config', config as never)
+  else row.config = config
+  await writeFile(docPath, String(doc), 'utf8')
 }
 
 /* Tool-call execution records (fed by the session event stream). */
@@ -217,8 +296,9 @@ export function registerStudioRpc(
   status: () => Promise<RpcResult>,
   diagnose?: (id: string) => Promise<RpcResult>,
   clearExecutions?: () => void,
+  live: () => { servers: unknown[] } = () => ({ servers: [] }),
 ): void {
-  connection.rpc.handle(STUDIO_CHANNEL, async (endpoint, rawPayload): Promise<RpcResult> => {
+  const dispatch = async (endpoint: string, rawPayload: unknown): Promise<RpcResult> => {
     if (endpoint === 'status') return status()
     if (endpoint === 'executions/clear') {
       if (clearExecutions === undefined) return badRequest('execution log unavailable')
@@ -231,9 +311,9 @@ export function registerStudioRpc(
       return diagnose(id)
     }
     try {
-      if (endpoint === 'settings/get') return ok(descriptor(settings, ns))
+      if (endpoint === 'settings/get') return ok(descriptor(settings, ns, live))
       if (endpoint === 'settings/mutate') {
-        if (!settings.writable) throw new Error('DSH settings are read-only')
+        if (settings.writable === false) throw new Error('DSH settings are read-only')
         const payload = asObject(rawPayload)
         const rawOps = payload.ops
         if (!Array.isArray(rawOps) || rawOps.length === 0 || rawOps.length > 4) throw new Error('ops must contain 1..4 settings edits')
@@ -248,14 +328,51 @@ export function registerStudioRpc(
           return { op: 'set', path: [String(path[0])], value: op.value }
         })
         const revision = payload.expectedRevision === undefined ? undefined : Number(payload.expectedRevision)
-        await settings.mutate(ns, ops, revision)
-        return ok(descriptor(settings, ns))
+        const registered = settings.describe({ redactSecrets: true }).some(candidate => candidate.ns === ns)
+        if (registered) {
+          await settings.mutate(ns, ops, revision)
+          return ok(descriptor(settings, ns, live))
+        }
+        await mutateDocumentFallback(settings, ns, ops, live)
+        LOCAL_REVISION.value += 1
+        return ok(descriptor(settings, ns, live))
       }
       return badRequest(`unknown endpoint: ${endpoint}`)
     } catch (error) {
       return failure(error, ns)
     }
-  }, { authority: 'loopback' })
+  }
+  // 新宿主（0.1.2+）的 rpc.handle 注册静默失效：通道改走 /api 下的精确 Fetch
+  // 路由（信封与旧通道一致）；旧宿主回退 rpc.handle 裸通道。
+  if (typeof connection.fetch?.register === 'function') {
+    for (const endpoint of ['status', 'executions/clear', 'diagnose', 'settings/get', 'settings/mutate']) {
+      connection.fetch.register({
+        path: `/api${STUDIO_CHANNEL}/${endpoint}`,
+        methods: ['POST'],
+        requestBody: 'buffered',
+        fetch: async (request: Request): Promise<Response> => {
+          if (request.method !== 'POST') return new Response('method not allowed', { status: 405 })
+          const respond = (rpcId: string, result: RpcResult): Response => Response.json({ type: 'server-response', rpcId, result })
+          let body: { type?: string; method?: string; rpcId?: unknown; payload?: unknown }
+          try {
+            body = await request.json() as typeof body
+          } catch {
+            return new Response('body is not JSON', { status: 400 })
+          }
+          const rpcId = typeof body?.rpcId === 'string' ? body.rpcId : 'invalid-request'
+          if (body?.type !== 'client-request' || body?.method !== endpoint) {
+            return respond(rpcId, failure(new Error('invalid client-request envelope'), ns))
+          }
+          return respond(rpcId, await dispatch(endpoint, body.payload))
+        },
+      })
+    }
+  }
+  try {
+    connection.rpc.handle(STUDIO_CHANNEL, dispatch, { authority: 'loopback' })
+  } catch {
+    // 新宿主上旧通道注册抛错（webServer 未 inject），Fetch 路由已是正路。
+  }
 }
 
 export type { ServerEntry }

@@ -75,7 +75,12 @@ function linkPluginPeers() {
 	// （dsh-tools / schemastery / dsh-settings / dsh-mcp-client …）在新环境无法从
 	// bundle 物理位置向上解析；链接到 boot 安装的 profiles/node_modules 后即生效。
 	// 首次部署时运行时尚未安装，悬挂链接照建（boot 装完即活），幂等可重跑。
-	const runtime = path.join(DSH_HOME, "profiles", "node_modules", "@deepseek-ai");
+	const runtimeCandidates = [
+		path.join(DSH_HOME, "profiles", "node_modules", "@deepseek-ai"),
+		path.join(DSH_HOME, "profiles", "web", "node_modules", "@deepseek-ai"),
+		path.join(PLUGINS_ROOT, ".runtime", "node_modules", "@deepseek-ai"),
+	];
+	const runtime = runtimeCandidates.find((dir) => fs.existsSync(dir)) ?? runtimeCandidates[0];
 	const local = path.join(PLUGINS_ROOT, "node_modules", "@deepseek-ai");
 	fs.mkdirSync(local, { recursive: true });
 	let n = 0;
@@ -154,13 +159,45 @@ function patchProfile() {
 		if (d.dependencies[pkg] !== link) { d.dependencies[pkg] = link; changed++; }
 		if (hostPlane && !d.dsh.profile.bundles.includes(pkg)) { d.dsh.profile.bundles.push(pkg); changed++; }
 	}
+	// 根 bundle（管理台 + 十模式 preset-<id> 声明行的载体）必须进 bundles——
+	// 漏登则 roster 只有宿主原生预设，模式选择无从谈起。
+	{
+		const pkg = "@dsh-external/dsh-redteam-model";
+		const link = `link:${MODEL_ROOT}`;
+		if (d.dependencies[pkg] !== link) { d.dependencies[pkg] = link; changed++; }
+		if (!d.dsh.profile.bundles.includes(pkg)) { d.dsh.profile.bundles.push(pkg); changed++; }
+	}
 	fs.writeFileSync(pj, JSON.stringify(d, null, 2));
 	log(`package.json 完成（${changed} 项变更${changed ? "" : "，已是最新"}）`);
 }
 
 function install() {
+	// 根 bundle 经 link 挂载后按物理位置（realpath）解析 bare 导入——根自身
+	// node_modules 必须带上 @deepseek-ai 桥包，否则 profiles 平面装了也够不着。
+	log("根依赖安装（@deepseek-ai 桥包进本树 node_modules）");
+	run(["npm", "install", "--omit=dev", "--prefer-offline"], [], { cwd: MODEL_ROOT });
 	log("pnpm install（经 npx，无需预装）");
 	run(["npx", "-y", "pnpm", "install", "--prefer-offline"], [], { cwd: PROFILE_WEB });
+	// 0.2 起宿主不再在 boot 时自动安装 profiles/node_modules 运行时平面；新环境
+	// 在此直接安装插件 bare 导入所需的桥包（真实安装，非 link），两代宿主通用。
+	const runtimePlane = path.join(DSH_HOME, "profiles", "node_modules", "@deepseek-ai");
+	if (!fs.existsSync(runtimePlane)) {
+		log("运行时桥包安装（dsh-settings / dsh-mcp-client / schemastery）");
+		run(["npx", "-y", "pnpm", "add",
+			"@deepseek-ai/dsh-settings@^0.1.0-rc.6 || ^0.1.1-rc.0",
+			"@deepseek-ai/dsh-mcp-client@^0.1.0-rc.6 || ^0.2.0-rc.0",
+			"@deepseek-ai/schemastery@^3.18.0"], [], { cwd: PROFILE_WEB });
+	}
+	// dsh-tools 绝不进 profiles/web/node_modules——loader 的 tools 行会解析到它，
+	// 旧版 peers 过不了 0.2 宿主的兼容门。装进树内 .runtime，仅供插件 bare import。
+	const toolsPlane = path.join(PLUGINS_ROOT, ".runtime");
+	if (!fs.existsSync(path.join(toolsPlane, "node_modules", "@deepseek-ai", "dsh-tools"))) {
+		log("dsh-tools 树内安装（供插件 import，不进 profile 解析面）");
+		fs.mkdirSync(toolsPlane, { recursive: true });
+		const pkg = path.join(toolsPlane, "package.json");
+		if (!fs.existsSync(pkg)) fs.writeFileSync(pkg, JSON.stringify({ name: "dsh-runtime-bridge", private: true }, null, "\t") + "\n");
+		run(["npx", "-y", "npm", "install", "--no-save", "--prefix", toolsPlane, "@deepseek-ai/dsh-tools@0.1.0-rc.7"], [], { cwd: MODEL_ROOT });
+	}
 	linkPluginPeers();
 	log("安装完成");
 }

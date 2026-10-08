@@ -247,7 +247,17 @@ function apply(ctx) {
 				api = {
 					agentPresets: {
 						list: function () { return remotePresets.list().then(wrap); },
-						select: function (q) { return remotePresets.select(q.sessionId, q.agentPreset).then(wrap); }
+						// remote 通道的 select 裸返回所选预设 id（字符串）；旧 connection.api
+						// 表面返回 { agentPreset }。此处归一为对象形状，控制器两侧同构。
+						select: function (q) {
+							return remotePresets.select(q.sessionId, q.agentPreset).then(function (res) {
+								var w = wrap(res);
+								if (w.result.ok && (typeof w.result.value !== "object" || w.result.value === null)) {
+									w.result.value = { agentPreset: w.result.value };
+								}
+								return w;
+							});
+						}
 					}
 				};
 				return true;

@@ -24,6 +24,11 @@ import { diagnoseServer } from './diagnose.ts'
 export const name = 'dsh-mcp-studio'
 export const inject = ['tools']
 
+// Settings namespace schema: on hosts since the settings-registry refactor the
+// namespace IS the loader row's Config (ns = row id); exporting it here is what
+// registers the namespace for settings describe/mutate.
+export { Config } from './types.ts'
+
 /** Settings namespace owned by this plugin (client and Host spell the same value). */
 export const STUDIO_SETTINGS_NAMESPACE: string =
   typeof (dshSettings as { settingsNamespace?: unknown }).settingsNamespace === 'function'
@@ -45,8 +50,15 @@ function installSettingsSection(ctx: Context, ns: string, schema: unknown, entry
     ;(dshSettings as { installSettingsSection: (ctx: Context, ns: string, schema: unknown, entry: unknown, hooks: unknown) => void }).installSettingsSection(ctx, ns, schema, entry, hooks)
     return
   }
-  ctx.inject(['settings'], (sctx: { settings: { installSection: (ctx: Context, ns: string, schema: unknown, entry: unknown, hooks: unknown) => void } }) => {
-    sctx.settings.installSection(ctx, ns, schema, entry, hooks)
+  ctx.inject(['settings'], (sctx: { settings?: { installSection?: (ctx: Context, ns: string, schema: unknown, entry: unknown, hooks: unknown) => void } }) => {
+    const install = sctx.settings?.installSection
+    if (typeof install === 'function') {
+      install(ctx, ns, schema, entry, hooks)
+      return
+    }
+    // 0.1.7 起的新架构：namespace 由本行 Config 导出注册（ns = 行 id），设置页
+    // 表单自动生成（autoGenerate 默认 true）——这里无事可做，静默返回而非抛错，
+    // 否则 fiber 挂起会让 namespace 与 RPC 通道一并消失。
   })
 }
 
@@ -209,7 +221,7 @@ export function apply(ctx: Context, config: StudioSection): void {
       const report = await diagnoseServer(server)
       return { ok: true, value: report }
     }
-    registerStudioRpc(connection, settings, STUDIO_SETTINGS_NAMESPACE, status, diagnose, () => executions.clear())
+    registerStudioRpc(connection, settings, STUDIO_SETTINGS_NAMESPACE, status, diagnose, () => executions.clear(), () => config)
   })
 
   reconcile()

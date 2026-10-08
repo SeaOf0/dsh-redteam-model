@@ -3,19 +3,6 @@ import "@deepseek-ai/schemastery";
 import * as dshSettings from "@deepseek-ai/dsh-settings";
 import * as mcpClient from "@deepseek-ai/dsh-mcp-client";
 
-// 具名 import 在导出被宿主移除时会链接期崩溃，这里按宿主版本选择注册路径：
-// 旧宿主提供顶层 installSettingsSection/settingsNamespace；新宿主将其收纳为
-// settings 服务的 installSection 方法（namespace 校验糖不再单独导出）。
-function installSettingsSection(ctx, ns, schema, entry, hooks) {
-	if (typeof dshSettings.installSettingsSection === "function") {
-		dshSettings.installSettingsSection(ctx, ns, schema, entry, hooks);
-		return;
-	}
-	ctx.inject(["settings"], function (sctx) {
-		sctx.settings.installSection(ctx, ns, schema, entry, hooks);
-	});
-}
-
 // src/types.ts
 import z from "@deepseek-ai/schemastery";
 var ID_PATTERN = /^[A-Za-z0-9_-]{1,32}$/;
@@ -24,7 +11,7 @@ var ServerEntrySchema = z.object({
   id: z.string().required().pattern(ID_PATTERN),
   enabled: z.boolean().default(true),
   name: z.string().default(""),
-  transport: z.union([z.const("stdio"), z.const("streamable-http"), z.const("sse")]).default("stdio"),
+  transport: z.union([z.const("stdio"), z.const("streamable-http")]).default("stdio"),
   command: z.string().default(""),
   argsLine: z.string().default(""),
   env: z.dict(z.string()),
@@ -97,19 +84,9 @@ function toMcpClientConfig(server) {
       cwd: server.cwd
     };
   }
-  if (server.transport === "sse") {
-    return {
-      ...base,
-      transport: "stdio",
-      command: process.execPath,
-      args: [SSE_BRIDGE_PATH, server.url, JSON.stringify(server.headers ?? {})],
-      env: {},
-      cwd: ""
-    };
-  }
   return {
     ...base,
-    transport: server.transport,
+    transport: "streamable-http",
     url: server.url,
     headers: server.headers
   };
@@ -128,7 +105,7 @@ function validateSection(value) {
     if (server.transport === "stdio" && server.command.trim() === "") {
       throw new Error(`mcp-studio: stdio server "${server.name}" has no command`);
     }
-    if (server.transport === "streamable-http" || server.transport === "sse") {
+    if (server.transport === "streamable-http") {
       if (server.url.trim() === "") throw new Error(`mcp-studio: server "${server.name}" has no url`);
       let parsed;
       try {
@@ -166,9 +143,21 @@ function asObject(value) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) throw new Error("payload must be an object");
   return value;
 }
-function descriptor(settings, ns) {
+var LOCAL_REVISION = { value: 0 };
+function localDescriptor(live) {
+  return {
+    status: "ready",
+    value: live(),
+    base: { servers: [] },
+    user: {},
+    revision: LOCAL_REVISION.value,
+    writable: true,
+    mode: "host"
+  };
+}
+function descriptor(settings, ns, live) {
   const view = settings.describe({ redactSecrets: true }).find((candidate) => candidate.ns === ns);
-  if (view === void 0) throw new Error(`settings namespace "${ns}" is unavailable`);
+  if (view === void 0) return localDescriptor(live);
   return {
     status: "ready",
     value: view.value,
@@ -179,6 +168,39 @@ function descriptor(settings, ns) {
     mode: "host",
     ...view.applies === void 0 ? {} : { applies: view.applies }
   };
+}
+async function mutateDocumentFallback(settings, ns, ops, live) {
+  const fsSpecifier = "node:fs/promises";
+  const yamlSpecifier = "yaml";
+  const { readFile, writeFile } = await import(fsSpecifier);
+  const Yaml = await import(yamlSpecifier);
+  let docPath;
+  try {
+    docPath = typeof settings.documentPath === "string" ? settings.documentPath : void 0;
+  } catch {
+    docPath = void 0;
+  }
+  if (docPath === void 0) throw new Error("settings namespace unavailable and no profile document to edit");
+  const doc = Yaml.parseDocument(await readFile(docPath, "utf8"));
+  const rows = doc.toJS() ?? [];
+  if (!Array.isArray(rows)) throw new Error("profile document is not a patch list");
+  let row = rows.find((entry) => entry !== null && typeof entry === "object" && entry.id === ns);
+  if (row === void 0) {
+    row = { id: ns, name: "@dsh-external/dsh-mcp-studio", config: { servers: [] } };
+    rows.push(row);
+    doc.contents = rows;
+  }
+  let config = row.config && typeof row.config === "object" ? row.config : { servers: [] };
+  config = { ...config, servers: JSON.parse(JSON.stringify(live().servers ?? [])) };
+  for (const op of ops) {
+    if (op.path[0] !== "servers") continue;
+    if (op.op === "set") config.servers = Array.isArray(op.value) ? op.value : [];
+    else delete config.servers;
+  }
+  const rowNode = doc.contents.items?.find((item) => item.get?.("id") === ns);
+  if (rowNode && rowNode.set) rowNode.set("config", config);
+  else row.config = config;
+  await writeFile(docPath, String(doc), "utf8");
 }
 function createExecutionRing(max = 200) {
   const records = [];
@@ -247,7 +269,7 @@ function createStatusHandler(section, viewOf, tracker, executions) {
     });
   };
 }
-function registerStudioRpc(connection, settings, ns, status, diagnose, clearExecutions) {
+function registerStudioRpc(connection, settings, ns, status, diagnose, clearExecutions, live = () => ({ servers: [] })) {
   const dispatch = async (endpoint, rawPayload) => {
     if (endpoint === "status") return status();
     if (endpoint === "executions/clear") {
@@ -261,9 +283,9 @@ function registerStudioRpc(connection, settings, ns, status, diagnose, clearExec
       return diagnose(id);
     }
     try {
-      if (endpoint === "settings/get") return ok(descriptor(settings, ns));
+      if (endpoint === "settings/get") return ok(descriptor(settings, ns, live));
       if (endpoint === "settings/mutate") {
-        if (!settings.writable) throw new Error("DSH settings are read-only");
+        if (settings.writable === false) throw new Error("DSH settings are read-only");
         const payload = asObject(rawPayload);
         const rawOps = payload.ops;
         if (!Array.isArray(rawOps) || rawOps.length === 0 || rawOps.length > 4) throw new Error("ops must contain 1..4 settings edits");
@@ -278,16 +300,20 @@ function registerStudioRpc(connection, settings, ns, status, diagnose, clearExec
           return { op: "set", path: [String(path[0])], value: op.value };
         });
         const revision = payload.expectedRevision === void 0 ? void 0 : Number(payload.expectedRevision);
-        await settings.mutate(ns, ops, revision);
-        return ok(descriptor(settings, ns));
+        const registered = settings.describe({ redactSecrets: true }).some((candidate) => candidate.ns === ns);
+        if (registered) {
+          await settings.mutate(ns, ops, revision);
+          return ok(descriptor(settings, ns, live));
+        }
+        await mutateDocumentFallback(settings, ns, ops, live);
+        LOCAL_REVISION.value += 1;
+        return ok(descriptor(settings, ns, live));
       }
       return badRequest(`unknown endpoint: ${endpoint}`);
     } catch (error) {
       return failure(error, ns);
     }
   };
-  // 新宿主（0.1.2+）的 rpc.handle 注册静默失效：通道改走 /api 下的精确 Fetch
-  // 路由（信封与旧通道一致）；旧宿主回退 rpc.handle 裸通道。
   if (typeof connection.fetch?.register === "function") {
     for (const endpoint of ["status", "executions/clear", "diagnose", "settings/get", "settings/mutate"]) {
       connection.fetch.register({
@@ -296,7 +322,7 @@ function registerStudioRpc(connection, settings, ns, status, diagnose, clearExec
         requestBody: "buffered",
         fetch: async (request) => {
           if (request.method !== "POST") return new Response("method not allowed", { status: 405 });
-          const respond = (rpcId, result) => Response.json({ type: "server-response", rpcId, result });
+          const respond = (rpcId2, result) => Response.json({ type: "server-response", rpcId: rpcId2, result });
           let body;
           try {
             body = await request.json();
@@ -308,22 +334,19 @@ function registerStudioRpc(connection, settings, ns, status, diagnose, clearExec
             return respond(rpcId, failure(new Error("invalid client-request envelope"), ns));
           }
           return respond(rpcId, await dispatch(endpoint, body.payload));
-        },
+        }
       });
     }
   }
   try {
     connection.rpc.handle(STUDIO_CHANNEL, dispatch, { authority: "loopback" });
   } catch {
-    // 新宿主上旧通道注册抛错（webServer 未 inject），Fetch 路由已是正路。
   }
 }
 
 // src/diagnose.ts
 import { spawn } from "node:child_process";
-import { fileURLToPath } from "node:url";
 var TIMEOUT_MS = 1e4;
-var SSE_BRIDGE_PATH = fileURLToPath(new URL("./sse-bridge.mjs", import.meta.url));
 function line(obj) {
   return `${JSON.stringify(obj)}
 `;
@@ -364,7 +387,6 @@ function stdioTransport(server) {
   };
 }
 async function httpTransport(server, messages) {
-  if (server.transport === "sse") return await sseTransport(server, messages);
   const url = new URL(server.url);
   const responses = [];
   for (const message of messages) {
@@ -400,87 +422,10 @@ async function httpTransport(server, messages) {
   }
   return responses;
 }
-async function sseTransport(server, messages) {
-  const base = new URL(server.url);
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-  const pending = messages.filter((message) => message.id !== void 0);
-  const wanted = new Set(pending.map((message) => message.id));
-  const responses = [];
-  let messageUrl = null;
-  let sent = false;
-  let finished = false;
-  const sendAll = async () => {
-    if (sent || messageUrl === null) return;
-    sent = true;
-    for (const message of messages) {
-      const response = await fetch(messageUrl, {
-        method: "POST",
-        headers: { "content-type": "application/json", ...server.headers },
-        body: JSON.stringify(message),
-        signal: controller.signal
-      });
-      if (!(response.status >= 200 && response.status < 300)) {
-        throw new Error(`HTTP ${response.status} ${response.statusText}`);
-      }
-    }
-  };
-  try {
-    const stream = await fetch(base, {
-      headers: { accept: "text/event-stream", ...server.headers },
-      signal: controller.signal
-    });
-    if (!stream.ok) throw new Error(`HTTP ${stream.status} ${stream.statusText}`);
-    const reader = stream.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    while (!finished) {
-      const chunk = await reader.read();
-      if (chunk.done) break;
-      // SSE 行终止符按规范归一为 \n（服务器可能发 \r\n、\r 或混合）
-      buffer += decoder.decode(chunk.value, { stream: true }).replace(/\r\n|\r/g, "\n");
-      let sep;
-      while ((sep = buffer.indexOf("\n\n")) >= 0) {
-        const frame = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
-        let event = "message";
-        let data = "";
-        for (const line of frame.split("\n")) {
-          if (line.startsWith("event:")) event = line.slice(6).trim();
-          else if (line.startsWith("data:")) data += (data === "" ? "" : "\n") + line.slice(5).trim();
-        }
-        if (event === "endpoint") {
-          if (data === "") continue;
-          messageUrl = new URL(data, base).toString();
-          await sendAll();
-        } else if (data !== "") {
-          let message;
-          try {
-            message = JSON.parse(data);
-          } catch {
-            continue;
-          }
-          if (message.id !== void 0 && wanted.has(message.id)) {
-            responses.push(message);
-            if (responses.length === pending.length) finished = true;
-          }
-        }
-      }
-    }
-    if (messageUrl === null) throw new Error(`no endpoint event received from ${server.url}`);
-    if (responses.length < pending.length) {
-      throw new Error(`incomplete SSE session: ${responses.length}/${pending.length} responses from ${server.url}`);
-    }
-    return responses;
-  } finally {
-    clearTimeout(timer);
-    controller.abort();
-  }
-}
 async function diagnoseServer(server) {
   const started = Date.now();
   try {
-    if (server.transport === "streamable-http" || server.transport === "sse") {
+    if (server.transport === "streamable-http") {
       const messages = [
         { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "dsh-mcp-studio-diag", version: "0.1.0" } } },
         { jsonrpc: "2.0", method: "notifications/initialized" },
@@ -559,6 +504,20 @@ async function diagnoseServer(server) {
 var name = "dsh-mcp-studio";
 var inject = ["tools"];
 var STUDIO_SETTINGS_NAMESPACE = typeof dshSettings.settingsNamespace === "function" ? dshSettings.settingsNamespace("mcp-studio") : "mcp-studio";
+function installSettingsSection2(ctx, ns, schema, entry, hooks) {
+  if (typeof dshSettings.installSettingsSection === "function") {
+    ;
+    dshSettings.installSettingsSection(ctx, ns, schema, entry, hooks);
+    return;
+  }
+  ctx.inject(["settings"], (sctx) => {
+    const install = sctx.settings?.installSection;
+    if (typeof install === "function") {
+      install(ctx, ns, schema, entry, hooks);
+      return;
+    }
+  });
+}
 function signatureOf(server) {
   return JSON.stringify(toMcpClientConfig(server));
 }
@@ -621,7 +580,7 @@ function apply(ctx, config) {
     mounts.clear();
     tracker.states.clear();
   }, "mcp-studio: lifecycle");
-  installSettingsSection(ctx, STUDIO_SETTINGS_NAMESPACE, Config, config, {
+  installSettingsSection2(ctx, STUDIO_SETTINGS_NAMESPACE, Config, config, {
     setSource: (source) => {
       current = source;
     },
@@ -693,11 +652,12 @@ function apply(ctx, config) {
       const report = await diagnoseServer(server);
       return { ok: true, value: report };
     };
-    registerStudioRpc(connection, settings, STUDIO_SETTINGS_NAMESPACE, status, diagnose, () => executions.clear());
+    registerStudioRpc(connection, settings, STUDIO_SETTINGS_NAMESPACE, status, diagnose, () => executions.clear(), () => config);
   });
   reconcile();
 }
 export {
+  Config,
   STUDIO_SETTINGS_NAMESPACE,
   apply,
   inject,

@@ -104,6 +104,12 @@ export interface SettingsSectionComponent {
 export interface ClientContext {
   effect(factory: () => void | (() => void), label?: string): void
   connection: AdminConnectionHandle
+  /**
+   * Declare a client-runtime service. The web client runs a Cordis-style
+   * registry: plugins waiting on an injected name activate once some plugin
+   * provides it. Throws when the name is already provided.
+   */
+  provide(name: string, value: unknown): void
   settingsScope: {
     bind<T>(spec: { namespace: string; decode?: (section: unknown) => T | undefined }): {
       getSnapshot(): {

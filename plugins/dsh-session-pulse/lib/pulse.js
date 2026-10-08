@@ -31,6 +31,27 @@ export function progressOf(todos) {
 }
 
 /**
+ * 子代理目录的跨代取数：0.2 前宿主快照自带 subagentsByParent[sessionId].entries；
+ * 0.2 起目录行挪进 projectionsBySession[sessionId].values.subagentCatalog，
+ * activity 需从 byId 的 running 推导（官方 client-ui-subagent 同款范式）。
+ * 两代都没有时返回 null（groupSubagents 视为空目录）。
+ */
+export function catalogForSession(list, sessionId) {
+	if (!list || !sessionId) return null;
+	const legacy = list.subagentsByParent?.[sessionId];
+	if (legacy && Array.isArray(legacy.entries)) return legacy;
+	const rows = list.projectionsBySession?.[sessionId]?.values?.subagentCatalog;
+	if (!Array.isArray(rows) || rows.length === 0) return null;
+	return {
+		entries: rows.map((e) => {
+			if (!e || typeof e.id !== "string") return e;
+			const running = list.byId?.[e.id]?.running === true;
+			return { ...e, activity: e.activity || (running ? "running" : "inactive") };
+		})
+	};
+}
+
+/**
  * 子代理目录分组：subagentsByParent[sessionId].entries（宿主 subagents.list 目录行）。
  * running=activity==="running"；已结束里 one-shot→已完成、continuable→已结束；按原序稳定。
  */
