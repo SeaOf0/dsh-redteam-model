@@ -69,3 +69,22 @@ test('conversation view settings register once as live settings', () => {
   assert.equal(registrations[0].schema, ConversationViewSettingsSchema)
   assert.deepEqual(registrations[0].options, { applies: 'live' })
 })
+
+test('conversation view settings tolerate a settings service without register (dsh 0.2 SettingsForms)', () => {
+  const injections = []
+  const ctx = {
+    inject(services, callback) {
+      injections.push([...services])
+      callback({
+        settings: {
+          describe() { return [] },
+          configure() { return () => {} },
+        },
+      })
+    },
+  }
+
+  registerConversationViewSettings(ctx)
+
+  assert.deepEqual(injections, [['settings']])
+})

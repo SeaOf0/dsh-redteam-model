@@ -37,7 +37,8 @@ export const ConversationViewSettingsSchema: z<ConversationViewSettings> = z.obj
 })
 
 interface HostSettingsService {
-  register<T>(
+  /** Present through the settings-registry refactor (dsh 0.1.x); dsh 0.2's SettingsForms drops it. */
+  register?<T>(
     namespace: SettingsNamespace,
     schema: z<T>,
     options?: { applies?: 'live' | 'restart' },
@@ -48,10 +49,16 @@ export interface ConversationViewSettingsContext {
   inject(services: readonly string[], callback: (services: Record<string, unknown>) => void): unknown
 }
 
-/** Register lazily so older Hosts without the settings service still boot. */
+/**
+ * Register lazily so older Hosts without the settings service still boot.
+ * Hosts past the settings-registry refactor (dsh 0.2+ SettingsForms) expose no
+ * `register`; the conversation-view toggles then persist client-side through
+ * the settingsScope shim instead of the Host settings document.
+ */
 export function registerConversationViewSettings(ctx: ConversationViewSettingsContext): void {
   ctx.inject(['settings'], (services: Record<string, unknown>) => {
     const { settings } = services as { settings: HostSettingsService }
+    if (typeof settings.register !== 'function') return
     settings.register(CONVERSATION_VIEW_SETTINGS_NAMESPACE, ConversationViewSettingsSchema, { applies: 'live' })
   })
 }
