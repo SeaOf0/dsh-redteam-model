@@ -11,6 +11,7 @@ import {
 	createGuardState,
 	feedTurn,
 	consumeArm,
+	installSettingsSection,
 	SECURITY_PRESETS
 } from "../lib/index.js";
 
@@ -136,3 +137,21 @@ const ok = (label, cond) => { if (cond) { pass++; console.log(`ok   ${label}`); 
 
 console.log(fail === 0 ? `\nall ${pass} tests passed` : `\n${fail} FAILED, ${pass} passed`);
 process.exit(fail === 0 ? 0 : 1);
+
+// settings-section registration: shape-guarded across host generations
+{
+	let injected = null;
+	const ctx = {
+		inject(services, callback) { injected = [...services]; callback({ settings: { describe() { return [] } } }); }
+	};
+	let threw = null;
+	try { installSettingsSection(ctx, "ns", {}, {}, { setSource() {}, onChange() {} }); } catch (error) { threw = error; }
+	ok("settings service without installSection tolerated (SettingsForms hosts)", threw === null && injected !== null && injected[0] === "settings");
+
+	let called = 0;
+	const ctx2 = {
+		inject(services, callback) { callback({ settings: { installSection() { called++ } } }); }
+	};
+	installSettingsSection(ctx2, "ns", {}, {}, { setSource() {}, onChange() {} });
+	ok("settings service with installSection still routed", called === 1);
+}
