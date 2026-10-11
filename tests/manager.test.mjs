@@ -5,7 +5,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { homedir, tmpdir } from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { deployModes, dshHome, getStatus, installOne, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallModes, uninstallOne } from '../lib/index.js'
+import { deployModes, dshHome, getStatus, installOne, profileWebDir, reconcileProfileBundles, repairMode, scanModes, scanPlugins, uninstallModes, uninstallOne } from '../lib/index.js'
 import { createManagerFixture } from './helpers/fixture.mjs'
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -41,6 +41,44 @@ test('getStatus reports an untouched profile as all not-installed without profil
     assert.equal(status.summary.profileError, undefined)
     assert.equal(status.plugins.every(plugin => plugin.installState === 'not-installed'), true)
   } finally {
+    if (previousHome === undefined) delete process.env.DSH_HOME
+    else process.env.DSH_HOME = previousHome
+    rmSync(isolatedHome, { recursive: true, force: true })
+  }
+})
+
+test('activeProfile follows the positional profile argument the DSH desktop host passes', () => {
+  const previousHome = process.env.DSH_HOME
+  const previousArgv = process.argv
+  const isolatedHome = mkdtempSync(path.join(tmpdir(), 'dsh-redteam-model-test-'))
+  process.env.DSH_HOME = isolatedHome
+  try {
+    // The desktop host boots as `<desktop-host>/lib/index.js <dsh dir>
+    // <DSH_HOME>/profiles/desktop <runtime> <pnpm> <bin>` — no --profile at all,
+    // so a "--profile only" reader silently resolves the `web` profile instead.
+    process.argv = [
+      '/Applications/DeepSeek Harness.app/Contents/MacOS/DeepSeek Harness',
+      '--expose-internals',
+      '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh/node_modules/@deepseek-ai/dsh-desktop-host/lib/index.js',
+      '/Applications/DeepSeek Harness.app/Contents/Resources/app.asar/dsh',
+      path.join(isolatedHome, 'profiles', 'desktop'),
+      '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/primary-runtime',
+      '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/pnpm/bin/pnpm.mjs',
+      '/Applications/DeepSeek Harness.app/Contents/Resources/runtime/bin',
+    ]
+    assert.equal(profileWebDir(), path.join(isolatedHome, 'profiles', 'desktop'))
+
+    // A trailing separator must not defeat the match.
+    process.argv = ['node', 'dsh', `${path.join(isolatedHome, 'profiles', 'headless')}/`]
+    assert.equal(profileWebDir(), path.join(isolatedHome, 'profiles', 'headless'))
+
+    // An explicit flag still wins, and an argv with no hint keeps the fallback.
+    process.argv = ['node', 'dsh', '--profile', 'web', 'web']
+    assert.equal(profileWebDir(), path.join(isolatedHome, 'profiles', 'web'))
+    process.argv = ['node', 'dsh', 'web']
+    assert.equal(profileWebDir(), path.join(isolatedHome, 'profiles', 'web'))
+  } finally {
+    process.argv = previousArgv
     if (previousHome === undefined) delete process.env.DSH_HOME
     else process.env.DSH_HOME = previousHome
     rmSync(isolatedHome, { recursive: true, force: true })

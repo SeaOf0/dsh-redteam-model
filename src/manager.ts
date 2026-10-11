@@ -99,13 +99,28 @@ export function dshHome(): string {
   return path.resolve(configured)
 }
 
-/** The profile this host process actually booted (`--profile <name>`), default web. */
+/**
+ * The profile this host process actually booted.
+ *
+ * `--profile <name>` wins when present. The DSH desktop host never sets it: it
+ * passes the profile directory as a positional argument
+ * (`<dsh dir> <DSH_HOME>/profiles/<name> <runtime> <pnpm> <bin>`), so read that
+ * before falling back to `web`. Without it every profile read and write —
+ * status, install, uninstall, peer linking, the operation queue — silently
+ * targets the `web` profile.
+ */
 export function activeProfile(): string {
   const argv = process.argv
   const flag = argv.indexOf('--profile')
   const next = flag !== -1 ? argv[flag + 1] : undefined
   if (next !== undefined && !next.startsWith('-')) {
     return next
+  }
+  for (const arg of argv) {
+    const match = /[\\/]profiles[\\/]([^\\/]+)[\\/]?$/.exec(arg)
+    if (match !== null && match[1] !== undefined) {
+      return match[1]
+    }
   }
   return 'web'
 }
