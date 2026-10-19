@@ -1331,14 +1331,25 @@ var StudioController = class {
 var STUDIO_CHANNEL = "/dsh-mcp-studio";
 
 // src/client/studio-scope.ts
+var API_CHANNEL = `/api${STUDIO_CHANNEL}`;
+var LEGACY_CHANNEL = STUDIO_CHANNEL;
+var RouteUnavailableError = class extends Error {
+};
+function messageOf(error) {
+  return error instanceof Error ? error.message : String(error);
+}
 var StudioScope = class {
-  constructor(call) {
-    this.call = call;
-    void this.load();
+  constructor(connection) {
+    this.connection = connection;
+    this.ready = this.load();
   }
   snapshot = { status: "loading", value: void 0, base: void 0, user: void 0, revision: void 0, writable: false, mode: "host" };
   listeners = /* @__PURE__ */ new Set();
   tail = Promise.resolve();
+  channel = "api";
+  rpcId = 0;
+  /** Resolves once the first settings read settled (ready or unavailable). */
+  ready;
   getSnapshot = () => this.snapshot;
   subscribe = (listener) => {
     this.listeners.add(listener);
@@ -1353,40 +1364,96 @@ var StudioScope = class {
     return this.write({ op: "unset", path: [field] });
   }
   async status() {
-    const response = await this.call("status", {});
-    if (!response.ok) return { error: response.error.message };
-    const value = response.value;
-    if (!Array.isArray(value.servers) || typeof value.summary !== "object" || value.summary === null) {
-      return { error: "host returned no status payload" };
+    try {
+      const response = await this.call("status", {});
+      if (!response.ok) return { error: response.error.message };
+      const value = response.value;
+      if (!Array.isArray(value.servers) || typeof value.summary !== "object" || value.summary === null) {
+        return { error: "host returned no status payload" };
+      }
+      return value;
+    } catch (error) {
+      return { error: messageOf(error) };
     }
-    return value;
   }
   async clearExecutions() {
-    const response = await this.call("executions/clear", {});
-    if (!response.ok) return { error: response.error.message };
-    return { cleared: true };
+    try {
+      const response = await this.call("executions/clear", {});
+      if (!response.ok) return { error: response.error.message };
+      return { cleared: true };
+    } catch (error) {
+      return { error: messageOf(error) };
+    }
   }
   async diagnose(id) {
-    const response = await this.call("diagnose", { id });
-    if (!response.ok) return { error: response.error.message };
-    return response.value;
+    try {
+      const response = await this.call("diagnose", { id });
+      if (!response.ok) return { error: response.error.message };
+      return response.value;
+    } catch (error) {
+      return { error: messageOf(error) };
+    }
   }
   async load() {
-    const response = await this.call("settings/get", {});
-    if (!response.ok) {
+    try {
+      const response = await this.call("settings/get", {});
+      if (!response.ok) {
+        this.publish({ ...this.snapshot, status: "unavailable" });
+        return;
+      }
+      const view = typeof response.value === "object" && response.value !== null ? response.value : {};
+      this.publish({
+        status: "ready",
+        value: view.value,
+        base: view.base,
+        user: view.user,
+        revision: typeof view.revision === "number" ? view.revision : void 0,
+        writable: view.writable === true,
+        mode: "host"
+      });
+    } catch {
       this.publish({ ...this.snapshot, status: "unavailable" });
-      return;
     }
-    const view = typeof response.value === "object" && response.value !== null ? response.value : {};
-    this.publish({
-      status: "ready",
-      value: view.value,
-      base: view.base,
-      user: view.user,
-      revision: typeof view.revision === "number" ? view.revision : void 0,
-      writable: view.writable === true,
-      mode: "host"
+  }
+  /**
+   * Modern Hosts (0.1.2+) expose exact Fetch routes under /api, which cannot
+   * travel through connection.rpc.call. Legacy Hosts only serve the bare
+   * channel, so probe /api first and stick with whichever transport answered.
+   */
+  async call(endpoint, payload) {
+    if (this.channel === "api") {
+      try {
+        return await this.invokeApi(endpoint, payload);
+      } catch (error) {
+        if (!(error instanceof RouteUnavailableError)) throw error;
+        this.channel = "legacy";
+      }
+    }
+    return this.connection.rpc.call(LEGACY_CHANNEL, endpoint, payload);
+  }
+  async invokeApi(endpoint, payload) {
+    const rpcId = `studio-${++this.rpcId}`;
+    const response = await fetch(`${API_CHANNEL}/${endpoint}`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "client-request", rpcId, method: endpoint, payload })
     });
+    if (!response.ok) {
+      const message = `transport failure for ${API_CHANNEL}/${endpoint}: HTTP ${response.status}`;
+      if (response.status === 404 || response.status === 405) throw new RouteUnavailableError(message);
+      throw new Error(message);
+    }
+    let envelope;
+    try {
+      envelope = await response.json();
+    } catch {
+      throw new RouteUnavailableError(`transport failure for ${API_CHANNEL}/${endpoint}: response is not JSON`);
+    }
+    if (envelope.type !== "server-response" || envelope.rpcId !== rpcId || envelope.result === void 0) {
+      throw new Error(`transport failure for ${API_CHANNEL}/${endpoint}: malformed envelope`);
+    }
+    return envelope.result;
   }
   write(op) {
     const task = this.tail.then(async () => {
@@ -1416,7 +1483,7 @@ var StudioScope = class {
   }
 };
 function createStudioScope(connection) {
-  return new StudioScope((endpoint, payload) => connection.rpc.call(STUDIO_CHANNEL, endpoint, payload));
+  return new StudioScope(connection);
 }
 
 // src/client/locales.ts
