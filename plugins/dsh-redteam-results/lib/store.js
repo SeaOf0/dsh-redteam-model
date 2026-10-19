@@ -7,6 +7,8 @@
 // 测试注入 ":memory:"。
 
 import { DatabaseSync } from "node:sqlite";
+import { mkdirSync } from "node:fs";
+import { dirname } from "node:path";
 
 const SEVERITIES = ["critical", "high", "medium", "low"];
 const STATUSES = ["pending", "code-reviewed", "verified", "false-positive", "fixed"];
@@ -116,6 +118,7 @@ const MIGRATION_COLUMNS = [
 
 /** 打开（或创建）库并预编译语句。dbPath 传 ":memory:" 供测试。 */
 export function openStore(dbPath) {
+	if (dbPath !== ":memory:") mkdirSync(dirname(dbPath), { recursive: true }); // node:sqlite 不建父目录
 	const db = new DatabaseSync(dbPath);
 	db.exec("PRAGMA journal_mode = WAL;");
 	db.exec("PRAGMA busy_timeout = 5000;"); // 多进程（两个 dsh web）并发写不直接抛 SQLITE_BUSY
