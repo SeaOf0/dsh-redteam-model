@@ -1,19 +1,15 @@
 /** Client-side studio scope: settings read/write, live-status polling, diagnostics — all through the plugin's loopback channel. */
-import type { DiagnoseReport, SettingsScope, StudioLive, StudioScopeSnapshot } from './contracts.js';
+import type { DiagnoseReport, SettingsScope, StudioConnectionHandle, StudioLive, StudioScopeSnapshot } from './contracts.js';
 export declare class StudioScope implements SettingsScope {
-    private readonly call;
+    private readonly connection;
     private snapshot;
     private readonly listeners;
     private tail;
-    constructor(call: (endpoint: string, payload: unknown) => Promise<{
-        ok: true;
-        value: unknown;
-    } | {
-        ok: false;
-        error: {
-            message: string;
-        };
-    }>);
+    private channel;
+    private rpcId;
+    /** Resolves once the first settings read settled (ready or unavailable). */
+    readonly ready: Promise<void>;
+    constructor(connection: StudioConnectionHandle);
     getSnapshot: () => StudioScopeSnapshot;
     subscribe: (listener: () => void) => (() => void);
     set(field: string, value: unknown): Promise<void>;
@@ -30,19 +26,14 @@ export declare class StudioScope implements SettingsScope {
         error: string;
     }>;
     private load;
+    /**
+     * Modern Hosts (0.1.2+) expose exact Fetch routes under /api, which cannot
+     * travel through connection.rpc.call. Legacy Hosts only serve the bare
+     * channel, so probe /api first and stick with whichever transport answered.
+     */
+    private call;
+    private invokeApi;
     private write;
     private publish;
 }
-export declare function createStudioScope(connection: {
-    rpc: {
-        call(channel: string, endpoint: string, payload: unknown): Promise<{
-            ok: true;
-            value: unknown;
-        } | {
-            ok: false;
-            error: {
-                message: string;
-            };
-        }>;
-    };
-}): SettingsScope;
+export declare function createStudioScope(connection: StudioConnectionHandle): SettingsScope;
