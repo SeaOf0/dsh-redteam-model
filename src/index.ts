@@ -7,6 +7,8 @@
 
 import path from 'node:path'
 
+import { Service, type Context } from '@deepseek-ai/cordis'
+
 import {
   CONVERSATION_VIEW_SETTINGS_NAMESPACE,
   conversationViewWriteApplied,
@@ -39,14 +41,44 @@ export {
 export const name = 'dsh-redteam-model'
 export const inject = ['connection']
 
+/**
+ * dsh 0.2 no longer provides `webRuntime`, but six web plugins still inject it
+ * for the trusted-host list. Expose the same shape from the current services.
+ */
+class WebRuntimeCompat extends Service {
+  constructor(ctx: Context, private readonly hosts: () => string[]) {
+    super(ctx, 'webRuntime')
+  }
+
+  get trustedHosts(): string[] {
+    return this.hosts()
+  }
+}
+
 /** Minimal structural face of the Cordis context this plugin needs. */
 export interface HostContext {
   inject(services: readonly string[], callback: (services: Record<string, unknown>) => void): unknown
   effect(cleanup: () => void | (() => void), label?: string): unknown
+  get?(name: string): unknown
 }
 
 export function apply(ctx: HostContext): void {
   registerConversationViewSettings(ctx)
+
+  // dsh 0.2 dropped webRuntime; six web plugins still inject it for trustedHosts.
+  ctx.inject(['connection', 'webServer'], (web: Record<string, unknown>) => {
+    if (ctx.get?.('webRuntime') !== undefined) return
+    const connection = web.connection as { trustedHosts?: unknown } | undefined
+    const server = web.webServer as { host?: unknown } | undefined
+    const hosts = (): string[] => {
+      const configured = Array.isArray(connection?.trustedHosts)
+        ? connection.trustedHosts.filter((entry): entry is string => typeof entry === 'string')
+        : []
+      const bind = typeof server?.host === 'string' ? server.host : undefined
+      return bind === undefined || configured.includes(bind) ? configured : [...configured, bind]
+    }
+    new WebRuntimeCompat(ctx as unknown as Context, hosts)
+  })
 
   // The plugin still never deploys modes or sub-plugins at startup, but the
   // profile rows of ALREADY installed plugins are its own bookkeeping: first
