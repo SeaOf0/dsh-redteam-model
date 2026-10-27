@@ -17,7 +17,9 @@ jobs:
         with:
           node-version: 22
       - name: install plugin deps
-        run: npm install --no-save @deepseek-ai/dsh-tools@0.1.1-rc.2 @deepseek-ai/schemastery@3.18.1
+        # dsh-tools 0.2.1-rc.x 起 peer 面（ptc-runtime/sandbox/sandbox-policy/
+        # working-directory）在 legacy-peer-deps 下不自动安装，显式补钉保持矩阵闭环。
+        run: npm install --no-save @deepseek-ai/dsh-tools@0.2.1-rc.3 @deepseek-ai/schemastery@3.18.5 @deepseek-ai/dsh-ptc-runtime@0.2.1-rc.3 @deepseek-ai/dsh-sandbox@0.2.1-rc.3 @deepseek-ai/dsh-sandbox-policy@0.2.1-rc.3 @deepseek-ai/dsh-working-directory@0.2.1-rc.3
       - name: bridge cross-plugin packages
         run: |
           mkdir -p plugins/node_modules/@dsh-external
