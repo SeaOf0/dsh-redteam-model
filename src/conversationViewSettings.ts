@@ -1,6 +1,9 @@
 /** Persistent Host settings for repository-owned conversation views. */
 // 具名 import 在宿主移除导出时会链接期崩溃（dsh 0.1.2+ 不再单独导出
 // settingsNamespace），改命名空间导入 + 运行时探测，缺失时降级为等价校验糖。
+// dsh 0.2.1-rc.3 的 dsh-settings 类型里已无 settingsNamespace（运行时函数随
+// SettingsForms 重构移除，仅剩 SettingsNamespace 类型），类型面用显式 cast
+// 探测，运行面对旧宿主（0.1.x 仍提供该函数）继续走真命名空间分支。
 import * as dshSettings from '@deepseek-ai/dsh-settings'
 import type { SettingsNamespace } from '@deepseek-ai/dsh-settings'
 import z from '@deepseek-ai/schemastery'
@@ -23,9 +26,14 @@ function fallbackNamespace(value: string): SettingsNamespace {
   return value as SettingsNamespace
 }
 
+/** The settingsNamespace helper exists on dsh 0.1.x hosts and was removed by dsh 0.2.1-rc.3's SettingsForms refactor. */
+type SettingsNamespaceHelper = typeof dshSettings & {
+  settingsNamespace?: (ns: string) => SettingsNamespace
+}
+
 export const CONVERSATION_VIEW_SETTINGS_NAMESPACE: SettingsNamespace =
-  typeof dshSettings.settingsNamespace === 'function'
-    ? dshSettings.settingsNamespace('redteam-manager-ui')
+  typeof (dshSettings as SettingsNamespaceHelper).settingsNamespace === 'function'
+    ? (dshSettings as SettingsNamespaceHelper).settingsNamespace!('redteam-manager-ui')
     : fallbackNamespace('redteam-manager-ui')
 
 export const ConversationViewSettingsSchema: z<ConversationViewSettings> = z.object({
