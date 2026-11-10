@@ -1,6 +1,6 @@
 {
   "name": "@dsh-external/dsh-redteam-model",
-  "version": "1.1.2",
+  "version": "1.1.2-yingcai.1",
   "description": "DSH redteam security research modes and runtime plugins, managed from one settings page: deploy the nine presets, install, update and uninstall the seventeen runtime plugins for the current profile.",
   "type": "module",
   "main": "./lib/index.js",
@@ -24,7 +24,7 @@
   "author": "SeaOf0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/SeaOf0/dsh-redteam-model.git"
+    "url": "git+https://github.com/yingcaipro-cmd/dsh-redteam-model.git"
   },
   "keywords": [
     "deepseek",
