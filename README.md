@@ -73,9 +73,13 @@
 
 ### 方式一：设置页管理台（推荐）
 
-把整个合集作为一个 dsh 插件安装（需 dsh web 0.1.0-rc.6+，验证于 0.1.1-rc.2）：
+把整个合集作为一个 dsh 插件安装（需 dsh web 0.1.0-rc.6+；**DSH 0.2.2+** 请用本 fork 兼容分支，已去掉过时的 `list-agents` 行）：
 
 ```sh
+# 推荐：本 fork 兼容分支（yingcaipro-cmd）
+dsh plugin --profile web add github:yingcaipro-cmd/dsh-redteam-model#fix/dsh-022-compat
+
+# 上游（未含本 fork 的 0.2.2 兼容修复）
 dsh plugin --profile web add github:SeaOf0/dsh-redteam-model
 ```
 
@@ -91,7 +95,7 @@ dsh plugin --profile web add github:SeaOf0/dsh-redteam-model
 
 ### 方式二：源码一键部署 CLI
 
-获取源码任选其一：`git clone https://github.com/SeaOf0/dsh-redteam-model.git`，或仓库页 Code → Download ZIP 解压。
+获取源码任选其一：`git clone -b fix/dsh-022-compat https://github.com/yingcaipro-cmd/dsh-redteam-model.git`（本 fork），或上游 `git clone https://github.com/SeaOf0/dsh-redteam-model.git`，或仓库页 Code → Download ZIP 解压。
 
 ```bash
 cd dsh-redteam-model/deploy
